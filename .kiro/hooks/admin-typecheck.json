@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Typecheck admin portal after TypeScript edits",
+      "trigger": "PostFileSave",
+      "matcher": "tradewizard-admin/.*\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "cd tradewizard-admin && npx tsc --noEmit"
+      }
+    }
+  ]
+}
