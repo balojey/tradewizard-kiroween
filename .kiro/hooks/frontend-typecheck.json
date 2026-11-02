@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Typecheck frontend after TypeScript edits",
+      "trigger": "PostFileSave",
+      "matcher": "tradewizard-frontend/.*\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "cd tradewizard-frontend && npx tsc --noEmit"
+      }
+    }
+  ]
+}

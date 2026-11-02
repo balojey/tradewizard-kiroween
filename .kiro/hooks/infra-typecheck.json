@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Typecheck infra after TypeScript edits",
+      "trigger": "PostFileSave",
+      "matcher": "infra/(lib|services|scripts)/.*\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "cd infra && npx tsc --noEmit"
+      }
+    }
+  ]
+}

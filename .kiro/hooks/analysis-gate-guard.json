@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Protect the deterministic analysis gates",
+      "trigger": "PostFileSave",
+      "matcher": "infra/services/analysis-lambda/(stages/(signal-fusion|consensus-engine|recommendation)\\.ts|lib/shadow-consensus\\.ts)$",
+      "action": {
+        "type": "agent",
+        "prompt": "A deterministic gate file was just edited. Verify that signal-fusion, consensus-engine, recommendation, and shadow-consensus still contain no LLM or model calls, keep the live decision path free of shadow data, and add or update focused vitest cases for any changed threshold or NO_TRADE reason. Run `cd infra && npx vitest --run <affected test files>` and report the result."
+      }
+    }
+  ]
+}

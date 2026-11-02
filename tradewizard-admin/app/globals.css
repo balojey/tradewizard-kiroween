@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+/*
+ * Management-portal design tokens.
+ *
+ * Same OKLch palette as the product so the portal reads as TradeWizard, plus a
+ * few operational tokens: a darker rail, a field surface, hairline rules and
+ * soft semantic tints. Dark-first by design — this is a control surface, not a
+ * marketing page.
+ */
+
+:root,
+[data-theme="dark"] {
+  --bg:               oklch(14% 0.015 260);
+  --rail:             oklch(16.5% 0.014 260);
+  --surface:          oklch(19% 0.012 260);
+  --surface-2:        oklch(23.5% 0.010 260);
+  --surface-elevated: oklch(27% 0.012 260);
+  --field:            oklch(21.5% 0.011 260);
+  --fg:               oklch(97% 0.005 260);
+  --muted:            oklch(68% 0.012 260);
+  --faint:            oklch(54% 0.012 260);
+  --border:           oklch(29% 0.010 260);
+  --border-soft:      oklch(25% 0.009 260);
+  --border-strong:    oklch(40% 0.014 260);
+  --accent:           oklch(62% 0.20 260);
+  --accent-soft:      oklch(62% 0.20 260 / .14);
+  --accent-line:      oklch(62% 0.20 260 / .55);
+  --ai:               oklch(62% 0.18 295);
+  --ai-soft:          oklch(62% 0.18 295 / .14);
+  --yes:              oklch(72% 0.16 155);
+  --yes-soft:         oklch(72% 0.16 155 / .13);
+  --no:               oklch(67% 0.18 25);
+  --no-soft:          oklch(67% 0.18 25 / .14);
+  --warning:          oklch(78% 0.14 85);
+  --warning-soft:     oklch(78% 0.14 85 / .13);
+  --hover:            oklch(100% 0 0 / .035);
+  --ring:             oklch(62% 0.20 260 / .55);
+  --shadow-panel:     0 1px 0 oklch(100% 0 0 / .025) inset, 0 20px 40px -32px oklch(0% 0 0 / .9);
+}
+
+@theme inline {
+  --color-bg:               var(--bg);
+  --color-rail:             var(--rail);
+  --color-surface:          var(--surface);
+  --color-surface-2:        var(--surface-2);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-field:            var(--field);
+  --color-fg:               var(--fg);
+  --color-muted:            var(--muted);
+  --color-faint:            var(--faint);
+  --color-border:           var(--border);
+  --color-border-soft:      var(--border-soft);
+  --color-border-strong:    var(--border-strong);
+  --color-accent:           var(--accent);
+  --color-accent-soft:      var(--accent-soft);
+  --color-accent-line:      var(--accent-line);
+  --color-ai:               var(--ai);
+  --color-ai-soft:          var(--ai-soft);
+  --color-yes:              var(--yes);
+  --color-yes-soft:         var(--yes-soft);
+  --color-no:               var(--no);
+  --color-no-soft:          var(--no-soft);
+  --color-warning:          var(--warning);
+  --color-warning-soft:     var(--warning-soft);
+  --color-hover:            var(--hover);
+
+  --font-sans: 'Ubuntu', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), 'SF Mono', ui-monospace, Menlo, monospace;
+
+  --radius-panel: 10px;
+  --radius-control: 7px;
+}
+
+html {
+  color-scheme: dark;
+  scrollbar-gutter: stable;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: var(--font-sans);
+  font-feature-settings: "cv05" 1;
+}
+
+body {
+  /* Dense by default: the portal is read at a desk for long stretches. */
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+* {
+  border-color: var(--border);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: oklch(62% 0.20 260 / .35);
+  color: var(--fg);
+}
+
+::placeholder {
+  color: var(--faint);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Form controls draw their own border + ring, so suppress the outer outline. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* Thin, quiet scrollbars — the rail and tables scroll constantly. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Dense tables: numbers line up, IDs are monospace. */
+.tabular,
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* Small metadata label. Deliberately not applied to every heading. */
+.micro {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* Hairline rule used to separate page furniture from content. */
+.hairline {
+  border-top: 1px solid var(--border-soft);
+}
+
+/* Native select with a quiet chevron instead of the browser default. */
+.ui-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--faint) 50%),
+    linear-gradient(135deg, var(--faint) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 1px),
+    calc(100% - 10px) calc(50% - 1px);
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

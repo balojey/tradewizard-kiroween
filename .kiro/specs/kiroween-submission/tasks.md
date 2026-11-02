@@ -1,0 +1,38 @@
+# Implementation Plan
+
+- [x] 1. Copy the working tree into the submission repository without build artifacts
+  - Exclude `.git`, `node_modules`, `.next`, `dist`, `cdk.out`, env files, and CDK outputs.
+  - Preserve `.kiro`, `docs`, `remotion`, and all source.
+- [x] 2. Make the repository eligible
+  - Add an MIT `LICENSE` at the root.
+  - Confirm `.kiro` is not in `.gitignore`.
+  - Confirm no secrets or generated artifacts are staged.
+- [x] 3. Add Kiro hook evidence
+  - Add `.kiro/hooks/infra-typecheck.json`.
+  - Add `.kiro/hooks/frontend-typecheck.json`.
+  - Add `.kiro/hooks/admin-typecheck.json`.
+  - Add `.kiro/hooks/analysis-gate-guard.json`.
+  - Add `.kiro/hooks/spec-task-followthrough.json`.
+- [x] 4. Add submission steering
+  - Add `.kiro/steering/kiroween.md` with category, eligibility, writing, and demo rules.
+- [x] 5. Rewrite the root README
+  - Add Kiroween category framing and the Frankenstein narrative.
+  - Add a "Built with Kiro" section with file-level references.
+  - Preserve architecture, pipeline, gates, setup, and commands.
+  - Change the license section to MIT.
+- [x] 6. Write the submission documentation
+  - Add `docs/kiroween-submission.md` as the Devpost text description.
+  - Add `docs/kiro-usage.md` as the judge-facing Kiro write-up.
+  - Add `docs/devpost-form.md` as the fill-in form pack.
+  - Rewrite `docs/devpost-submission.md` for Kiroween.
+  - Rewrite `docs/devpost-vo-script.md` to under three minutes.
+  - Rewrite `docs/youtube-description.md`.
+- [x] 7. Update contributor and package docs
+  - Update local agent operating notes (gitignored; not part of the public submission).
+  - Add submission links to `infra/README.md`, `tradewizard-frontend/README.md`, and `tradewizard-admin/README.md`.
+  - Add a Kiroween note to `docs/tradewizard-overview.md`.
+- [x] 8. Verify
+  - Parse all new JSON files.
+  - Check that every relative documentation link resolves.
+  - Confirm the demo script reads under three minutes.
+  - Confirm no `.env` or secret files exist in the tree.

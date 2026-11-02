@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Close out a completed spec task",
+      "trigger": "PostTaskExec",
+      "action": {
+        "type": "agent",
+        "prompt": "A spec task just completed. Mark its checkbox in the active .kiro/specs/<spec>/tasks.md, run only the tests that cover the files changed by the task, and confirm that no unrelated files were modified. If the task changed behavior described in a README or in .kiro/steering, update that document before reporting done."
+      }
+    }
+  ]
+}
