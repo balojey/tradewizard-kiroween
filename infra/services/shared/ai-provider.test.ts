@@ -19,6 +19,7 @@ vi.mock('@aws-sdk/client-secrets-manager', () => ({
   GetSecretValueCommand: vi.fn((input: unknown) => ({ input })),
 }));
 
+import { resetSettingsCacheForTests, setSetting } from './settings';
 import {
   capabilityForLogicalKey,
   capabilitySupportsTools,
@@ -67,6 +68,22 @@ afterEach(() => {
 });
 
 describe('resolveAiProvider', () => {
+  it('honours a warmed runtime override ahead of the environment', async () => {
+    process.env.AI_PROVIDER = 'bedrock';
+
+    // Warming is what the agent lambdas do at invocation start; model factories
+    // are synchronous and cannot await a read themselves.
+    const client = { query: async () => ({ rows: [] }) } as unknown as Parameters<
+      typeof setSetting
+    >[0];
+    await setSetting(client, 'ai_provider', 'nebius', 'test@example.com');
+
+    expect(resolveAiProvider()).toBe('nebius');
+
+    resetSettingsCacheForTests();
+    expect(resolveAiProvider()).toBe('bedrock');
+  });
+
   it('defaults to bedrock', () => {
     expect(resolveAiProvider()).toBe('bedrock');
   });

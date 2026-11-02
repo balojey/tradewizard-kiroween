@@ -26,7 +26,7 @@ If the agents disagree above a hard threshold, or if expected value is non-posit
 
 A Position Guard monitors every open position for regime shifts and stale markets. A Risk Engine enforces loss limits, cooldowns, and a kill switch that fails closed. The user can pause, resume, stop, or kill all sessions at any time, and every trade, exit, and risk event fans out across notification channels in real time.
 
-Around these sit the pieces a real product needs: passwordless Cognito Magic Link auth, on-chain USDC.e billing on Polygon with auto-renewal via ERC-20 allowances, a market-level analysis pool that prevents redundant compute, a credit system with an immutable audit trail, an internal management portal, and a Next.js 16 / React 19 frontend that surfaces all of it through a clean trading-terminal UI.
+Around these sit the pieces a real product needs: passwordless Cognito Magic Link auth, on-chain USDC.e billing on Polygon with auto-renewal via ERC-20 allowances, a market-level analysis pool that prevents redundant compute, a credit system with an immutable audit trail, an internal management portal with audited runtime settings and analysis requeue, and a Next.js 16 / React 19 frontend that surfaces all of it through a clean trading-terminal UI.
 
 ## Why this is a Frankenstein
 

@@ -187,33 +187,33 @@ export function OpsView() {
 
           <div className="mt-4">
             <StatGrid>
-            <StatCard
-              label="Database"
-              value={data.database.reachable ? "reachable" : "unreachable"}
-              tone={data.database.reachable ? "yes" : "no"}
-              hint={`${data.database.connections ?? "—"} active connections`}
-            />
-            <StatCard
-              label="DB size"
-              value={dbSizeMb === null ? "—" : `${dbSizeMb.toFixed(1)} MB`}
-              hint="single-AZ instance"
-            />
-            <StatCard
-              label="WebSocket connections"
-              value={
-                data.websocket.approxConnections === null
-                  ? "—"
-                  : formatNumber(data.websocket.approxConnections)
-              }
-              hint="approximate by design"
-            />
-            <StatCard
-              label="Alarms"
-              value={firing === 0 ? "all OK" : formatNumber(firing)}
-              tone={firing === 0 ? "yes" : "no"}
-              hint="only non-OK states listed"
-            />
-          </StatGrid>
+              <StatCard
+                label="Database"
+                value={data.database.reachable ? "reachable" : "unreachable"}
+                tone={data.database.reachable ? "yes" : "no"}
+                hint={`${data.database.connections ?? "—"} active connections`}
+              />
+              <StatCard
+                label="DB size"
+                value={dbSizeMb === null ? "—" : `${dbSizeMb.toFixed(1)} MB`}
+                hint="single-AZ instance"
+              />
+              <StatCard
+                label="WebSocket connections"
+                value={
+                  data.websocket.approxConnections === null
+                    ? "—"
+                    : formatNumber(data.websocket.approxConnections)
+                }
+                hint="approx. live connections"
+              />
+              <StatCard
+                label="Alarms"
+                value={firing === 0 ? "all OK" : formatNumber(firing)}
+                tone={firing === 0 ? "yes" : "no"}
+                hint="only non-OK states listed"
+              />
+            </StatGrid>
           </div>
 
           <Panel
@@ -263,6 +263,8 @@ export function OpsView() {
               loading={false}
               emptyMessage="No functions configured for monitoring."
             />
+
+            <p className="mt-2 text-[11px] leading-relaxed text-faint">{data.websocket.note}</p>
           </div>
         </>
       )}

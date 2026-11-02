@@ -19,6 +19,7 @@
  * - NEBIUS_MODEL_<CAPABILITY>_MAX_TOKENS: optional per-capability override
  */
 
+import { getSettingSync } from './settings';
 import { BedrockModel, type Model } from '@strands-agents/sdk';
 import { OpenAIModel } from '@strands-agents/sdk/models/openai';
 import {
@@ -87,7 +88,10 @@ let cachedNebiusKeyAt = 0;
 
 /** Resolve the active AI provider. Defaults to Bedrock. */
 export function resolveAiProvider(): AiProvider {
-  const raw = (process.env.AI_PROVIDER || 'bedrock').trim().toLowerCase();
+  // A runtime override (warmed by the lambda) wins over the deployed default, so
+  // switching providers does not require a redeploy. Empty means "follow env".
+  const override = String(getSettingSync('ai_provider') ?? '').trim().toLowerCase();
+  const raw = (override || process.env.AI_PROVIDER || 'bedrock').trim().toLowerCase();
 
   if (raw === 'bedrock' || raw === 'nebius') {
     return raw;

@@ -8,16 +8,20 @@
 
 import { writeAuditLog, completeAudit } from '../lib/audit';
 import { withClient } from '../lib/db';
-import { deleteDedupCache } from '../../shared/dynamo';
+import { checkInFlight, deleteDedupCache, markInFlight } from '../../shared/dynamo';
+import { getUserIdByCognitoSub } from '../../shared/db';
+import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { refundResultDeliveries } from '../queries/credits';
 import { revokeSchema } from '../lib/validation';
-import { parseBody } from '../lib/validation';
+import { parseBody, requeueSchema } from '../lib/validation';
 import { parsePagination, toPage } from '../lib/pagination';
 import { HttpError, json } from '../lib/responses';
 import { PAYLOAD_URL_TTL_SECONDS, presignPayloadUrl } from '../lib/s3';
 import { parseOptionalDate, parseWindow } from '../lib/window';
 import type { AdminRoute, RouteContext } from '../lib/router';
 import * as queries from '../queries/analyses';
+
+const sqs = new SQSClient({});
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -215,6 +219,90 @@ export const analysesRoutes: AdminRoute[] = [
           }).catch(() => undefined);
           throw error;
         }
+      });
+    },
+  },
+  {
+    method: 'POST',
+    path: '/admin/analyses/requeue',
+    minimumRole: 'admin',
+    handler: async ({ event, identity }: RouteContext) => {
+      const input = parseBody(requeueSchema, event.body);
+      const queueUrl = process.env.ANALYSIS_QUEUE_URL;
+      if (!queueUrl) {
+        throw new HttpError(500, 'INTERNAL', 'ANALYSIS_QUEUE_URL is not configured');
+      }
+
+      // Refuse to stack a second run on one already in flight: the in-flight
+      // marker is what keeps the pool at one execution per market.
+      const inFlight = await checkInFlight(input.marketId);
+      if (inFlight) {
+        throw new HttpError(
+          409,
+          'CONFLICT',
+          `An analysis for this market is already running (request ${inFlight}).`
+        );
+      }
+
+      const requestId = crypto.randomUUID();
+
+      // We act as a scheduled fire, not as a user request: this is the mechanism
+      // that stops the orchestrator from adding the requesting account to the
+      // delivery targets, so nobody is charged for an operator-triggered run.
+      const actorUserId = await getUserIdByCognitoSub(identity.sub);
+      if (!actorUserId) {
+        throw new HttpError(
+          409,
+          'CONFLICT',
+          'Your admin account has no linked product user, so the pipeline cannot attribute the run'
+        );
+      }
+
+      await markInFlight(input.marketId, requestId);
+
+      try {
+        await sqs.send(
+          new SendMessageCommand({
+            QueueUrl: queueUrl,
+            MessageBody: JSON.stringify({
+              marketId: input.marketId,
+              userId: actorUserId,
+              requestType: 'recurring',
+              isScheduledFire: true,
+              scheduledFireId: `admin-${requestId}`,
+            }),
+            MessageGroupId: input.marketId,
+            MessageDeduplicationId: requestId,
+          })
+        );
+      } catch (error) {
+        // Leave no stale marker blocking the market for five minutes.
+        const { clearInFlight } = await import('../../shared/dynamo');
+        await clearInFlight(input.marketId).catch(() => undefined);
+        throw error;
+      }
+
+      return withClient(async (client) => {
+        const auditId = await writeAuditLog(client, {
+          actor: identity,
+          action: 'analysis.requeue',
+          targetType: 'market',
+          targetId: input.marketId,
+          reason: input.reason,
+          requestId: event.requestContext?.requestId ?? null,
+          ip: event.requestContext?.identity?.sourceIp ?? null,
+        });
+
+        await completeAudit(client, auditId, {
+          status: 'succeeded',
+          after: { requestId, mode: 'scheduled_fire' },
+        });
+
+        return json(event, 202, {
+          marketId: input.marketId,
+          requestId,
+          note: 'Analysis dispatched. Subscribers will be charged as usual if they receive it.',
+        });
       });
     },
   },

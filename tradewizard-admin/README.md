@@ -43,17 +43,25 @@ client only). Bootstrapping an admin is a terminal task — see runbook §1.
 
 ## Current scope
 
-Slice 5: login, route guard, shell, `GET /admin/me`, the users read path
-(`/users`, `/users/{id}` with credits, analyses, sessions, payments, notes), and
-the analyses read path (`/analyses` with a quality view, `/analyses/{id}` with a
-presigned S3 payload viewer), the portfolio read path (`/portfolio` exposure
-and sessions, `/portfolio/{id}` trades and decisions), billing (`/billing` revenue,
-ledger, subscriptions), agents (`/agents` calibration and model cost), ops
-(`/ops` queues, Lambda health, alarms, database), and markets (`/markets` analysis
-pool and stuck executions). and the overview dashboard (`/overview`). Phase 1 (read-only) is complete; Phase 2 has started with the audit spine and
-support notes.
-Everything else in the navigation is disabled until its slice lands; see §14.1 of
-the architecture doc for the order.
+Phase 1 (read-only) is complete. Phase 2 adds the audit spine, support notes, and
+the operational controls:
+
+- **Users** - read path, credits, analyses, sessions, payments, notes, plan
+  overrides, suspension, grant credits, and refunds.
+- **Analyses** - read path, quality view, presigned S3 payload viewer, refunds,
+  cache invalidation, and requeue of a market's analysis.
+- **Portfolio** - exposure, sessions, trades, decisions, pause/resume, terminate,
+  and a two-phase kill switch.
+- **Members** - owner-managed portal membership with immediate access revocation.
+- **Settings** - audited runtime settings, each naming its consumer: pause new
+  analysis, edit the pause message, and override the AI provider without a
+  redeploy. Changes apply within a minute and are written to the audit log.
+- **Billing, agents, ops, markets, overview** - revenue, ledger, subscriptions,
+  calibration and model cost, queues, Lambda health, alarms, database state,
+  analysis pool, stuck executions, and the dashboard.
+
+See §14.1 of the architecture doc for the delivery order and §14.4 for the live
+progress log.
 
 ## Deploying
 

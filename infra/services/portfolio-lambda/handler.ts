@@ -22,6 +22,7 @@ import type {
   OrderType,
   ExitReason,
 } from './lib/types';
+import { warmSettings } from '../shared/settings';
 import {
   VALID_PERSONAS,
   VALID_DECISION_TYPES,
@@ -68,6 +69,9 @@ if (missingEnvVars.length > 0) {
 
 export async function handler(event: unknown): Promise<PortfolioDecision> {
   try {
+    // Warm runtime settings before the persona model is constructed.
+    await warmSettings(['ai_provider']);
+
     // Validate payload
     const validation = validatePayload(event);
     if (!validation.valid) {

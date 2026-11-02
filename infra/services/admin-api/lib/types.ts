@@ -19,6 +19,7 @@ export interface AdminApiEvent {
       role?: string;
       roleRank?: string | number;
       mfa?: string | boolean;
+      authTime?: string | number;
     };
   };
 }

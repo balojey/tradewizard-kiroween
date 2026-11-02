@@ -24,6 +24,7 @@ import { userMutationRoutes } from '../routes/user-mutations';
 import { portfolioMutationRoutes } from '../routes/portfolio-mutations';
 import { killSwitchRoutes } from '../routes/kill-switch';
 import { memberRoutes } from '../routes/members';
+import { settingsRoutes } from '../routes/settings';
 
 export interface RouteContext {
   event: AdminApiEvent;
@@ -76,6 +77,7 @@ export const ROUTES: AdminRoute[] = [
   ...portfolioMutationRoutes,
   ...killSwitchRoutes,
   ...memberRoutes,
+  ...settingsRoutes,
 ];
 
 const COMPILED: CompiledRoute[] = ROUTES.map(compile);

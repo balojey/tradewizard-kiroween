@@ -37,6 +37,7 @@ import {
 } from '../shared/dynamo';
 import { getConnectionString, getUserIdByCognitoSub, getUserStatus, ensureUser } from '../shared/db';
 import { resetFreePlanIfCycleExpired } from '../shared/credits';
+import { getSetting } from '../shared/settings';
 
 const sqsClient = new SQSClient({});
 const schedulerClient = new SchedulerClient({});
@@ -140,6 +141,20 @@ async function processAnalysisRequest(
 ): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const { marketId, requestType, intervalSeconds } = request;
   const requestId = crypto.randomUUID();
+
+  // ─── Maintenance mode ────────────────────────────────────────────────────
+  // Read before anything is charged, so a paused platform never takes credits
+  // for work it will not do. The setting is cached for 60s per container.
+  if (await getSetting('analysis_paused')) {
+    return {
+      statusCode: 503,
+      body: {
+        error: 'Analysis is paused',
+        code: 'ANALYSIS_PAUSED',
+        message: String(await getSetting('analysis_pause_message')),
+      },
+    };
+  }
 
   // ─── Suspended accounts must not spend credits ───────────────────────────
   // Enforced here (not just in the portal) so a suspension is a real control.

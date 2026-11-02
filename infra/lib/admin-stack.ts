@@ -228,7 +228,7 @@ export class AdminStack extends cdk.Stack {
     // Ops health: queue depth/age and CloudWatch metrics/alarms. Read-only.
     this.adminApiHandler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['sqs:GetQueueAttributes'],
+        actions: ['sqs:GetQueueAttributes', 'sqs:SendMessage'],
         resources: [analysisQueue.queueArn, deadLetterQueue.queueArn],
       })
     );

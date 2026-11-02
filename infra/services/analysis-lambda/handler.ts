@@ -6,6 +6,7 @@
  * signal fusion → thesis construction → cross-examination → consensus engine →
  * risk philosophy → recommendation generation.
  */
+import { warmSettings } from '../shared/settings';
 import { readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import type { AnalysisPayload, TradeRecommendation } from './lib/types';
@@ -247,6 +248,10 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
   let totalLlmCalls = 0;
 
   try {
+    // Warm runtime settings first: model factories below are synchronous, so the
+    // provider override has to be in the cache by the time they run.
+    await warmSettings(['ai_provider']);
+
     // Validate payload
     const { valid, invalidFields } = validatePayload(event);
     if (!valid) {

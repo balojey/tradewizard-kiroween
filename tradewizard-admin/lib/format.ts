@@ -30,28 +30,30 @@ export function formatDate(value: string | null | undefined): string {
   return dateOnlyFormatter.format(date);
 }
 
-/** Relative age, for scanning lists. */
+/** Relative time, for scanning lists. Handles future timestamps ("in 4m"). */
 export function formatRelative(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
 
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
+  const diff = date.getTime() - Date.now();
+  const future = diff > 0;
+  const seconds = Math.round(Math.abs(diff) / 1000);
 
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  const label = (() => {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.round(hours / 24);
+    if (days < 30) return `${days}d`;
+    const months = Math.round(days / 30);
+    if (months < 12) return `${months}mo`;
+    return `${Math.round(months / 12)}y`;
+  })();
 
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-
-  const months = Math.round(days / 30);
-  if (months < 12) return `${months}mo ago`;
-
-  return `${Math.round(months / 12)}y ago`;
+  return future ? `in ${label}` : `${label} ago`;
 }
 
 export function formatUsdc(value: number | null | undefined): string {
