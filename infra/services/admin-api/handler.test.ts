@@ -14,6 +14,8 @@ const {
   creditQueries,
   planOverrideQueries,
   dedupMock,
+  sqsMock,
+  settingsMock,
   killSwitchMock,
   lambdaMock,
   orderMock,
@@ -86,6 +88,18 @@ const {
   },
   dedupMock: {
     deleteDedupCache: vi.fn(),
+    checkInFlight: vi.fn(),
+    markInFlight: vi.fn(),
+    clearInFlight: vi.fn(),
+  },
+  sqsMock: {
+    send: vi.fn(),
+  },
+  settingsMock: {
+    listSettings: vi.fn(),
+    setSetting: vi.fn(),
+    resetSettingsCacheForTests: vi.fn(),
+    SETTINGS: {},
   },
   killSwitchMock: {
     isHalted: vi.fn(),
@@ -165,6 +179,13 @@ vi.mock('../shared/plan-overrides', () => planOverrideQueries);
 
 vi.mock('../shared/dynamo', () => dedupMock);
 
+vi.mock('../shared/settings', () => settingsMock);
+
+vi.mock('@aws-sdk/client-sqs', () => ({
+  SQSClient: vi.fn(() => ({ send: sqsMock.send })),
+  SendMessageCommand: vi.fn((input: unknown) => ({ input })),
+}));
+
 vi.mock('../shared/kill-switch', () => killSwitchMock);
 
 vi.mock('@aws-sdk/client-lambda', () => ({
@@ -243,6 +264,9 @@ const ROUTE_MATRIX: Array<{
   { method: 'PUT', path: '/admin/admins/{sub}', minimumRole: 'owner' },
   { method: 'DELETE', path: '/admin/admins/{sub}', minimumRole: 'owner' },
   { method: 'POST', path: '/admin/portfolio/sessions/{id}/terminate', minimumRole: 'admin' },
+  { method: 'POST', path: '/admin/analyses/requeue', minimumRole: 'admin' },
+  { method: 'GET', path: '/admin/settings', minimumRole: 'admin' },
+  { method: 'PUT', path: '/admin/settings/{key}', minimumRole: 'owner' },
 ];
 
 const ALL_ROLES: AdminRole[] = ['analyst', 'support', 'admin', 'owner'];
@@ -275,6 +299,10 @@ function makeEvent(
     if (routePath.endsWith('/status')) return JSON.stringify({ status: 'suspended', reason: REASON });
     if (routePath.endsWith('/plan-override'))
       return JSON.stringify({ plan: 'pro', expiresAt: null, reason: REASON });
+    if (routePath.includes('/settings/'))
+      return JSON.stringify({ value: true, reason: REASON });
+    if (routePath.endsWith('/requeue'))
+      return JSON.stringify({ marketId: '0xmarket123', reason: REASON });
     if (routePath.includes('/admins'))
       return JSON.stringify({ email: 'new@example.com', role: 'support', reason: REASON });
     if (routePath.endsWith('/kill-switch'))
@@ -326,6 +354,7 @@ beforeEach(() => {
   process.env.ADMIN_ALLOWED_ORIGINS = `${ALLOWED_ORIGIN},http://localhost:3001`;
   // Required for the kill-switch dispatch path.
   process.env.RISK_ENGINE_FUNCTION_NAME = 'tw-dev-portfolio-risk-engine';
+  process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
 
   getUserIdMock.mockReset();
   getUserIdMock.mockResolvedValue('user-uuid-1');
@@ -417,6 +446,14 @@ beforeEach(() => {
   lambdaMock.send.mockReset();
   lambdaMock.send.mockResolvedValue({});
   orderMock.cancelPendingOrders.mockResolvedValue({ cancelled: 1, releasedUsdc: 25 });
+
+  sqsMock.send.mockReset();
+  sqsMock.send.mockResolvedValue({});
+  settingsMock.listSettings.mockResolvedValue([]);
+  settingsMock.setSetting.mockResolvedValue(undefined);
+  dedupMock.checkInFlight.mockResolvedValue(null);
+  dedupMock.markInFlight.mockResolvedValue(undefined);
+  dedupMock.clearInFlight.mockResolvedValue(undefined);
 
   dedupMock.deleteDedupCache.mockReset();
   dedupMock.deleteDedupCache.mockResolvedValue(2);
@@ -1082,6 +1119,44 @@ describe('billing and agents', () => {
     );
 
     expect(response.statusCode).toBe(409);
+  });
+
+  it('requeues an analysis as a scheduled fire', async () => {
+    process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/analyses/requeue',
+        role: 'admin',
+        body: JSON.stringify({ marketId: '0xmarket123', reason: 'stale result, forcing a rerun' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(202);
+    expect(dedupMock.markInFlight).toHaveBeenCalledWith('0xmarket123', expect.any(String));
+
+    const body0 = JSON.parse(sqsMock.send.mock.calls[0][0].input.MessageBody);
+    // The mode matters: isScheduledFire stops the orchestrator from adding the
+    // requester to delivery targets, so nobody is charged.
+    expect(body0).toMatchObject({ isScheduledFire: true, requestType: 'recurring', marketId: '0xmarket123' });
+  });
+
+  it('refuses to requeue while an analysis is already in flight', async () => {
+    process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
+    dedupMock.checkInFlight.mockResolvedValue('existing-request');
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/analyses/requeue',
+        role: 'admin',
+        body: JSON.stringify({ marketId: '0xmarket123', reason: 'trying to double dispatch' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(sqsMock.send).not.toHaveBeenCalled();
   });
 
   it('refunds every recipient of a result', async () => {

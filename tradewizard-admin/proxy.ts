@@ -31,8 +31,6 @@ export default function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const authed = hasValidCookie(request);
 
-  if (pathname === "/preview") return NextResponse.next();
-
   if (pathname === "/login") {
     if (authed) {
       return NextResponse.redirect(new URL("/overview", request.url), 307);

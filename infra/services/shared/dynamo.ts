@@ -44,6 +44,10 @@ export async function checkDedupCache(
   const response = await dynamoClient.send(
     new QueryCommand({
       TableName: DEDUP_TABLE,
+      // `executedAt > :cutoff` is the only legal condition on the sort key
+      // (DynamoDB allows one per key). The in-flight marker lives in this table
+      // as `executedAt = 'IN_FLIGHT'`, and 'I' sorts after every ISO timestamp,
+      // so it comes back first — it is dropped below rather than in the query.
       KeyConditionExpression: 'marketId = :mid AND executedAt > :cutoff',
       FilterExpression: '#ttl > :now',
       ExpressionAttributeNames: { '#ttl': 'ttl' },
@@ -53,12 +57,15 @@ export async function checkDedupCache(
         ':now': now,
       }),
       ScanIndexForward: false, // Most recent first
-      Limit: 1,
+      // A couple of rows, not one: the marker can occupy the first slot.
+      Limit: 5,
     })
   );
 
-  if (!response.Items || response.Items.length === 0) return null;
-  return unmarshall(response.Items[0]) as CachedResult;
+  const items = (response.Items ?? []).filter((item) => item.executedAt?.S !== 'IN_FLIGHT');
+  if (items.length === 0) return null;
+
+  return unmarshall(items[0]) as CachedResult;
 }
 
 /**

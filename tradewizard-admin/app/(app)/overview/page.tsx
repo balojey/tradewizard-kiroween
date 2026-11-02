@@ -111,7 +111,7 @@ function ActivityRow({ day, max }: { day: DashboardDay; max: number }) {
   return (
     <tr className="border-b border-border-soft last:border-0">
       <td className="whitespace-nowrap py-1.5 pr-3 text-[11.5px] text-muted">
-        <span className="mono">{day.day.slice(5)}</span>
+        <span className="mono">{formatDate(day.day).slice(0, 6)}</span>
       </td>
       <td className="py-1.5 pr-3">
         <span className="flex items-center gap-2">
@@ -145,7 +145,7 @@ export default function OverviewPage() {
   const totals = data?.totals;
   const maxExecuted = Math.max(1, ...ordered.map((day) => day.analysesExecuted));
   const latest = data?.days[0];
-  const className = "text-[11.5px]";
+  const bodyText = "text-[11.5px]";
 
   return (
     <Page>
@@ -193,7 +193,7 @@ export default function OverviewPage() {
         </Notice>
       )}
 
-      <StatGrid>
+      <StatGrid className="lg:grid-cols-3">
         <StatCard
           label="Signups"
           value={formatNumber(totals?.signups ?? 0)}
@@ -285,7 +285,7 @@ export default function OverviewPage() {
           </Panel>
 
           <Panel title="Reading the numbers" bodyClassName="px-4 py-3">
-            <ul className={["flex flex-col gap-1.5 text-muted", className].join(" ")}>
+            <ul className={["flex flex-col gap-1.5 text-muted", bodyText].join(" ")}>
               <li>
                 <span className="text-fg">Executions</span> are analysis runs, including cached
                 deliveries. A market served from cache still counts once per delivery.

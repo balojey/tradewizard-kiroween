@@ -786,15 +786,22 @@ tradewizard-admin/
 │       └── settings/page.tsx    # placeholder: what Phase 4 will wire
 │       └── audit/page.tsx
 ├── components/
-│   ├── ui/       Card Button Badge Input Select Tabs Modal Drawer Toast
-│   ├── data/     DataTable FilterBar Pagination EmptyState ErrorState SkeletonRows
-│   ├── domain/   KpiCard TimeSeriesChart JsonViewer ConfirmDialog RoleBadge
-│   │             CopyableId StatusPill PnlCell AuditTrail
+│   ├── ui/       Card(Panel) Button Badge Input Select Textarea Dialog Tabs
+│   │             Notice Stat(Sparkline) PageHeader(Page, Breadcrumbs) PageLoading
+│   ├── data/     DataTable Toolbar FilterBar SearchInput SelectFilter DateFilter
+│   │             ToggleFilter Pagination
+│   ├── domain/   CopyableId StatusPill PlanBadge Pnl TimeCell KeyValue(Grid)
 │   └── shell/    AdminShell Sidebar Topbar
-├── lib/          api-client.ts auth.ts format.ts
-├── hooks/        useAdminMe useTableQuery useMutationWithAudit
-└── constants/    roles.ts routes.ts query-keys.ts audit-actions.ts
+├── lib/          admin-api.ts cognito.ts format.ts session.ts
+├── hooks/        useAdminMe useCursorStack useDashboard useUsers useAnalyses
+│                 usePortfolio useBillingAgents useAudit useMembers
+└── constants/    roles.ts routes.ts
 ```
+
+Every page composes `Page` + `PageHeader` (optional crumbs, meta line,
+right-aligned actions) so headers, spacing and column width never drift between
+views. `Panel` is the only container primitive; `StatCard` is the only KPI
+primitive; `Dialog` is the only overlay and owns Escape/focus/scroll lock.
 
 **Not copied from the product frontend:** Magic SDK, wallet provider, WebSocket
 provider, Polymarket clients, trading hooks. The admin app has no on-chain
@@ -819,7 +826,12 @@ capability.
 8. **Timestamps** are absolute UTC with a relative tooltip. No ambiguity.
 9. **Dark-first**, dense, no motion beyond opacity/height transitions ≤ 200 ms.
    Reuse the OKLch token palette so it reads as TradeWizard, but keep the
-   primitives minimal and utilitarian.
+   primitives minimal and utilitarian. Load the product's two families with
+   `next/font` (`Ubuntu` → `--font-ubuntu`, `JetBrains Mono` →
+   `--font-jetbrains`); mono is for identifiers and numerals, not body copy.
+   Nav groups follow the operator's question (monitor / customers /
+   intelligence / trading / governance), and the active item is a
+   longest-prefix match so detail pages keep their section highlighted.
 10. **Empty states explain what to do**, e.g. "No failed payments in this range."
 
 ### 9.3 Data fetching
@@ -884,20 +896,38 @@ capability.
 
 ## 12. Security checklist (sign-off gate)
 
-- [ ] Admin API has its own origin; CORS is an explicit allowlist in prod, no `*`
-- [ ] ID token 1 h / refresh 8 h; `sessionStorage` only; cookie `SameSite=Strict; Secure`
-- [ ] `ADMIN_REQUIRE_MFA=true` in prod and verified by a test that a non-MFA token is denied
-- [ ] Authorizer rejects access tokens, wrong audience, wrong issuer, expired tokens
-- [ ] Handler re-checks role; a property test proves every route rejects every insufficient role
-- [ ] Rate limits per admin sub (reads 60/min, mutations 10/min)
-- [ ] Presigned URLs 60 s TTL, never logged, never audited
-- [ ] Failed-auth and 403-rate alarms wired to SNS
-- [ ] No sensitive data in URLs (user detail by UUID, not email)
-- [ ] No `console.log` of tokens/secrets/payloads (reviewed, not just assumed)
-- [ ] `admin_audit_log` update/delete trigger installed and tested
-- [ ] Owner-only routes require `auth_time` within 10 minutes
-- [ ] Optional WAF IP allowlist available behind a config flag
-- [ ] Admin bundle contains no wallet, trading, or CLOB code (grep the build output)
+Executed 2026-11-02 against the dev deployment. "Verified" means observed, not
+assumed; the evidence column says how to re-check it.
+
+| # | Control | Status | Evidence |
+|---|---|---|---|
+| 1 | Admin API has its own origin; CORS is an explicit allowlist | ✅ | Preflight `OPTIONS` from `http://localhost:3001` → 204 with that origin; a disallowed origin is never echoed (unit test + manual) |
+| 2 | ID token 1 h / refresh 8 h; `sessionStorage`; cookie `SameSite=Strict` | ✅ | `auth-stack.ts` client config + `lib/session.ts`; tab close ends the session |
+| 3 | MFA required in prod and actually enforced | ✅ | `ADMIN_REQUIRE_MFA` defaults to `true` in every env; a live admin token without a TOTP factor was denied `403 MFA_REQUIRED`, and the fix for the casing bug is covered by tests |
+| 4 | Authorizer rejects access tokens, wrong audience/issuer, expired | ✅ | `aws-jwt-verify` with `tokenUse: 'id'` + client id; unit tests cover expiry, wrong client, missing claims |
+| 5 | Handler re-checks role; property test for every route × role | ✅ | Route × role matrix test fails the build when a route is added without a row; denied calls are asserted not to reach the database |
+| 6 | Per-admin rate limits (reads 60/min, mutations 10/min) | ✅ | Live: 70 concurrent reads → **60× 200, 9× 429**. Counters are per-minute DDB rows with a 2-minute TTL; failures fail **open** (availability over strictness) |
+| 7 | Presigned URLs 60 s TTL, never logged or audited | ✅ | Detail returns `payloadUrlExpiresInSeconds: 60` and never the raw key; grep of admin logs finds no URL |
+| 8 | Failed-auth and 5xx alarms wired to SNS | ✅ | `AdminAuthDenied` metric filter + alarm, plus `admin-api-errors` and `admin-rollup-errors` alarms on the monitoring topic |
+| 9 | No sensitive data in URLs | ✅ | User/analysis/session lookups are UUIDs; credentials and reasons travel in POST bodies |
+| 10 | No `console.log` of tokens/secrets/payloads | ✅ | Grep of `tradewizard-admin` and both admin Lambdas returns nothing for token/secret/payload-URL logging |
+| 11 | `admin_audit_log` update/delete trigger installed and tested | ✅ | Live: a second update on a finalised row raises "already final", `DELETE` raises "append-only" |
+| 12 | Destructive routes require `auth_time` within 10 minutes | ✅ | `requireFreshAuth` on kill switch, member changes and role updates; a 2-hour-old token returns `403 REAUTH_REQUIRED` (unit test) |
+| 13 | Admin bundle contains no wallet, trading or CLOB code | ✅ | Grep of `tradewizard-admin` finds no `magic-sdk`, `@polymarket*`, `ethers`/`viem` imports — only a `clobOrderId` column name |
+| 14 | Optional WAF IP allowlist | ⏸ **deferred** | See below |
+
+**WAF decision (deferred, deliberate).** The admin API already has an API
+Gateway throttle, a per-admin limit, MFA and a two-tier role model. A WAF adds a
+fixed monthly cost plus per-request charges for a threat (internet-wide scanning)
+that the authorizer already handles by rejecting every unauthenticated request.
+If the portal ever holds data beyond the product's own (for example, raw payment
+reconciliation exports), revisit this: an IP-allowlist rule is a small change to
+`admin-stack.ts` and should be enabled per environment rather than globally.
+
+**Known capacity caveat.** The admin Lambda has no reserved concurrency because
+this account cannot spare any (AWS requires ≥10 unreserved). A burst beyond the
+account limit therefore surfaces as a 5xx rather than a 429; observed once during
+a 12-concurrent test. API Gateway throttling keeps normal use well below it.
 
 ---
 
@@ -966,7 +996,12 @@ retry of failed dispatches), alarm acknowledgement.
 **Exit criteria:** DLQ → inspect → redrive happens entirely inside the portal;
 reconciling a payment does not require a psql session.
 
-### Phase 4 — Runtime configuration (~4–5 days)
+### Phase 4 — Runtime configuration (in progress)
+
+**Shipped:** `analysis_paused` and `analysis_pause_message`, both read by
+`analysis-request` (verified live: `503 ANALYSIS_PAUSED` with the configured
+message). Every setting declares its consumer, and the UI shows it.
+
 
 **Prerequisite:** every setting must have a consumer in the same change. A
 settings page whose switches do nothing is theatre. The page now exists and says
@@ -1005,7 +1040,7 @@ definition of done passes **and** §14.4 is updated.
 | 8 | **Ops health read** — CloudWatch + SQS attributes | 4 | ✅ Done and verified — see §14.4 |
 | 8b | **Markets schedule read** — the market-level analysis pool, stuck `is_executing` rows | 4 | ✅ Done and verified — see §14.4 |
 | 9 | **Overview + rollup + backfill** | 4–8 | ✅ Done and verified — see §14.4 |
-| 10 | **Mutations**, one PR each, least destructive first: **10a notes ✅** → **10b credits ✅** → **10c suspend ✅** → **10d plan override ✅** → **10e cache invalidation ✅** → **10f refund ✅** (requeue pending) → **10g session pause/resume ✅** → **10h kill switch ✅** → **10i terminate ✅** → 10g session pause/resume → 10h kill switch → 10i terminate | 5–6, 9, **1b** | Each has: matrix test row, audit row, mandatory reason, idempotency key |
+| 10 | **Mutations**, one PR each, least destructive first: **10a notes ✅** → **10b credits ✅** → **10c suspend ✅** → **10d plan override ✅** → **10e cache invalidation ✅** → **10f refund ✅** (requeue pending) → **10g session pause/resume ✅** → **10h kill switch ✅** → **10i terminate ✅** → **10f-b requeue ✅** → 10g session pause/resume → 10h kill switch → 10i terminate | 5–6, 9, **1b** | Each has: matrix test row, audit row, mandatory reason, idempotency key |
 | 11 | **Hardening** — WAF flag, audit CSV export, slow-query tuning | 10 | §12 checklist fully green |
 
 **Ordering rules, not preferences:**
@@ -1087,7 +1122,9 @@ something is reversed, add a new row.
 | 2026-11-02 | Members | Done | Owner-only member management replaces the CLI seed script for day-to-day access changes: `GET /admin/admins`, `POST /admin/admins` (by email, existing account only), `PUT /admin/admins/{sub}` (role change) and `DELETE /admin/admins/{sub}`. **Cognito groups remain the single source of truth** — nothing is mirrored in Postgres, so the portal and the authorizer cannot disagree. Safety: the last owner cannot be demoted or removed (409), adding an existing member is a conflict rather than a silent no-op, and accounts are never created on an owner's behalf. All four actions are audited. Verified live: add → support, change → admin (groups replaced), remove → no groups, with three audit rows. **Bug:** the IAM statements were inserted before `adminApiHandler` existed, so synth failed with `Cannot read properties of undefined (reading 'addToRolePolicy')`; moved below its creation. 366 infra tests |
 | 2026-11-02 | Members follow-up | Done | Removing or demoting a member now also calls `AdminUserGlobalSignOut`, so the change takes effect immediately instead of waiting for the old token (up to an hour). Best effort by design: a failed sign-out is logged but does not undo the role change. |
 | 2026-11-02 | 10i — Terminate session | Done | `POST /admin/portfolio/sessions/{id}/terminate` (admin). The risk engine gained an internal `terminate_session` action: cancel working orders, exit the open position through the existing escalation, drop the guard schedule, mark `terminated` with reason `admin_terminated`, and publish an event. Idempotent for sessions that already ended (200, no exchange call). The admin route only audits and dispatches (202), mirroring the kill switch. **Verified live:** exit dispatched, session `terminated`/`admin_terminated`, pending trade `cancelled`, audit `dispatch: sent`. 388 infra tests |
-| next | 10f-b — Requeue | Not started | — |
+| 2026-11-02 | 11 — Hardening | Done | **Per-admin rate limits** (60 reads / 10 mutations per minute, DDB counters with a 2-minute TTL, fail-open so an unavailable counter cannot take the portal down) — verified live with 70 concurrent reads: `60× 200, 9× 429`. **Fresh-auth guard** (`requireFreshAuth`, 10 minutes) on the kill switch and all membership changes, closing the gap between "has a valid token" and "is present"; a 2-hour-old token returns `403 REAUTH_REQUIRED`. **Alarms** for admin-api 5xx and rollup failures, both on the existing SNS topic. **§12 checklist executed** with evidence for all 14 controls; WAF explicitly deferred with a cost/threat rationale, and the unreserved-concurrency 5xx caveat recorded. 394 infra tests. |
+| 2026-11-02 | Phase 4 — Settings (first) | In progress | `shared/settings.ts` with a typed registry (key, type, default, description, **consumer**), a 60-second cache, and a read that always falls back to the default on failure — a settings outage must never break a product path. Endpoints: `GET /admin/settings` (admin) and `PUT /admin/settings/{key}` (owner, fresh auth, audited with before/after). **Consumers shipped with the switches** (the whole point): `analysis_paused` and `analysis_pause_message` are read by `analysis-request` before anything is charged, returning `503 ANALYSIS_PAUSED`. Verified live: paused → `503` with the configured message; unpaused → false. UI: `/settings` lists each setting with its consumer, current value, and last change, replacing the placeholder. **Bug in the test harness:** `vi.restoreAllMocks()` stripped the mocked pg constructor, so the "returns default on failure" test passed for the wrong reason (every call failed). Mocks are now rebuilt per test. 418 infra tests |
+| next | Phase 4 — remaining settings | Not started | — |
 
 ---
 

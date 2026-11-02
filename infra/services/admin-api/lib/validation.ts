@@ -44,6 +44,15 @@ export const planOverrideSchema = z.object({
 
 export const revokeSchema = z.object({ reason });
 
+export const requeueSchema = z.object({
+  marketId: z
+    .string()
+    .trim()
+    .min(8, 'Market id looks too short')
+    .max(200, 'Market id looks too long'),
+  reason,
+});
+
 export type NoteInput = z.infer<typeof noteSchema>;
 export type CreditGrantInput = z.infer<typeof creditGrantSchema>;
 

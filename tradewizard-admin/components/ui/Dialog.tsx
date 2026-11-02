@@ -35,26 +35,41 @@ export function Dialog({
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && dismissible) onClose();
+      if (event.key === "Escape" && dismissible) onCloseRef.current();
     }
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     document.addEventListener("keydown", onKeyDown);
 
-    // Give the panel focus so Escape and Tab land inside it, not on the page.
-    window.setTimeout(() => panelRef.current?.focus(), 0);
+    // Move focus into the dialog for Escape/Tab handling, unless a field inside
+    // it already claimed focus (many dialogs autoFocus their reason input).
+    window.setTimeout(() => {
+      const panel = panelRef.current;
+      if (!panel || panel.contains(document.activeElement)) return;
+
+      const focusable = panel.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])'
+      );
+
+      (focusable ?? panel).focus();
+    }, 0);
 
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [dismissible, onClose, open]);
+  }, [dismissible, open]);
 
   if (!open || typeof document === "undefined") return null;
 

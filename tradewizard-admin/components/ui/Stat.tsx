@@ -116,6 +116,10 @@ export function StatCard({
   );
 }
 
-export function StatGrid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
+export function StatGrid({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={["grid gap-3 sm:grid-cols-2 lg:grid-cols-4", className].join(" ")}>
+      {children}
+    </div>
+  );
 }
