@@ -11,6 +11,7 @@ import { Notice } from "@/components/ui/Notice";
 import { Page, PageHeader } from "@/components/ui/PageHeader";
 import { Tabs } from "@/components/ui/Tabs";
 import { SessionControls } from "@/components/portfolio/SessionControls";
+import { KillSwitchControl } from "@/components/users/KillSwitchControl";
 import { useAdminMe } from "@/hooks/useAdminMe";
 import { useCursorStack } from "@/hooks/useCursorStack";
 import { useSession, useSessionDecisions, useSessionTrades } from "@/hooks/usePortfolio";
@@ -222,7 +223,12 @@ export function SessionDetailView() {
         title={isLoading ? "Loading session…" : (session?.marketQuestion ?? session?.marketId ?? "Session")}
         actions={
           session && (
-            <SessionControls sessionId={session.id} identity={identity} status={session.status} />
+            <>
+              <SessionControls sessionId={session.id} identity={identity} status={session.status} />
+              {/* The halt belongs next to the session it would stop, not only on
+                  the user page: this is where a runaway is noticed. */}
+              <KillSwitchControl userId={session.userId} identity={identity} />
+            </>
           )
         }
         meta={

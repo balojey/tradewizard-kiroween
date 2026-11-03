@@ -261,12 +261,99 @@ rm -f /tmp/pg.env /tmp/dbcreds.json
 
 ---
 
-## 7. Pending procedures
+## 7. Operating the portal
 
-These land with the slices that need them and must be added here, not in chat:
+Every action below is audited. Each dialog requires a **reason of at least eight
+characters**, which lands in `admin_audit_log` — write what a future reader needs.
 
-- DLQ inspect + redrive (slice 3/11)
-- Kill-switch drill in dev before enabling the admin route (slice 10)
-- Global kill switch activation and reset
-- Payment reconciliation
-- Audit export for an incident
+### 7.1 Incident toggles (Settings, owner)
+
+Settings take effect within a minute (product paths cache for 60 s). Pick by what
+you are trying to stop:
+
+| Toggle | Stops | Does not stop |
+|---|---|---|
+| `analysis_paused` | New analysis requests (users see your `analysis_pause_message`) | Recurring schedules already running |
+| `pm_activations_paused` | New portfolio sessions | Existing sessions — use the kill switch for those |
+| `ai_provider` | Nothing directly; switches Bedrock ↔ Nebius ahead of the deployed env | — |
+
+Reverting: set the value back and confirm in the list that "Last changed" updated.
+`ai_provider = ""` means "follow the deployment".
+
+### 7.2 Suspend an account (admin)
+
+User → **Suspend** → reason. Immediately: the account cannot request analyses,
+cannot activate a portfolio session, and its `active` sessions are paused.
+Open positions are **not** exited — that is the kill switch. Reinstating restores
+access but leaves sessions paused; resume them deliberately.
+
+### 7.3 Halt trading (admin)
+
+Two entry points, both admin-only, both keyed to the same user-level switch:
+
+- **Users → a user → Kill switch** — halts everything that user has open.
+- **Portfolio → a session → Kill switch** — same action, reached from the runaway
+  session rather than the account. Phase 1 applies the halt synchronously (new entries stop
+now); phase 2 cancels orders and exits positions in the background and can take a
+minute per session. The response says whether the exit was dispatched; if it was
+not, retry or terminate the session manually.
+
+Reset with **Clear kill switch**. Paused sessions still need resuming.
+
+Verify the halt landed:
+
+```bash
+aws dynamodb get-item --table-name tw-$( [ "$ENV" = prod ] && echo prod || echo dev )-rate-limits \
+  --key '{"pk":{"S":"kill_switch#<userId>"},"sk":{"S":"state"}}'
+```
+
+### 7.4 Terminate a session (admin)
+
+Portfolio → session → **Terminate**. Cancels working orders, exits the position,
+drops the guard schedule and marks the session `terminated` / `admin_terminated`
+in the background. Irreversible: the user must open a new session.
+
+### 7.5 Comp a plan (admin)
+
+User → **Comp plan** → plan + optional expiry. The plan applies immediately,
+renewal pauses, and the previous plan is restored on revoke **or expiry** (the
+hourly maintenance run does the expiry and writes a `system`-actor audit row).
+Comping does not top up credits.
+
+### 7.6 Grant credits / refund (support / admin)
+
+- **Grant**: user header → **Grant credits**. Credits land with
+  `credit_source='admin_grant'`; the dialog generates one idempotency key per
+  confirmation, so a double click cannot credit twice.
+- **Refund**: analysis detail → **Refund credits**. Credits 1 to every recipient
+  of that result, at most once each (partial unique index).
+
+### 7.7 Invalidate a cached analysis / requeue (admin)
+
+- **Invalidate cache** (analysis detail): deletes that market's cached result so
+  the next request re-runs. The in-flight marker is preserved on purpose.
+- **Requeue** (API, `POST /admin/analyses/requeue`): dispatches a run now as a
+  scheduled fire — subscribers may be charged as usual, and nobody is charged
+  merely because an operator asked. Refuses while a run is already in flight.
+
+### 7.8 Manage members (owner)
+
+**Members** → **Add member** (existing TradeWizard account only), change role, or
+remove. The last owner cannot be demoted or removed. Changes apply immediately
+because removal and role changes force a global sign-out.
+
+### 7.9 Kill-switch drill (do this in dev before relying on it in prod)
+
+1. Create a test session for a test user (or use a real paused session in dev).
+2. Activate the kill switch from the portal; confirm the response says
+   `exitsDispatched: true`.
+3. Confirm the session row is `terminated` with `termination_reason='kill_switch'`.
+4. Reset the switch; confirm the DynamoDB item is gone.
+5. Check the audit log for `portfolio.kill_switch.activate` and `.reset`.
+
+### 7.10 Still outstanding
+
+- **DLQ inspect + redrive** — use the AWS console; the portal shows depth only.
+- **Payment reconciliation** — mutations exist for trial extension only.
+- **Audit export** — query the table or use the AWS console.
+- **Global (platform-wide) kill switch** — not implemented; per-user only.

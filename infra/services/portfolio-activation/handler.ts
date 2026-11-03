@@ -24,6 +24,7 @@ import {
   CreateScheduleCommand,
 } from '@aws-sdk/client-scheduler';
 import { getConnectionString } from '../shared/db';
+import { getSetting } from '../shared/settings';
 import { readBalance } from '../shared/chain-verification';
 import {
   ActivateSessionRequestSchema,
@@ -112,6 +113,14 @@ export async function handler(event: ApiGatewayEvent): Promise<ApiResponse> {
 
     try {
       await client.connect();
+
+      // Incident switch: refuse new autonomous sessions before any state changes.
+      if (await getSetting('pm_activations_paused')) {
+        return errorResponse(
+          503,
+          'Portfolio Manager activations are paused while we perform maintenance. Existing sessions are unaffected.'
+        );
+      }
 
       // Step 1: Get user record and subscription info
       const userResult = await client.query(
