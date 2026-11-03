@@ -8,8 +8,10 @@
  * Safety rules:
  * - at least one owner must always remain
  * - adding an existing member is a conflict, not a silent no-op
- * - the target must already have a Cognito account; the portal does not create
- *   accounts on an owner's behalf
+ * - creating an account requires an explicit `invite: true`. A mistyped address
+ *   must not silently create a stranger's account, so the caller confirms first
+ * - the portal never sets a password: Cognito emails an invitation and the person
+ *   chooses their own at first sign-in
  */
 
 import { z } from 'zod';
@@ -28,6 +30,7 @@ import {
 import {
   addToGroup,
   countOwners,
+  createInvitedUser,
   findUserByEmail,
   globalSignOut,
   getGroupsForUser,
@@ -38,9 +41,11 @@ import {
 const ROLES = ['analyst', 'support', 'admin', 'owner'] as const;
 
 const addSchema = z.object({
-  email: z.string().trim().email('Enter a valid email address'),
+  email: z.string().trim().email('Enter a valid email address').max(254),
   role: z.enum(ROLES),
   reason: z.string().trim().min(8, 'Reason must be at least 8 characters').max(500),
+  /** Create the account (and let Cognito email the invitation) when missing. */
+  invite: z.boolean().optional(),
 });
 
 const roleSchema = z.object({
@@ -91,13 +96,23 @@ export const memberRoutes: AdminRoute[] = [
       requireFreshAuth(identity);
       const input = parseBody(addSchema, event.body);
 
-      const user = await findUserByEmail(input.email);
+      const existing = await findUserByEmail(input.email);
+
+      let user = existing;
+      let invited = false;
+
       if (!user) {
-        throw new HttpError(
-          404,
-          'NOT_FOUND',
-          'No account uses that email. They need to sign up to TradeWizard first.'
-        );
+        if (input.invite !== true) {
+          throw new HttpError(
+            404,
+            'NOT_FOUND',
+            'No account uses that email. Send the invitation again with invite:true to create it.'
+          );
+        }
+
+        const created = await createInvitedUser(input.email);
+        user = { sub: created.sub, email: input.email, status: created.status };
+        invited = true;
       }
 
       const existingGroups = await getGroupsForUser(user.sub);
@@ -121,13 +136,17 @@ export const memberRoutes: AdminRoute[] = [
 
         await completeAudit(client, auditId, {
           status: 'succeeded',
-          after: { role: input.role, email: user.email },
+          after: { role: input.role, email: user.email, invited },
         });
 
         return json(event, 201, {
           sub: user.sub,
           email: user.email,
           role: input.role,
+          invited,
+          note: invited
+            ? 'Invitation sent. They choose their own password at first sign-in, then enrol an authenticator.'
+            : 'Existing account added to the group.',
         });
       });
     },

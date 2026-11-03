@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/Badge";
+import { ReauthNotice, errorMessage, isReauthRequired } from "@/components/auth/ReauthNotice";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Notice } from "@/components/ui/Notice";
@@ -34,7 +35,7 @@ export default function SettingsPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<string>("");
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const { data: settings, isLoading } = useQuery<SettingRow[]>({
     queryKey: ["admin", "settings"],
@@ -59,7 +60,7 @@ export default function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: ["admin", "settings"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "audit"] });
     },
-    onError: (caught: Error) => setError(caught.message),
+    onError: (caught: unknown) => setError(caught),
   });
 
   function begin(row: SettingRow) {
@@ -161,9 +162,12 @@ export default function SettingsPage() {
                   label="Reason (recorded in the audit log)"
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
-                  placeholder="At least 8 characters"
-                  error={error ?? undefined}
+                  placeholder="Why are you making this change?"
+                  hint="At least 8 characters. Recorded in the audit log with your name."
+                  error={isReauthRequired(error) ? undefined : errorMessage(error)}
                 />
+
+                <ReauthNotice error={error} />
 
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(null)}>

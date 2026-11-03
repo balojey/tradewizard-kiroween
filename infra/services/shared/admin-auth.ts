@@ -245,7 +245,19 @@ async function isMfaConfigured(sub: string): Promise<boolean> {
  * - FORBIDDEN: valid token but no admin group
  * - MFA_REQUIRED: admin group but no TOTP factor when ADMIN_REQUIRE_MFA=true
  */
-export async function resolveAdminIdentity(token: string): Promise<AdminIdentity> {
+export interface ResolveOptions {
+  /**
+   * Enforce the configured MFA policy. The authorizer turns this off for the
+   * single enrolment path, so a password-only admin can set up a factor; the
+   * reported `mfa` value stays truthful either way.
+   */
+  enforceMfa?: boolean;
+}
+
+export async function resolveAdminIdentity(
+  token: string,
+  options: ResolveOptions = {}
+): Promise<AdminIdentity> {
   let payload: CognitoIdTokenPayload;
 
   try {
@@ -271,10 +283,12 @@ export async function resolveAdminIdentity(token: string): Promise<AdminIdentity
     throw new AdminAuthError('FORBIDDEN', 'Account is not a member of any admin group');
   }
 
-  const required = mfaRequired();
-  const configured = required ? await isMfaConfigured(payload.sub) : false;
+  // Always read the real factor state: callers (and the enrolment route) need
+  // to know the truth, not whether the policy is satisfied.
+  const configured = await isMfaConfigured(payload.sub);
+  const enforce = options.enforceMfa ?? true;
 
-  if (required && !configured) {
+  if (enforce && mfaRequired() && !configured) {
     throw new AdminAuthError(
       'MFA_REQUIRED',
       'Admin accounts must have a TOTP factor configured'
@@ -286,7 +300,7 @@ export async function resolveAdminIdentity(token: string): Promise<AdminIdentity
     email,
     role,
     roleRank: ROLE_RANK[role],
-    mfa: required ? configured : true,
+    mfa: configured,
     authTime: typeof payload.auth_time === 'number' ? payload.auth_time : 0,
   };
 }

@@ -305,11 +305,28 @@ compensated). Never return success with a missing audit row.
 
 ### 6.1 Identity model
 
-- Admins are normal platform users: a row in `users` with a `cognito_sub`, plus
-  Cognito group membership. This keeps audit readable ("who did this" resolves
-  to a real account) and reuses the existing provisioning path.
+- **Admin accounts are dedicated identities, never customer accounts.** They live
+  in the same user pool (so one Cognito, one group model) but use their own
+  email, and normally have no `users` row — `/admin/me` reports `linked: false`
+  for them, which is expected.
 - Group membership is the *only* grant of admin capability. There is no
   `is_admin` column. Do not add one.
+
+**Why not reuse a customer account (corrected 2026-11-03).** The product signs in
+with a magic link: `auth-magic-sync` derives a deterministic password from
+`HMAC(PASSWORD_SALT, email)` and only sets it *when it creates the user*. Two
+consequences make a shared account unworkable:
+
+1. Setting a portal password on that account (`admin-set-user-password`) replaces
+   the derived one, so the next magic-link sign-in fails with
+   `NotAuthorizedException: Incorrect username or password` — the product shows
+   "Login succeeded but backend sync failed".
+2. Enrolling TOTP on that account makes `AdminInitiateAuth` return a
+   `SOFTWARE_TOKEN_MFA` challenge, which the product's sync path cannot answer.
+
+Either one silently breaks the product login for that person. A dedicated admin
+identity avoids both, and keeps the audit trail unambiguous ("who did this" is
+the operator account, not the customer account they happened to share).
 
 ### 6.2 Roles
 
@@ -354,8 +371,12 @@ Authorizer steps:
    access tokens are rejected.
 2. Parse `cognito:groups`; compute the highest rank. No group → `Deny` +
    `AdminAuthDenied` metric.
-3. If `ADMIN_REQUIRE_MFA=true`: `AdminGetUser` (cache 5 min keyed by sub), require
-   `UserStatus === 'CONFIRMED'` and `SOFTWARE_TOKEN_MFA` present. The pool must
+3. `AdminGetUser` (cached: 5 min positive, 60 s negative) reads the real factor
+   state. If `ADMIN_REQUIRE_MFA=true` and no factor exists, the request is denied —
+   **except** on `/admin/bootstrap/*`, the single path used to enrol one. The
+   authorizer still requires a valid token and an admin group there, and the
+   enrolment route re-checks that Cognito really reports the factor before it
+   records anything, so the exception cannot be used to fake enrolment. The pool must
    have software-token MFA enabled in **every** environment, or admins cannot
    enrol and the gate cannot be tested before production.
 4. Log `AdminAuthDenied` (reason only — never the token) on any denial.
@@ -913,6 +934,7 @@ assumed; the evidence column says how to re-check it.
 | 10 | No `console.log` of tokens/secrets/payloads | ✅ | Grep of `tradewizard-admin` and both admin Lambdas returns nothing for token/secret/payload-URL logging |
 | 11 | `admin_audit_log` update/delete trigger installed and tested | ✅ | Live: a second update on a finalised row raises "already final", `DELETE` raises "append-only" |
 | 12 | Destructive routes require `auth_time` within 10 minutes | ✅ | `requireFreshAuth` on kill switch, member changes and role updates; a 2-hour-old token returns `403 REAUTH_REQUIRED` (unit test) |
+| 13a | Not indexable by search engines | ✅ | Belongs only to the portal: `X-Robots-Tag: noindex, nofollow, noarchive` on every response (including the 307 from middleware), `<meta name="robots" content="noindex, nofollow">` from the root layout, and `robots.txt` with `Disallow: /`. Verified by curl, not assumption |
 | 13 | Admin bundle contains no wallet, trading or CLOB code | ✅ | Grep of `tradewizard-admin` finds no `magic-sdk`, `@polymarket*`, `ethers`/`viem` imports — only a `clobOrderId` column name |
 | 14 | Optional WAF IP allowlist | ⏸ **deferred** | See below |
 
@@ -1135,7 +1157,13 @@ something is reversed, add a new row.
 | 2026-11-02 | Phase 4 — Settings (first) | In progress | `shared/settings.ts` with a typed registry (key, type, default, description, **consumer**), a 60-second cache, and a read that always falls back to the default on failure — a settings outage must never break a product path. Endpoints: `GET /admin/settings` (admin) and `PUT /admin/settings/{key}` (owner, fresh auth, audited with before/after). **Consumers shipped with the switches** (the whole point): `analysis_paused` and `analysis_pause_message` are read by `analysis-request` before anything is charged, returning `503 ANALYSIS_PAUSED`. Verified live: paused → `503` with the configured message; unpaused → false. UI: `/settings` lists each setting with its consumer, current value, and last change, replacing the placeholder. **Bug in the test harness:** `vi.restoreAllMocks()` stripped the mocked pg constructor, so the "returns default on failure" test passed for the wrong reason (every call failed). Mocks are now rebuilt per test. 418 infra tests |
 | 2026-11-02 | Phase 4 — Model override | Done | `ai_provider` setting (`''` = follow deployment, or `bedrock`/`nebius`) with an `allowed` allowlist enforced server-side. Because `resolveAiProvider()` is synchronous, `settings.ts` gained `warmSettings()` + `getSettingSync()`: the agent lambdas warm at invocation start, and an unwarmed cache falls back to `AI_PROVIDER`. **Verified live:** overriding to `nebius` made a run fail in 5 s (vs ~100 s) with *"Nebius model for capability \"fast\" is not configured"* — proving the read happens and that it aborts before spending a token. Reset to `''` afterwards; all four settings changes are in the audit log with before/after. 419 infra tests |
 | 2026-11-02 | Phase 4 — PM activation pause | Done | `pm_activations_paused` (boolean) read by `portfolio-activation` before any state changes: 503 with an explicit "existing sessions are unaffected" message. Pairs with `analysis_paused` and `ai_provider` to give the three incident toggles an operator actually needs mid-incident: stop spending, stop trading, switch the model provider. Verified live (503). 419 infra tests. |
-| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
+| 2026-11-03 | Prod deploy — SES identity | Done | The production deploy failed creating `AWS::SES::EmailIdentity` for `tradewizard.live`: **AlreadyExists**. The identity is verified by hand in the SES console (as the stack's own comment said), and CloudFormation cannot adopt an existing resource. The construct was never referenced, so it is removed rather than adopted; the stack now documents the out-of-band verification and the `fromEmailIdentityName` import path if a reference is ever needed. Side effect: CloudFormation deletes the old `tradewizard.io` identity it used to manage — that identity was unused (Resend is the active provider, and senders are `@tradewizard.live`).
+| 2026-11-03 | Incident — shared admin/customer account | Done | A real customer account was bootstrapped as an admin. Setting its portal password replaced the magic-sync derived password, and enrolling TOTP added an MFA challenge the product cannot answer; product login failed with "Login succeeded but backend sync failed". Recovered by restoring the derived password (`Tw${HMAC_sha256('tw-magic-sync-{env}-v1', email).hex.slice(0,30)}1!`) and disabling the TOTP factor, verified with `admin-initiate-auth` returning tokens. **Model corrected in §6.1:** admin accounts are dedicated identities; converting a customer account is not supported. Recovery and the reasoning are in runbook §1.
+| 2026-11-03 | Runbook defect — helper ordering | Done | §1.4 used `$(totp "$SECRET")` while the helper was only defined in §1.5, so a strict top-to-bottom read failed with `Command 'totp' not found` and the challenge response was sent without a code. §1.4 is now self-contained (inline generator), §1.5 is marked optional, and §1 adds a `admin-get-user` check that stops you before touching an existing account. The portal also warns on the overview when the signed-in admin is linked to a customer account (`linked: true`), since that is the configuration that breaks product login. |
+| 2026-11-03 | Self-service MFA enrolment | Done | A password-only admin used to hit a dead-end 403. The portal now enrols a TOTP factor in place: `AssociateSoftwareToken` → code → `VerifySoftwareToken` → `SetUserMFAPreference`, all with the caller's access token. Three parts make it safe: the authorizer defers **only** the MFA assertion for `/admin/bootstrap/*` (token + admin group still required); `GET /admin/bootstrap/status` exists because API Gateway replaces the authorizer's error with a generic 403 body, so the client cannot read `MFA_REQUIRED` and must ask; and `POST /admin/bootstrap/mfa-enrolled` records the enrolment only when the authorizer's Cognito read says the factor exists. Verified end to end: 403 → status `mfa:false` → enrol → status `mfa:true` → `/admin/me` 200 → `admin.mfa.enrolled` audit row. 424 infra tests. |
+| 2026-11-03 | Fresh-auth UX + member onboarding gap | Done | `requireFreshAuth` (10 min) worked but was a dead end: the API said "sign in again" with no way to do it, and Cognito refresh tokens do not reset `auth_time`, so a real re-login is the only path. Added `ReauthNotice` (with `errorMessage`/`isReauthRequired`) to the membership, kill-switch and settings dialogs: a **Sign in again** button that signs out and returns to the same page. **Documented gap:** the portal cannot create accounts or set passwords — `POST /admin/admins` only adds an existing Cognito user, and the 404 now names the seed-script command. The Add dialog says the same inline. |
+| 2026-11-03 | Member invitations | Done | The portal can now create a member instead of dead-ending on an unknown email: `POST /admin/admins` with `invite: true` runs `AdminCreateUser` (Cognito emails a temporary password), adds the group, and audits `invited: true`. Creation is opt-in so a **mistyped address cannot silently create a stranger's account**. The login form gained the `NEW_PASSWORD_REQUIRED` step: the invitee chooses their own password, then lands on QR enrolment. The portal still never sets a password. Verified against Cognito: invite → sign in with the temporary password → `NEW_PASSWORD_REQUIRED` → chosen password → tokens. Caveat: invitations come from Cognito's default sender (50/day, `no-reply@verificationemail.com`) until the SES identity is wired into the pool. 428 infra tests. |
+| 2026-11-03 | Add-member copy | Done | The Add-member dialog still said \"email of an existing account\" and told the owner to run `seed-admin.ts`, both of which the invite flow made false (the previous slice added the flow but left the copy behind). Label is now `Email`, the hint reads \"existing account is added immediately; an unknown address can be invited\", and the stale paragraph is replaced with what actually happens: invitees choose their own password and add an authenticator at first sign-in, on a **dedicated** admin address. The runbook's §1.1 no longer claims one identity for product and portal — it now warns that reusing a customer address breaks their magic-link login. |\n| 2026-11-03 | Audit-reason fields read like passwords | Done | Every mutation dialog's reason input used `placeholder="At least 8 characters"`, which is the universal password placeholder — an owner reasonably read it as a password field that did nothing. All ten reason inputs (members, kill switch, notes, credits, suspend, plan override, refund, cache invalidate, session pause, settings) now say `Why are you making this change?` with the hint `At least 8 characters. Recorded in the audit log with your name.` The login form's password hint is deliberately unchanged. |\n| 2026-11-03 | Portal prod env file | Done | Added `tradewizard-admin/.env.prod` populated from the live prod exports (`tw-prod-admin-api-url` → `https://i0ot7fkwfe.execute-api.us-east-1.amazonaws.com/v1/`, `tw-prod-admin-client-id` → `2ndbp2iqcjvmlmf302qt0geg8v`, region `us-east-1`); all three are `NEXT_PUBLIC_*`, so the file holds no secrets and stays gitignored like `.env.production`. Next.js **does not** auto-load `.env.prod`, and Node's `--env-file` breaks a Next build (Next puts exec flags into worker `NODE_OPTIONS`, which rejects `--env-file` with exit 9), so `scripts/with-env-file.sh` exports the file and `build:prod`/`start:prod` use it. Verified by building in a scratch copy: the emitted chunks contain the prod API id and client id and **zero** dev identifiers, even though `.env.local` was present. |\n| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
 
 ---
 

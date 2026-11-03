@@ -15,11 +15,23 @@ function safeNext(value: string | null): string {
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { status, mfaPending, error, signIn, submitMfa, cancelMfa, clearError } = useAdminAuth();
+  const {
+    status,
+    mfaPending,
+    newPasswordPending,
+    error,
+    signIn,
+    submitNewPassword,
+    submitMfa,
+    cancelMfa,
+    clearError,
+  } = useAdminAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
   const next = safeNext(params.get("next"));
@@ -55,6 +67,80 @@ export function LoginForm() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (newPasswordPending) {
+    const tooShort = newPassword.length < 8;
+    const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+
+    return (
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (tooShort || mismatch) return;
+          setBusy(true);
+          try {
+            await submitNewPassword(newPassword);
+          } catch {
+            // Message surfaced by the provider.
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="flex flex-col gap-4"
+      >
+        <div>
+          <h2 className="text-sm font-semibold text-fg">Choose a password</h2>
+          <p className="mt-1 text-xs text-muted">
+            Welcome — your account was created by an administrator. Pick a password for{" "}
+            <span className="mono text-fg">{email}</span>. You&apos;ll add an authenticator app
+            next.
+          </p>
+        </div>
+
+        <Input
+          label="New password"
+          type="password"
+          value={newPassword}
+          onChange={(event) => {
+            clearError();
+            setNewPassword(event.target.value);
+          }}
+          autoComplete="new-password"
+          hint="At least 8 characters, with upper case, lower case and a number."
+          autoFocus
+        />
+
+        <Input
+          label="Confirm password"
+          type="password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          autoComplete="new-password"
+          error={
+            mismatch
+              ? "Passwords do not match"
+              : (error ?? undefined)
+          }
+        />
+
+        <Button type="submit" loading={busy} disabled={tooShort || mismatch || confirmPassword.length === 0}>
+          Set password and continue
+        </Button>
+
+        <button
+          type="button"
+          onClick={() => {
+            cancelMfa();
+            setNewPassword("");
+            setConfirmPassword("");
+          }}
+          className="text-xs text-muted hover:text-fg"
+        >
+          Use a different account
+        </button>
+      </form>
+    );
   }
 
   if (mfaPending) {

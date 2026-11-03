@@ -153,6 +153,12 @@ async function main(): Promise<void> {
     console.log('✓ Created Cognito user (temporary password emailed)');
   } else {
     console.log('• User already exists — leaving credentials untouched');
+    console.log(`
+  ⚠  This account already exists. If it is a customer account, do NOT give it a
+     portal password or TOTP factor: the product signs in with a password derived
+     from the email, and any of those changes breaks its magic-link login
+     ("Login succeeded but backend sync failed").
+     Use a dedicated admin email instead. Recovery: runbook §1.6.`);
   }
 
   // 2. Group membership (idempotent).

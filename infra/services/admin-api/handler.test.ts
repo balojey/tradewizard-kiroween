@@ -120,6 +120,7 @@ const {
   memberQueries: {
     listMembers: vi.fn(),
     listGroupMembers: vi.fn(),
+    createInvitedUser: vi.fn(),
     findUserByEmail: vi.fn(),
     getGroupsForUser: vi.fn(),
     addToGroup: vi.fn(),
@@ -267,6 +268,8 @@ const ROUTE_MATRIX: Array<{
   { method: 'POST', path: '/admin/analyses/requeue', minimumRole: 'admin' },
   { method: 'GET', path: '/admin/settings', minimumRole: 'admin' },
   { method: 'PUT', path: '/admin/settings/{key}', minimumRole: 'owner' },
+  { method: 'GET', path: '/admin/bootstrap/status', minimumRole: 'analyst' },
+  { method: 'POST', path: '/admin/bootstrap/mfa-enrolled', minimumRole: 'analyst' },
 ];
 
 const ALL_ROLES: AdminRole[] = ['analyst', 'support', 'admin', 'owner'];
@@ -435,6 +438,7 @@ beforeEach(() => {
     status: 'CONFIRMED',
   });
   memberQueries.getGroupsForUser.mockResolvedValue([]);
+  memberQueries.createInvitedUser.mockResolvedValue({ sub: 'invited-sub', status: 'FORCE_CHANGE_PASSWORD' });
   memberQueries.addToGroup.mockResolvedValue(undefined);
   memberQueries.removeFromGroup.mockResolvedValue(undefined);
   memberQueries.countOwners.mockResolvedValue(2);
@@ -877,6 +881,46 @@ describe('billing and agents', () => {
     expect(body(response).data).toMatchObject({ sub: 'new-sub', role: 'support' });
   });
 
+  it('refuses to create an account unless the caller confirms the invite', async () => {
+    memberQueries.findUserByEmail.mockResolvedValue(null);
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/admins',
+        role: 'owner',
+        body: JSON.stringify({ email: 'typo@example.com', role: 'support', reason: 'typo in address' }),
+      })
+    );
+
+    // A mistyped address must not silently create someone's account.
+    expect(response.statusCode).toBe(404);
+    expect(memberQueries.createInvitedUser).not.toHaveBeenCalled();
+  });
+
+  it('invites an account that does not exist yet', async () => {
+    memberQueries.findUserByEmail.mockResolvedValue(null);
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/admins',
+        role: 'owner',
+        body: JSON.stringify({
+          email: 'new-admin@example.com',
+          role: 'admin',
+          reason: 'inviting the new operator',
+          invite: true,
+        }),
+      })
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(memberQueries.createInvitedUser).toHaveBeenCalledWith('new-admin@example.com');
+    expect(memberQueries.addToGroup).toHaveBeenCalledWith('invited-sub', 'tw-admin');
+    expect(body(response).data).toMatchObject({ invited: true, role: 'admin' });
+  });
+
   it('refuses to add someone who is already a member', async () => {
     memberQueries.getGroupsForUser.mockResolvedValue(['tw-support']);
 
@@ -896,6 +940,28 @@ describe('billing and agents', () => {
     );
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it('records an MFA enrolment only when the factor exists', async () => {
+    const enrolled = await handler(
+      makeEvent({ httpMethod: 'POST', path: '/admin/bootstrap/mfa-enrolled', role: 'support' })
+    );
+    expect(enrolled.statusCode).toBe(200);
+    expect(auditMock.writeAuditLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: 'admin.mfa.enrolled', targetId: 'sub-1' })
+    );
+
+    // Same route, token without a factor: the authorizer reports mfa:false.
+    const event = makeEvent({
+      httpMethod: 'POST',
+      path: '/admin/bootstrap/mfa-enrolled',
+      role: 'support',
+    });
+    event.requestContext!.authorizer!.mfa = false;
+
+    const denied = await handler(event);
+    expect(denied.statusCode).toBe(409);
   });
 
   it('refuses to demote the last owner', async () => {

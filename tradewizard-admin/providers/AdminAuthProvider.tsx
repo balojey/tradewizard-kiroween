@@ -25,6 +25,7 @@ import {
 } from "react";
 import {
   completeMfa as completeMfaRequest,
+  completeNewPassword as completeNewPasswordRequest,
   describeAuthError,
   refreshSession,
   signIn as signInRequest,
@@ -45,8 +46,11 @@ interface AdminAuthValue {
   idToken: string | null;
   /** Set while the user must supply a TOTP code. */
   mfaPending: boolean;
+  /** Set while an invited account must choose its own password. */
+  newPasswordPending: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  submitNewPassword: (password: string) => Promise<void>;
   submitMfa: (code: string) => Promise<void>;
   cancelMfa: () => void;
   signOut: () => void;
@@ -62,6 +66,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [tokens, setTokens] = useState<AdminTokens | null>(null);
   const [email, setEmail] = useState<string>("");
   const [mfaSession, setMfaSession] = useState<string | null>(null);
+  const [newPasswordSession, setNewPasswordSession] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const adopt = useCallback((next: AdminTokens) => {
@@ -69,6 +74,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setTokens(next);
     setStatus("authenticated");
     setMfaSession(null);
+    setNewPasswordSession(null);
     setError(null);
   }, []);
 
@@ -144,12 +150,40 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         adopt(result.tokens);
         return;
       }
+      if (result.kind === "newPassword") {
+        setNewPasswordSession(result.session);
+        return;
+      }
       setMfaSession(result.session);
     } catch (caught) {
       setError(describeAuthError(caught));
       throw caught;
     }
   }, [adopt]);
+
+  const submitNewPassword = useCallback(
+    async (password: string) => {
+      if (!newPasswordSession) return;
+      setError(null);
+
+      try {
+        const result = await completeNewPasswordRequest(email, password, newPasswordSession);
+
+        if (result.kind === "tokens") {
+          adopt(result.tokens);
+          return;
+        }
+
+        // The pool can still demand a second factor straight after the change.
+        setNewPasswordSession(null);
+        setMfaSession(result.session);
+      } catch (caught) {
+        setError(describeAuthError(caught));
+        throw caught;
+      }
+    },
+    [adopt, email, newPasswordSession]
+  );
 
   const submitMfa = useCallback(
     async (code: string) => {
@@ -172,17 +206,20 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       tokens,
       idToken: tokens?.idToken ?? null,
       mfaPending: mfaSession !== null,
+      newPasswordPending: newPasswordSession !== null,
       error,
       signIn,
+      submitNewPassword,
       submitMfa,
       cancelMfa: () => {
         setMfaSession(null);
+        setNewPasswordSession(null);
         setError(null);
       },
       signOut,
       clearError: () => setError(null),
     }),
-    [error, mfaSession, signIn, signOut, status, submitMfa, tokens]
+    [error, mfaSession, newPasswordSession, signIn, signOut, status, submitMfa, submitNewPassword, tokens]
   );
 
   return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;

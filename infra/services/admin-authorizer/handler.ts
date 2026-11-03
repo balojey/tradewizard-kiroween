@@ -80,8 +80,14 @@ export async function handler(event: AuthorizerEvent): Promise<AuthorizerResult>
     throw new Error('Unauthorized');
   }
 
+  // The one path an MFA-less admin may reach: enrolling their factor. It is
+  // still fully authorized (valid token + admin group); only the MFA assertion
+  // is deferred, and the route verifies the factor server-side before recording
+  // anything.
+  const isBootstrapPath = /\/admin\/bootstrap\//.test(event.methodArn);
+
   try {
-    const identity = await resolveAdminIdentity(token);
+    const identity = await resolveAdminIdentity(token, { enforceMfa: !isBootstrapPath });
 
     return buildResult(identity.sub, 'Allow', event.methodArn, {
       sub: identity.sub,

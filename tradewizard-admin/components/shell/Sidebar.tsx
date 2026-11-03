@@ -44,8 +44,9 @@ export function LogoMark({ size = 22 }: { size?: number }) {
       fill="none"
     >
       <rect x="0.75" y="0.75" width="22.5" height="22.5" rx="5" stroke="var(--border-strong)" />
-      <path d="M6 16.5 L10.5 11 L13.5 13.5 L18 7.5" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="18" cy="7.5" r="1.6" fill="var(--accent)" />
+      <rect x="5.6" y="6.4" width="12.8" height="2.6" rx="1.3" fill="var(--accent)" />
+      <rect x="5.6" y="10.9" width="12.8" height="2.6" rx="1.3" fill="var(--border-strong)" />
+      <rect x="5.6" y="15.4" width="8.2" height="2.6" rx="1.3" fill="var(--border-strong)" />
     </svg>
   );
 }

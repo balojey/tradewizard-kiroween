@@ -37,7 +37,48 @@ Use `tw-prod-*` for production. **Pool id and app client id are not secrets**
 Do this once per person. Nothing here is automated by `deploy.sh` on purpose:
 creating admins as a deploy side effect would be surprising and unauditable.
 
-### 1.1 Create the account and add the group
+> **Use a dedicated admin email. Never convert a customer account.**
+>
+> The product signs in with a magic link that uses a password derived from the
+> email (`HMAC(PASSWORD_SALT, email)`), set only when the account is created. Two
+> things break if you reuse a customer account:
+>
+> 1. `admin-set-user-password` replaces the derived password → the next magic-link
+>    sign-in fails with *"Login succeeded but backend sync failed"*.
+> 2. Enrolling TOTP makes `AdminInitiateAuth` return an MFA challenge the product
+>    cannot answer — same symptom.
+>
+> Use something like `ops@yourdomain.tld`. `GET /admin/me` reporting
+> `linked: false` for that account is correct, not a fault.
+
+**Check before you start.** If this command succeeds, the account already exists —
+stop and read the warning above:
+
+```bash
+aws cognito-idp admin-get-user --user-pool-id "$POOL" \
+  --username candidate@yourdomain.tld --query "{status:UserStatus,mfa:UserMFASettingList}"
+# UserNotFoundException → safe to continue as a new account
+```
+
+### 1.1a From the portal (preferred)
+
+An owner can do all of it: **Members → Add member**, enter the email, role and
+reason. If no account exists, the dialog offers **Send invitation**:
+
+1. Cognito creates the account and emails a temporary password.
+2. They sign in with it and are asked to **choose their own password**.
+3. The portal then shows the QR enrolment screen; they add the authenticator and
+   are in.
+
+The portal never sets a password, which is exactly why this is safe for admin
+identities.
+
+**Caveat:** the copy of §1.1 that runs from the CLI still exists for recovery and
+for accounts the owner does not manage. Note that Cognito sends the invitation
+from its default sender (`no-reply@verificationemail.com`, 50/day); wire the SES
+identity into the pool if invitations need to come from `@tradewizard.live`.
+
+### 1.1 Create the account and add the group (CLI alternative)
 
 ```bash
 cd infra
@@ -50,8 +91,10 @@ npx tsx scripts/seed-admin.ts \
 - `tw-owner` (full) · `tw-admin` (all mutations except settings/roles) ·
   `tw-support` (credits, resend, notes, pause) · `tw-analyst` (read-only)
 - The script is idempotent: it will not reset an existing password.
-- If the person already uses TradeWizard, it reuses their existing account — one
-  identity for product and portal, which is what the audit log assumes.
+- **Use a dedicated admin address.** The script reuses an existing Cognito user if
+  one matches, so pointing it at a customer's email silently gives that customer
+  portal access — and setting a password or enrolling TOTP on that account breaks
+  their product magic-link login (recovery: §1.6).
 
 ### 1.2 Set a permanent password
 
@@ -72,8 +115,15 @@ Policy: ≥8 chars, upper, lower, digit.
 
 Cognito will not let you enable MFA until a software token is verified, and
 **each `associate-software-token` call issues a new secret** — always verify with
-the newest one. Do the whole thing in one block so the 30-second code window
-doesn't close:
+the newest one. **Or let the portal do it.** Sign in with the new account's password: if no factor
+is enrolled, the portal shows **Add a second factor** instead of a denial. Scan the
+QR code (or copy the key by hand), enter a code, and it registers the factor and
+writes an `admin.mfa.enrolled` audit row. The QR is rendered in the browser from
+the `otpauth://` URI — the secret never leaves it. (The account must have signed in within the last
+ten minutes; otherwise sign out and back in.)
+
+To do it from a terminal instead, the whole block below must run in one shell so
+the 30-second code window doesn't close:
 
 ```bash
 EMAIL=someone@example.com
@@ -122,9 +172,16 @@ CHALLENGE=$(python3 -c 'import sys,json;print(json.loads(sys.argv[1]).get("Chall
 SESSION=$(python3 -c 'import sys,json;print(json.loads(sys.argv[1]).get("Session",""))' "$JSON")
 echo "challenge: ${CHALLENGE:-<none>}"
 
+# Self-contained code generator: this step must work on a fresh shell and must
+# not depend on the `totp` helper below (that ordering bug bit once).
+CODE=$(python3 -c 'import base64,hmac,hashlib,struct,time,sys
+s=sys.argv[1]; k=base64.b32decode(s+"="*((8-len(s)%8)%8))
+d=hmac.new(k,struct.pack(">Q",int(time.time())//30),hashlib.sha1).digest()
+o=d[-1]&15; print(str((struct.unpack(">I",d[o:o+4])[0]&0x7fffffff)%1000000).zfill(6))' "$SECRET")
+
 TOKEN=$(aws cognito-idp respond-to-auth-challenge --client-id "$ADMIN_CLIENT" \
   --challenge-name "$CHALLENGE" --session "$SESSION" \
-  --challenge-responses USERNAME=$EMAIL,SOFTWARE_TOKEN_MFA_CODE=$(totp "$SECRET") \
+  --challenge-responses USERNAME=$EMAIL,SOFTWARE_TOKEN_MFA_CODE="$CODE" \
   --query AuthenticationResult.IdToken --output text)
 
 curl -s -H "Authorization: Bearer $TOKEN" "${ADMIN_API}admin/me"; echo
@@ -142,9 +199,10 @@ Expected:
 - `linked: true` — the Cognito identity resolves to a row in `users`. **`false`
   is a defect**: the portal can read data but cannot attribute actions.
 
-### 1.5 TOTP helper
+### 1.5 TOTP helper (optional convenience)
 
-Paste once per shell; then `totp "$SECRET"` prints a current code.
+Every step above is self-contained; paste this only if you want `totp "$SECRET"`
+for repeated manual checks. It is **not** defined early enough to use in §1.4.
 
 ```bash
 totp() { python3 -c 'import base64,hmac,hashlib,struct,time,sys
@@ -156,6 +214,31 @@ o=d[-1]&15; print(str((struct.unpack(">I",d[o:o+4])[0]&0x7fffffff)%1000000).zfil
 Never commit a TOTP secret, and never paste one into a chat or ticket.
 
 ---
+
+### 1.6 Recovering an account that was used for both
+
+Symptoms: product login shows *"Login succeeded but backend sync failed"*; the
+sync Lambda log shows `NotAuthorizedException: Incorrect username or password`.
+
+```bash
+# 1. Restore the derived password the product expects
+PW=$(node -e "
+const c=require('crypto');
+const email=process.argv[1];
+console.log('Tw'+c.createHmac('sha256','tw-magic-sync-${ENV_LONG}-v1').update(email).digest('hex').slice(0,30)+'1!');
+" someone@example.com)
+
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL" \
+  --username someone@example.com --password "$PW" --permanent
+
+# 2. Remove the factor the product cannot answer
+aws cognito-idp admin-set-user-mfa-preference --user-pool-id "$POOL" \
+  --username someone@example.com --software-token-mfa-settings Enabled=false
+```
+
+`${ENV_LONG}` is `development` or `production`. That account now works for the
+product again and is **denied by the portal** (`ADMIN_REQUIRE_MFA=true`) — which
+is the correct outcome: move their admin access to a dedicated identity.
 
 ## 2. Check who is an admin
 

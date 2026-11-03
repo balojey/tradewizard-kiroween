@@ -32,7 +32,9 @@ function getClient(): CognitoIdentityProviderClient {
 
 export type SignInResult =
   | { kind: "tokens"; tokens: AdminTokens }
-  | { kind: "mfa"; session: string };
+  | { kind: "mfa"; session: string }
+  /** Invited account: Cognito requires the person to choose their own password. */
+  | { kind: "newPassword"; session: string };
 
 interface AuthenticationResult {
   IdToken?: string;
@@ -65,6 +67,15 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     })
   );
 
+  // An invited admin signs in with the temporary password Cognito emailed, and
+  // must replace it before anything else happens.
+  if (response.ChallengeName === "NEW_PASSWORD_REQUIRED") {
+    if (!response.Session) {
+      throw new Error("Cognito returned a password challenge without a session");
+    }
+    return { kind: "newPassword", session: response.Session };
+  }
+
   if (response.ChallengeName === "SOFTWARE_TOKEN_MFA") {
     if (!response.Session) {
       throw new Error("Cognito returned an MFA challenge without a session");
@@ -77,6 +88,47 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   }
 
   return { kind: "tokens", tokens: toTokens(response.AuthenticationResult ?? {}) };
+}
+
+/**
+ * Answer the NEW_PASSWORD_REQUIRED challenge with a password the person chooses.
+ *
+ * Cognito may follow this with another challenge (MFA) or with tokens; both are
+ * handled so the caller does not need to know the pool's policy.
+ */
+export async function completeNewPassword(
+  email: string,
+  newPassword: string,
+  session: string
+): Promise<SignInResult> {
+  const response = await getClient().send(
+    new RespondToAuthChallengeCommand({
+      ClientId: CLIENT_ID,
+      ChallengeName: "NEW_PASSWORD_REQUIRED",
+      Session: session,
+      ChallengeResponses: {
+        USERNAME: email,
+        NEW_PASSWORD: newPassword,
+      },
+    })
+  );
+
+  if (response.ChallengeName === "SOFTWARE_TOKEN_MFA") {
+    if (!response.Session) {
+      throw new Error("Cognito returned an MFA challenge without a session");
+    }
+    return { kind: "mfa", session: response.Session };
+  }
+
+  if (response.ChallengeName) {
+    throw new Error(`Unsupported authentication challenge: ${response.ChallengeName}`);
+  }
+
+  if (!response.AuthenticationResult) {
+    throw new Error("Password change did not return tokens");
+  }
+
+  return { kind: "tokens", tokens: toTokens(response.AuthenticationResult) };
 }
 
 export async function completeMfa(
@@ -141,6 +193,8 @@ export function describeAuthError(error: unknown): string {
       return "Too many attempts. Wait a minute and try again.";
     case "SoftwareTokenMFANotFoundException":
       return "This account has no TOTP factor. Enrol one first (runbook §1.3).";
+    case "InvalidPasswordException":
+      return "Password must be at least 8 characters and include upper case, lower case and a number.";
     case "InvalidParameterException":
       return message || "Cognito rejected the request.";
     default:

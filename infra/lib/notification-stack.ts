@@ -1,6 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
 import * as sns from 'aws-cdk-lib/aws-sns';
-import * as ses from 'aws-cdk-lib/aws-ses';
 import { Construct } from 'constructs';
 import { EnvironmentConfig, resourceName } from './config';
 
@@ -50,14 +49,17 @@ export class NotificationStack extends cdk.Stack {
       displayName: `TradeWizard ${config.envName} - System Notifications`,
     });
 
-    // SES email identity (domain verification done manually in console).
-    // In production, verify the domain; in dev, verify individual email
-    // addresses out of band.
-    if (isProd) {
-      new ses.EmailIdentity(this, 'EmailIdentity', {
-        identity: ses.Identity.domain('tradewizard.live'),
-      });
-    }
+    // ─── SES identity: intentionally NOT managed here ───────────────────────
+    //
+    // The production domain identity (`tradewizard.live`) is verified by hand in
+    // the SES console. CloudFormation cannot adopt an existing identity, so
+    // declaring one here fails the deploy with `AlreadyExists` — which is exactly
+    // what happened when this stack was first pointed at the live domain.
+    //
+    // Resend is the active provider (`EMAIL_PROVIDER=resend`); SES is retained as
+    // a fallback, so a deploy must never depend on this resource existing.
+    // If a stack ever needs to reference it, import rather than create:
+    //   ses.EmailIdentity.fromEmailIdentityName(this, 'EmailIdentity', 'tradewizard.live')
 
     // ─── Outputs ─────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'AnalysisCompleteTopicArn', {

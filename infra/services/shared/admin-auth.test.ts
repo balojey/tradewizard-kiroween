@@ -60,6 +60,12 @@ beforeEach(() => {
   setEnv();
   verifyMock.mockReset();
   cognitoSendMock.mockReset();
+  // The factor state is now read on every call (it is reported, not just
+  // enforced), so give the suite a configured user by default.
+  cognitoSendMock.mockResolvedValue({
+    UserStatus: 'CONFIRMED',
+    UserMFASettingList: ['SOFTWARE_TOKEN_MFA'],
+  });
   verifierCreateMock.mockReset();
   verifierCreateMock.mockReturnValue({ verify: verifyMock });
   resetAdminAuthCachesForTests();

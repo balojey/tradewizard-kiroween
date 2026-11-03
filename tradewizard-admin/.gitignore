@@ -2,6 +2,7 @@ node_modules/
 .next/
 out/
 .env.local
+.env.prod
 .env.production
 *.tsbuildinfo
 next-env.d.ts

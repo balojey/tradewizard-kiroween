@@ -27,7 +27,7 @@ export function useMemberMutations() {
 
   return {
     add: useMutation({
-      mutationFn: (input: { email: string; role: string; reason: string }) =>
+      mutationFn: (input: { email: string; role: string; reason: string; invite?: boolean }) =>
         adminFetch("admin/admins", { token: idToken, method: "POST", body: input }),
       onSuccess: refresh,
     }),

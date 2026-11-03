@@ -60,8 +60,8 @@ function AccessPanel({ identity }: { identity: AdminIdentity }) {
             no second factor
           </Badge>
         )}
-        <Badge tone={identity.linked ? "yes" : "no"} dot>
-          {identity.linked ? "account linked" : "not linked"}
+        <Badge tone={identity.linked ? "warning" : "neutral"} dot>
+          {identity.linked ? "shared customer account" : "dedicated admin account"}
         </Badge>
         <Badge tone="neutral">{identity.email}</Badge>
       </div>
@@ -171,6 +171,15 @@ export default function OverviewPage() {
           </>
         }
       />
+
+      {identity?.linked && (
+        <Notice tone="warning" className="mb-4">
+          <strong className="text-fg">This admin account is also a customer account.</strong> The
+          portal password and TOTP factor replace the password the product derives for magic-link
+          sign-in, so this person&apos;s product login can break without warning. Give the operator a
+          dedicated admin email instead — runbook §1.
+        </Notice>
+      )}
 
       {error && (
         <Notice tone="error" title="Could not load metrics" className="mb-4">

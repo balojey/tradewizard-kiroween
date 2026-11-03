@@ -39,7 +39,10 @@ or any on-chain capability. The portal asks the backend to act; it never acts.
 ## Sign-in
 
 Email + password + TOTP, direct to Cognito (`USER_PASSWORD_AUTH` on the admin
-client only). Bootstrapping an admin is a terminal task — see runbook §1.
+client only). Admins can enrol an MFA device from the portal with a QR code, and
+a rejected fresh-auth challenge links back into the reauthentication flow.
+Bootstrapping an admin is a terminal task — see runbook §1. Admin accounts must
+be dedicated identities; do not reuse a customer or personal account.
 
 ## Current scope
 
@@ -52,11 +55,14 @@ the operational controls:
   cache invalidation, and requeue of a market's analysis.
 - **Portfolio** - exposure, sessions, trades, decisions, pause/resume, terminate,
   and a two-phase kill switch.
-- **Members** - owner-managed portal membership with immediate access revocation.
+- **Members** - owner-managed portal membership: invite from the portal, then
+  revoke access immediately when needed.
 - **Settings** - audited runtime settings, each naming its consumer: pause new
   analysis, edit the pause message, override the AI provider without a redeploy,
   and pause new Portfolio Manager activations while existing sessions keep
   trading. Changes apply within a minute and are written to the audit log.
+- **Security** - dedicated admin identities, TOTP enrolment with a QR code,
+  fresh-auth reauthentication, and crawler disallow rules.
 - **Billing, agents, ops, markets, overview** - revenue, ledger, subscriptions,
   calibration and model cost, queues, Lambda health, alarms, database state,
   analysis pool, stuck executions, and the dashboard.
@@ -77,3 +83,18 @@ Then set `NEXT_PUBLIC_ADMIN_API_BASE_URL`, `NEXT_PUBLIC_ADMIN_CLIENT_ID`, and
 `NEXT_PUBLIC_COGNITO_REGION` in the Amplify environment, and attach
 `admin.tradewizard.live`. Finally add that origin to `ADMIN_ALLOWED_ORIGINS` in
 the Admin stack and redeploy.
+
+### Local production build
+
+`.env.prod` holds the production values (public identifiers only — the API
+authorizer is the security boundary). Next.js does **not** auto-load that name,
+so use the scripts that pass it explicitly:
+
+```bash
+npm run build:prod   # next build with .env.prod exported
+npm run start:prod   # next start on 3001 with .env.prod exported
+```
+
+`NEXT_PUBLIC_*` is inlined at build time, so a prod artifact must be built with
+`build:prod`; setting the values only at start has no effect. Stop the dev server
+first — both bind port 3001 and share `.next`.
