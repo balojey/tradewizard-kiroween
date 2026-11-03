@@ -41,7 +41,7 @@ Read [docs/kiro-usage.md](docs/kiro-usage.md) for the judge-facing write-up, inc
 |-----------|---------|-----------|
 | [infra/](infra/README.md) | Serverless platform: CDK, Lambda, Aurora, DynamoDB | TypeScript, AWS CDK, Lambda, RDS, DynamoDB |
 | [tradewizard-frontend/](tradewizard-frontend/README.md) | Customer web UI with Cognito auth, real-time delivery, subscriptions | Next.js 16, React 19, Tailwind CSS 4 |
-| [tradewizard-admin/](tradewizard-admin/README.md) | Internal management portal: roles, MFA, audit, runtime settings, analysis requeue, billing/ops visibility | Next.js, TypeScript |
+| [tradewizard-admin/](tradewizard-admin/README.md) | Internal management portal: roles, MFA, audit, runtime settings, analysis requeue, billing/ops visibility, installable PWA | Next.js, TypeScript |
 | [remotion/](remotion/) | Product demo video compositions | Remotion, React |
 | [docs/](docs/) | Product, architecture, and submission documentation | Markdown |
 

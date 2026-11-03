@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Ubuntu, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/providers";
+import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
 
 // Same two families as the product, so the portal reads as TradeWizard rather
 // than as a generic dashboard. Mono is reserved for identifiers and numerals.
@@ -25,11 +26,18 @@ export const metadata: Metadata = {
     template: "%s · TradeWizard Admin",
   },
   description: "Internal management portal",
+  applicationName: "TradeWizard Operations",
   robots: { index: false, follow: false, nocache: true },
+  formatDetection: { telephone: false, email: false, address: false },
+  appleWebApp: {
+    capable: true,
+    title: "TW Ops",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0e1015",
+  themeColor: "#0e1116",
   colorScheme: "dark",
 };
 
@@ -43,6 +51,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <body className="min-h-screen antialiased">
         <Providers>{children}</Providers>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
