@@ -871,6 +871,36 @@ capability.
 - `useTableQuery` syncs `cursor`, `limit`, and filters with `useSearchParams`,
   and resets the cursor whenever a filter changes.
 
+### 9.4 Installation & offline (PWA)
+
+The portal is installable (`app/manifest.ts`, `display: standalone`,
+`start_url: /overview`) so it can live in a dock or home screen with its own
+window. `shortcuts` jump straight to Users, Portfolio and Ops.
+
+The service worker (`public/sw.js`) is deliberately the smallest one that makes
+the app installable, because this app handles customer money and private data:
+
+- **Cached:** content-hashed build assets only — `/_next/static/*`, icons,
+  favicon, manifest. Stale-while-revalidate, capped at 80 entries.
+- **Never cached:** navigations (HTML), API responses, React Server Component
+  payloads (`RSC` header / `?_rsc=`, which is how App Router fetches live data),
+  cross-origin requests (the admin API, S3 presigned payloads), and anything
+  non-GET.
+- **Offline:** a navigation that cannot reach the server returns an inline
+  offline notice served by the worker. The portal never renders a cached page,
+  so a shared machine cannot show a previous operator's shell.
+- `sw.js` is served with `Cache-Control: no-store` and
+  `Service-Worker-Allowed: /`; bump `VERSION` in the worker when caching rules
+  change, and every older cache is dropped on activate.
+- Registration is **production only** (`ServiceWorkerRegistrar`): in development
+  the App Router serves unhashed chunks behind HMR, where a stale-while-
+  revalidate cache would serve yesterday's module graph.
+
+Verify with a production artifact, not `next dev`: `npm run build:prod`, then
+confirm `/manifest.webmanifest`, `/sw.js` headers, an active worker, and the
+offline notice with the server stopped. `pwa-check.html`-style probes belong in
+review, not the repo.
+
 ---
 
 ## 10. Infrastructure & deployment
@@ -935,6 +965,7 @@ assumed; the evidence column says how to re-check it.
 | 11 | `admin_audit_log` update/delete trigger installed and tested | ✅ | Live: a second update on a finalised row raises "already final", `DELETE` raises "append-only" |
 | 12 | Destructive routes require `auth_time` within 10 minutes | ✅ | `requireFreshAuth` on kill switch, member changes and role updates; a 2-hour-old token returns `403 REAUTH_REQUIRED` (unit test) |
 | 13a | Not indexable by search engines | ✅ | Belongs only to the portal: `X-Robots-Tag: noindex, nofollow, noarchive` on every response (including the 307 from middleware), `<meta name="robots" content="noindex, nofollow">` from the root layout, and `robots.txt` with `Disallow: /`. Verified by curl, not assumption |
+| 13b | The PWA stores no admin data on the device | ✅ | Worker controlled the page with the server stopped: `/icons/icon-192.png` served from cache, `/login` absent from the cache, and an offline navigation returned the worker's notice instead of any cached page. Manifests/caching rules in §9.4, worker in `public/sw.js` |
 | 13 | Admin bundle contains no wallet, trading or CLOB code | ✅ | Grep of `tradewizard-admin` finds no `magic-sdk`, `@polymarket*`, `ethers`/`viem` imports — only a `clobOrderId` column name |
 | 14 | Optional WAF IP allowlist | ⏸ **deferred** | See below |
 
@@ -1163,7 +1194,11 @@ something is reversed, add a new row.
 | 2026-11-03 | Self-service MFA enrolment | Done | A password-only admin used to hit a dead-end 403. The portal now enrols a TOTP factor in place: `AssociateSoftwareToken` → code → `VerifySoftwareToken` → `SetUserMFAPreference`, all with the caller's access token. Three parts make it safe: the authorizer defers **only** the MFA assertion for `/admin/bootstrap/*` (token + admin group still required); `GET /admin/bootstrap/status` exists because API Gateway replaces the authorizer's error with a generic 403 body, so the client cannot read `MFA_REQUIRED` and must ask; and `POST /admin/bootstrap/mfa-enrolled` records the enrolment only when the authorizer's Cognito read says the factor exists. Verified end to end: 403 → status `mfa:false` → enrol → status `mfa:true` → `/admin/me` 200 → `admin.mfa.enrolled` audit row. 424 infra tests. |
 | 2026-11-03 | Fresh-auth UX + member onboarding gap | Done | `requireFreshAuth` (10 min) worked but was a dead end: the API said "sign in again" with no way to do it, and Cognito refresh tokens do not reset `auth_time`, so a real re-login is the only path. Added `ReauthNotice` (with `errorMessage`/`isReauthRequired`) to the membership, kill-switch and settings dialogs: a **Sign in again** button that signs out and returns to the same page. **Documented gap:** the portal cannot create accounts or set passwords — `POST /admin/admins` only adds an existing Cognito user, and the 404 now names the seed-script command. The Add dialog says the same inline. |
 | 2026-11-03 | Member invitations | Done | The portal can now create a member instead of dead-ending on an unknown email: `POST /admin/admins` with `invite: true` runs `AdminCreateUser` (Cognito emails a temporary password), adds the group, and audits `invited: true`. Creation is opt-in so a **mistyped address cannot silently create a stranger's account**. The login form gained the `NEW_PASSWORD_REQUIRED` step: the invitee chooses their own password, then lands on QR enrolment. The portal still never sets a password. Verified against Cognito: invite → sign in with the temporary password → `NEW_PASSWORD_REQUIRED` → chosen password → tokens. Caveat: invitations come from Cognito's default sender (50/day, `no-reply@verificationemail.com`) until the SES identity is wired into the pool. 428 infra tests. |
-| 2026-11-03 | Add-member copy | Done | The Add-member dialog still said \"email of an existing account\" and told the owner to run `seed-admin.ts`, both of which the invite flow made false (the previous slice added the flow but left the copy behind). Label is now `Email`, the hint reads \"existing account is added immediately; an unknown address can be invited\", and the stale paragraph is replaced with what actually happens: invitees choose their own password and add an authenticator at first sign-in, on a **dedicated** admin address. The runbook's §1.1 no longer claims one identity for product and portal — it now warns that reusing a customer address breaks their magic-link login. |\n| 2026-11-03 | Audit-reason fields read like passwords | Done | Every mutation dialog's reason input used `placeholder="At least 8 characters"`, which is the universal password placeholder — an owner reasonably read it as a password field that did nothing. All ten reason inputs (members, kill switch, notes, credits, suspend, plan override, refund, cache invalidate, session pause, settings) now say `Why are you making this change?` with the hint `At least 8 characters. Recorded in the audit log with your name.` The login form's password hint is deliberately unchanged. |\n| 2026-11-03 | Portal prod env file | Done | Added `tradewizard-admin/.env.prod` populated from the live prod exports (`tw-prod-admin-api-url` → `https://i0ot7fkwfe.execute-api.us-east-1.amazonaws.com/v1/`, `tw-prod-admin-client-id` → `2ndbp2iqcjvmlmf302qt0geg8v`, region `us-east-1`); all three are `NEXT_PUBLIC_*`, so the file holds no secrets and stays gitignored like `.env.production`. Next.js **does not** auto-load `.env.prod`, and Node's `--env-file` breaks a Next build (Next puts exec flags into worker `NODE_OPTIONS`, which rejects `--env-file` with exit 9), so `scripts/with-env-file.sh` exports the file and `build:prod`/`start:prod` use it. Verified by building in a scratch copy: the emitted chunks contain the prod API id and client id and **zero** dev identifiers, even though `.env.local` was present. |\n| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
+| 2026-11-03 | Add-member copy | Done | The Add-member dialog still said \"email of an existing account\" and told the owner to run `seed-admin.ts`, both of which the invite flow made false (the previous slice added the flow but left the copy behind). Label is now `Email`, the hint reads \"existing account is added immediately; an unknown address can be invited\", and the stale paragraph is replaced with what actually happens: invitees choose their own password and add an authenticator at first sign-in, on a **dedicated** admin address. The runbook's §1.1 no longer claims one identity for product and portal — it now warns that reusing a customer address breaks their magic-link login. |
+| 2026-11-03 | Audit-reason fields read like passwords | Done | Every mutation dialog's reason input used `placeholder="At least 8 characters"`, which is the universal password placeholder — an owner reasonably read it as a password field that did nothing. All ten reason inputs (members, kill switch, notes, credits, suspend, plan override, refund, cache invalidate, session pause, settings) now say `Why are you making this change?` with the hint `At least 8 characters. Recorded in the audit log with your name.` The login form's password hint is deliberately unchanged. |
+| 2026-11-03 | Portal prod env file | Done | Added `tradewizard-admin/.env.prod` populated from the live prod exports (`tw-prod-admin-api-url` → `https://i0ot7fkwfe.execute-api.us-east-1.amazonaws.com/v1/`, `tw-prod-admin-client-id` → `2ndbp2iqcjvmlmf302qt0geg8v`, region `us-east-1`); all three are `NEXT_PUBLIC_*`, so the file holds no secrets and stays gitignored like `.env.production`. Next.js **does not** auto-load `.env.prod`, and Node's `--env-file` breaks a Next build (Next puts exec flags into worker `NODE_OPTIONS`, which rejects `--env-file` with exit 9), so `scripts/with-env-file.sh` exports the file and `build:prod`/`start:prod` use it. Verified by building in a scratch copy: the emitted chunks contain the prod API id and client id and **zero** dev identifiers, even though `.env.local` was present. |
+| 2026-11-03 | Installable portal (PWA) | Done | `app/manifest.ts` (standalone, `start_url: /overview`, any+maskable 192/512 icons, Users/Portfolio/Ops shortcuts), a production-only `ServiceWorkerRegistrar`, and a deliberately small `public/sw.js`. Cache policy is the security decision: content-hashed assets only (SWR, capped at 80); never navigations, API responses, RSC payloads (`RSC`/`?_rsc=`), presigned S3 URLs or non-GET. Offline navigations get an inline notice, so a shared machine can never be shown a cached shell. `sw.js` is served `no-store` with `Service-Worker-Allowed: /`. Verified on a standalone build with CDP: worker active and controlling, icon served from cache, `/login` not cached, and with the server stopped the offline notice rendered while cached assets still loaded. |
+| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
 
 ---
 

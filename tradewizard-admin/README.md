@@ -62,7 +62,10 @@ the operational controls:
   and pause new Portfolio Manager activations while existing sessions keep
   trading. Changes apply within a minute and are written to the audit log.
 - **Security** - dedicated admin identities, TOTP enrolment with a QR code,
-  fresh-auth reauthentication, and crawler disallow rules.
+  fresh-auth reauthentication, crawler disallow rules, and an installable PWA
+  whose service worker caches only content-hashed assets. Navigations, API and
+  RSC data, and presigned S3 URLs are never cached; offline navigations get an
+  inline notice instead of a stale shell.
 - **Billing, agents, ops, markets, overview** - revenue, ledger, subscriptions,
   calibration and model cost, queues, Lambda health, alarms, database state,
   analysis pool, stuck executions, and the dashboard.
