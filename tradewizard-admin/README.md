@@ -54,8 +54,9 @@ the operational controls:
   and a two-phase kill switch.
 - **Members** - owner-managed portal membership with immediate access revocation.
 - **Settings** - audited runtime settings, each naming its consumer: pause new
-  analysis, edit the pause message, and override the AI provider without a
-  redeploy. Changes apply within a minute and are written to the audit log.
+  analysis, edit the pause message, override the AI provider without a redeploy,
+  and pause new Portfolio Manager activations while existing sessions keep
+  trading. Changes apply within a minute and are written to the audit log.
 - **Billing, agents, ops, markets, overview** - revenue, ledger, subscriptions,
   calibration and model cost, queues, Lambda health, alarms, database state,
   analysis pool, stuck executions, and the dashboard.

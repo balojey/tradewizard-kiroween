@@ -43,6 +43,14 @@ export const SETTINGS: Record<string, SettingDefinition> = {
     consumer: 'ai-provider',
     allowed: ['', 'bedrock', 'nebius'],
   },
+  pm_activations_paused: {
+    key: 'pm_activations_paused',
+    type: 'boolean',
+    defaultValue: false,
+    description:
+      'Refuse new portfolio-manager activations. Existing sessions keep trading unless the kill switch is used.',
+    consumer: 'portfolio-activation',
+  },
   analysis_pause_message: {
     key: 'analysis_pause_message',
     type: 'string',

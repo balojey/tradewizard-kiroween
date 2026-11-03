@@ -998,9 +998,18 @@ reconciling a payment does not require a psql session.
 
 ### Phase 4 — Runtime configuration (in progress)
 
-**Shipped:** `analysis_paused` and `analysis_pause_message`, both read by
-`analysis-request` (verified live: `503 ANALYSIS_PAUSED` with the configured
-message). Every setting declares its consumer, and the UI shows it.
+**Shipped:**
+
+| Setting | Consumer | Verified |
+|---|---|---|
+| `analysis_paused` | `analysis-request` (before charging) | Live `503 ANALYSIS_PAUSED` |
+| `analysis_pause_message` | `analysis-request` | Message surfaced in the 503 body |
+| `ai_provider` | `ai-provider`, ahead of the deployed env | Live: override to `nebius` aborted a run in 5 s with "Nebius model … is not configured" — read, and failed before spending a token |
+| `pm_activations_paused` | `portfolio-activation` | Live `503` — new sessions refused, existing ones untouched |
+
+`resolveAiProvider()` is synchronous, so the agent lambdas call `warmSettings()`
+at invocation start and the provider reads a warmed cache; without warm-up it
+falls back to `AI_PROVIDER`, i.e. to the deployed behaviour.
 
 
 **Prerequisite:** every setting must have a consumer in the same change. A
@@ -1124,7 +1133,9 @@ something is reversed, add a new row.
 | 2026-11-02 | 10i — Terminate session | Done | `POST /admin/portfolio/sessions/{id}/terminate` (admin). The risk engine gained an internal `terminate_session` action: cancel working orders, exit the open position through the existing escalation, drop the guard schedule, mark `terminated` with reason `admin_terminated`, and publish an event. Idempotent for sessions that already ended (200, no exchange call). The admin route only audits and dispatches (202), mirroring the kill switch. **Verified live:** exit dispatched, session `terminated`/`admin_terminated`, pending trade `cancelled`, audit `dispatch: sent`. 388 infra tests |
 | 2026-11-02 | 11 — Hardening | Done | **Per-admin rate limits** (60 reads / 10 mutations per minute, DDB counters with a 2-minute TTL, fail-open so an unavailable counter cannot take the portal down) — verified live with 70 concurrent reads: `60× 200, 9× 429`. **Fresh-auth guard** (`requireFreshAuth`, 10 minutes) on the kill switch and all membership changes, closing the gap between "has a valid token" and "is present"; a 2-hour-old token returns `403 REAUTH_REQUIRED`. **Alarms** for admin-api 5xx and rollup failures, both on the existing SNS topic. **§12 checklist executed** with evidence for all 14 controls; WAF explicitly deferred with a cost/threat rationale, and the unreserved-concurrency 5xx caveat recorded. 394 infra tests. |
 | 2026-11-02 | Phase 4 — Settings (first) | In progress | `shared/settings.ts` with a typed registry (key, type, default, description, **consumer**), a 60-second cache, and a read that always falls back to the default on failure — a settings outage must never break a product path. Endpoints: `GET /admin/settings` (admin) and `PUT /admin/settings/{key}` (owner, fresh auth, audited with before/after). **Consumers shipped with the switches** (the whole point): `analysis_paused` and `analysis_pause_message` are read by `analysis-request` before anything is charged, returning `503 ANALYSIS_PAUSED`. Verified live: paused → `503` with the configured message; unpaused → false. UI: `/settings` lists each setting with its consumer, current value, and last change, replacing the placeholder. **Bug in the test harness:** `vi.restoreAllMocks()` stripped the mocked pg constructor, so the "returns default on failure" test passed for the wrong reason (every call failed). Mocks are now rebuilt per test. 418 infra tests |
-| next | Phase 4 — remaining settings | Not started | — |
+| 2026-11-02 | Phase 4 — Model override | Done | `ai_provider` setting (`''` = follow deployment, or `bedrock`/`nebius`) with an `allowed` allowlist enforced server-side. Because `resolveAiProvider()` is synchronous, `settings.ts` gained `warmSettings()` + `getSettingSync()`: the agent lambdas warm at invocation start, and an unwarmed cache falls back to `AI_PROVIDER`. **Verified live:** overriding to `nebius` made a run fail in 5 s (vs ~100 s) with *"Nebius model for capability \"fast\" is not configured"* — proving the read happens and that it aborts before spending a token. Reset to `''` afterwards; all four settings changes are in the audit log with before/after. 419 infra tests |
+| 2026-11-02 | Phase 4 — PM activation pause | Done | `pm_activations_paused` (boolean) read by `portfolio-activation` before any state changes: 503 with an explicit "existing sessions are unaffected" message. Pairs with `analysis_paused` and `ai_provider` to give the three incident toggles an operator actually needs mid-incident: stop spending, stop trading, switch the model provider. Verified live (503). 419 infra tests. |
+| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
 
 ---
 
@@ -1252,6 +1263,10 @@ The admin hostname is therefore `admin.tradewizard.live`, and the dev counterpar
 4. Record the incident and the compensating action in a new audit row.
 
 ### 17.6 Operational procedures
+
+*Updated 2026-11-03: the runbook now documents every shipped operation — incident
+toggles, suspend, kill switch, terminate, comp, credits, refund, cache
+invalidation, requeue, member management, and a kill-switch drill.*
 
 Anything an operator runs by hand — bootstrapping an admin, enrolling TOTP,
 verifying the auth chain, applying the schema after a failed deploy, revoking
