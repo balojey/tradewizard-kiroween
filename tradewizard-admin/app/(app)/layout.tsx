@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { adminFetch } from "@/lib/admin-api";
 import { useRouter } from "next/navigation";
 import { LogoMark } from "@/components/shell/Sidebar";
+import { MfaSetup } from "@/components/auth/MfaSetup";
 import { AdminShell } from "@/components/shell/AdminShell";
 import { useAdminMe } from "@/hooks/useAdminMe";
 import { useAdminAuth } from "@/providers/AdminAuthProvider";
@@ -23,9 +26,31 @@ function FullScreen({ children }: { children: ReactNode }) {
 }
 
 function AccessProblem({ error }: { error: AdminApiError }) {
-  const { signOut } = useAdminAuth();
+  const { signOut, idToken } = useAdminAuth();
   const isAuth = error.status === 401;
   const isForbidden = error.status === 403;
+
+  // API Gateway replaces the authorizer's error with a generic 403, so the code
+  // never reaches us. Ask the one endpoint an MFA-less admin can reach.
+  const { data: status } = useQuery<{ mfa: boolean }>({
+    queryKey: ["admin", "bootstrap-status"],
+    queryFn: () => adminFetch<{ mfa: boolean }>("admin/bootstrap/status", { token: idToken }),
+    enabled: isForbidden && Boolean(idToken),
+    retry: false,
+    staleTime: 0,
+  });
+
+  // A missing factor is not a dead end: the account is valid, it just has to
+  // enrol. Anything else (no admin group) stays a denial.
+  if (status?.mfa === false) {
+    return (
+      <FullScreen>
+        <div className="w-full max-w-sm rounded-[10px] border border-border bg-surface p-5">
+          <MfaSetup />
+        </div>
+      </FullScreen>
+    );
+  }
 
   return (
     <FullScreen>

@@ -124,7 +124,8 @@ export function SessionControls({
           label="Reason (recorded in the audit log)"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          placeholder="At least 8 characters"
+          placeholder="Why are you making this change?"
+          hint="At least 8 characters. Recorded in the audit log with your name."
           error={error ?? undefined}
           autoFocus
         />

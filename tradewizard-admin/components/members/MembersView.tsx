@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ReauthNotice, errorMessage, isReauthRequired } from "@/components/auth/ReauthNotice";
+import { AdminApiError } from "@/lib/admin-api";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -34,7 +36,7 @@ export function MembersView() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<string>("support");
   const [reason, setReason] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<unknown>(null);
 
   const isOwner = identity ? hasRole(identity.role, "owner") : false;
   const pending = mutations.add.isPending || mutations.changeRole.isPending || mutations.remove.isPending;
@@ -50,7 +52,7 @@ export function MembersView() {
   function submit() {
     if (!dialog || reason.trim().length < 8) return;
 
-    const onError = (caught: Error) => setFormError(caught.message);
+    const onError = (caught: unknown) => setFormError(caught);
 
     if (dialog.kind === "add") {
       mutations.add.mutate(
@@ -240,14 +242,22 @@ export function MembersView() {
         {dialog && (
           <div className="flex flex-col gap-3">
             {dialog.kind === "add" && (
-              <Input
-                label="Email of an existing TradeWizard account"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="person@example.com"
-                autoFocus
-              />
+              <>
+                <Input
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="person@example.com"
+                  hint="An existing account is added immediately. An unknown address can be invited."
+                  autoFocus
+                />
+                <p className="text-[10.5px] leading-relaxed text-faint">
+                  Invitees choose their own password and add an authenticator on first sign-in. Use a
+                  dedicated admin address — never a customer account, because portal sign-in would
+                  break its magic-link login.
+                </p>
+              </>
             )}
 
             {dialog.kind !== "remove" && (
@@ -264,9 +274,42 @@ export function MembersView() {
               label="Reason (recorded in the audit log)"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              placeholder="At least 8 characters"
-              error={formError ?? undefined}
+              placeholder="Why are you making this change?"
+              hint="At least 8 characters. Recorded in the audit log with your name."
+              error={isReauthRequired(formError) ? undefined : errorMessage(formError)}
             />
+
+            <ReauthNotice error={formError} />
+
+            {dialog.kind === "add" &&
+              formError instanceof AdminApiError &&
+              formError.status === 404 && (
+                <div className="rounded-[8px] border border-border-strong/50 bg-surface-2 p-3 text-[11.5px] leading-relaxed text-fg">
+                  <p>
+                    No account exists for <span className="mono">{email || "that address"}</span>.
+                    Invite them? Cognito emails a temporary password, and they choose their own on
+                    first sign-in — the portal never sets a password.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-2"
+                    loading={mutations.add.isPending}
+                    disabled={!email.includes("@") || reason.trim().length < 8}
+                    onClick={() =>
+                      mutations.add.mutate(
+                        { email: email.trim(), role, reason: reason.trim(), invite: true },
+                        {
+                          onSuccess: () => setDialog(null),
+                          onError: (caught: unknown) => setFormError(caught),
+                        }
+                      )
+                    }
+                  >
+                    Send invitation
+                  </Button>
+                </div>
+              )}
           </div>
         )}
       </Dialog>

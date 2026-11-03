@@ -6,6 +6,7 @@ import { Hand, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
+import { ReauthNotice, errorMessage, isReauthRequired } from "@/components/auth/ReauthNotice";
 import { adminFetch } from "@/lib/admin-api";
 import { useAdminAuth } from "@/providers/AdminAuthProvider";
 import { hasRole, type AdminIdentity } from "@/constants/roles";
@@ -34,7 +35,7 @@ export function KillSwitchControl({
 
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [result, setResult] = useState<string | null>(null);
 
   const canWrite = identity ? hasRole(identity.role, "admin") : false;
@@ -53,7 +54,7 @@ export function KillSwitchControl({
       void queryClient.invalidateQueries({ queryKey: ["admin", "portfolio"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "audit"] });
     },
-    onError: (caught: Error) => setError(caught.message),
+    onError: (caught: unknown) => setError(caught),
   });
 
   const reset = useMutation({
@@ -69,7 +70,7 @@ export function KillSwitchControl({
       void queryClient.invalidateQueries({ queryKey: ["admin", "portfolio"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "audit"] });
     },
-    onError: (caught: Error) => setError(caught.message),
+    onError: (caught: unknown) => setError(caught),
   });
 
   if (!canWrite) return null;
@@ -124,10 +125,13 @@ export function KillSwitchControl({
           label="Reason (recorded in the audit log)"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          placeholder="At least 8 characters"
-          error={error ?? undefined}
+          placeholder="Why are you making this change?"
+          hint="At least 8 characters. Recorded in the audit log with your name."
+          error={isReauthRequired(error) ? undefined : errorMessage(error)}
           autoFocus
         />
+
+        <ReauthNotice error={error} />
       </Dialog>
     </>
   );

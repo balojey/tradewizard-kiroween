@@ -9,6 +9,7 @@
 
 import {
   AdminAddUserToGroupCommand,
+  AdminCreateUserCommand,
   AdminGetUserCommand,
   AdminUserGlobalSignOutCommand,
   AdminListGroupsForUserCommand,
@@ -131,6 +132,36 @@ export async function findUserByEmail(
     sub: attribute(match, 'sub') ?? match.Username ?? '',
     email: attribute(match, 'email') ?? email,
     status: match.UserStatus ?? 'UNKNOWN',
+  };
+}
+
+/**
+ * Create the Cognito user and let Cognito email the invitation.
+ *
+ * Cognito generates a temporary password and sends it with the pool's configured
+ * sender; the person must choose their own password at first sign-in
+ * (`NEW_PASSWORD_REQUIRED`). The portal never sees or sets a password, which is
+ * what keeps a dedicated admin account safe for the product's magic-link path.
+ */
+export async function createInvitedUser(
+  email: string
+): Promise<{ sub: string; status: string }> {
+  const created = await cognito.send(
+    new AdminCreateUserCommand({
+      UserPoolId: poolId(),
+      Username: email,
+      UserAttributes: [
+        { Name: 'email', Value: email },
+        { Name: 'email_verified', Value: 'true' },
+      ],
+      // Do NOT suppress the message: the invitation *is* the delivery.
+      DesiredDeliveryMediums: ['EMAIL'],
+    })
+  );
+
+  return {
+    sub: attribute(created.User ?? {}, 'sub') ?? created.User?.Username ?? '',
+    status: created.User?.UserStatus ?? 'FORCE_CHANGE_PASSWORD',
   };
 }
 

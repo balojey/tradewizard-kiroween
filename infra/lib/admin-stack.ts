@@ -184,6 +184,7 @@ export class AdminStack extends cdk.Stack {
         actions: [
           'cognito-idp:AdminGetUser',
           'cognito-idp:AdminListGroupsForUser',
+          'cognito-idp:AdminCreateUser',
           'cognito-idp:AdminAddUserToGroup',
           'cognito-idp:AdminRemoveUserFromGroup',
           'cognito-idp:AdminUserGlobalSignOut',

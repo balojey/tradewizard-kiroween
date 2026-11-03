@@ -58,7 +58,7 @@ A Position Guard monitors open positions for regime shifts and stale markets. A 
 - On-chain USDC.e subscriptions and credit packs on Polygon, with Safe trading wallets and ERC-20 allowance-based renewal
 - A market-level analysis pool that deduplicates compute across users
 - A credit ledger with an immutable audit trail
-- An internal management portal with roles, audit logging, audited runtime settings, analysis requeue, billing and ops visibility, and support tooling
+- An internal management portal with roles, MFA enrolment, audit logging, audited runtime settings, analysis requeue, billing and ops visibility, and support tooling
 - A Next.js 16 / React 19 trading terminal with real-time delivery
 
 ## Why this is a Frankenstein
