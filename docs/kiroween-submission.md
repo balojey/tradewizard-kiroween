@@ -28,6 +28,8 @@ A Position Guard monitors every open position for regime shifts and stale market
 
 Around these sit the pieces a real product needs: passwordless Cognito Magic Link auth, on-chain USDC.e billing on Polygon with auto-renewal via ERC-20 allowances, a market-level analysis pool that prevents redundant compute, a credit system with an immutable audit trail, an internal management portal with MFA enrolment, audited runtime settings, analysis requeue, and owner-managed membership, and a Next.js 16 / React 19 frontend that surfaces all of it through a clean trading-terminal UI.
 
+Customers can also ask for help from the analysis or session that prompted the question. Tickets carry a context snapshot and a tokenised thread, and the admin inbox handles claim, reply, and resolution.
+
 ## Why this is a Frankenstein
 
 TradeWizard is a working chimera, not a themed wrapper:

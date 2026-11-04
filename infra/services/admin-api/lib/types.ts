@@ -43,6 +43,9 @@ export type ErrorCode =
   | 'REAUTH_REQUIRED'
   | 'NOT_FOUND'
   | 'CONFLICT'
+  | 'ALREADY_CLAIMED'
+  | 'NOT_YOURS'
+  | 'TICKET_CLOSED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_FAILED'
   | 'INTERNAL';

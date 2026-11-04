@@ -8,6 +8,7 @@ import {
   LoginWithEmailOTPEventEmit,
 } from "magic-sdk";
 import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
@@ -65,6 +66,12 @@ function LoginContent() {
     useAuthContext();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const blockedTarget = searchParams.get("next");
+  const supportHref = `/help?topic=login${
+    blockedTarget && isValidNextPath(blockedTarget)
+      ? `&from=${encodeURIComponent(blockedTarget)}`
+      : ""
+  }`;
 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -272,6 +279,13 @@ function LoginContent() {
             New here? Enter your email above - we&apos;ll create your account
             automatically with{" "}
             <strong className="text-fg">20 free credits</strong>
+          </p>
+
+          <p className="mt-5 text-center text-xs text-muted">
+            Trouble signing in?{" "}
+            <Link href={supportHref} className="text-accent hover:text-fg transition-colors">
+              Contact support
+            </Link>
           </p>
         </>
       )}

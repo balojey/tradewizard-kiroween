@@ -22,6 +22,7 @@ import { useMarketTradePerformance, type TradeOutcome } from '@/hooks/useMarketT
 import { useAgentAccuracy } from '@/hooks/useAgentAccuracy';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { Badge } from '@/components/ui/Badge';
+import { AnalysisSupportButton } from '@/components/support/AnalysisSupportButton';
 import { cn } from '@/utils/classNames';
 import {
   AlertTriangle,
@@ -1203,7 +1204,18 @@ function MarketBrief({ market }: { market: PolymarketMarket }) {
 
 // ─── Analysis History Panel ─────────────────────────────────────────────────
 
-function AnalysisHistoryPanel({ marketId, conditionId }: { marketId: string | null; conditionId: string | null; yesTokenId?: string | null }) {
+function AnalysisHistoryPanel({
+  marketId,
+  conditionId,
+  marketSlug,
+  marketQuestion,
+}: {
+  marketId: string | null;
+  conditionId: string | null;
+  marketSlug?: string;
+  marketQuestion?: string;
+  yesTokenId?: string | null;
+}) {
   const {
     data,
     isLoading,
@@ -1285,6 +1297,8 @@ function AnalysisHistoryPanel({ marketId, conditionId }: { marketId: string | nu
                     <TimelineEntry
                       key={item.analysisId}
                       item={item}
+                      marketSlug={marketSlug}
+                      marketQuestion={marketQuestion}
                       isLatest={idx === 0}
                       isExpanded={expandedId === item.analysisId}
                       onToggle={() =>
@@ -1348,9 +1362,18 @@ interface TimelineEntryProps {
   isLatest: boolean;
   isExpanded: boolean;
   onToggle: () => void;
+  marketSlug?: string;
+  marketQuestion?: string;
 }
 
-function TimelineEntry({ item, isLatest, isExpanded, onToggle }: TimelineEntryProps) {
+function TimelineEntry({
+  item,
+  isLatest,
+  isExpanded,
+  onToggle,
+  marketSlug,
+  marketQuestion,
+}: TimelineEntryProps) {
   const recLabel =
     item.recommendation === 'LONG_YES'
       ? 'BUY YES'
@@ -1427,8 +1450,16 @@ function TimelineEntry({ item, isLatest, isExpanded, onToggle }: TimelineEntryPr
           </button>
 
           {isExpanded && (
-            <div className="mt-3">
+            <div className="mt-3 space-y-3">
               <AnalysisHistoryDetail analysisId={item.analysisId} />
+              <AnalysisSupportButton
+                marketSlug={marketSlug}
+                marketId={item.marketId}
+                analysisId={item.analysisId}
+                recommendation={item.recommendation}
+                marketQuestion={marketQuestion ?? item.marketQuestion}
+                label="Something wrong with this run? Report it"
+              />
             </div>
           )}
         </div>
@@ -2741,6 +2772,7 @@ export default function MarketDetailPage() {
           <div className="min-w-0 space-y-3 lg:sticky lg:top-[72px] lg:col-start-2 lg:row-span-4 lg:row-start-1 lg:self-start">
             <AIPanel
               marketSlug={marketId ?? ''}
+              marketQuestion={market.question}
               yesCents={getYesProbability(marketWithPrices!)}
               onQuickBuy={(side) => setTradeModal({ side })}
               onRequestAnalysis={() => setIsAnalysisModalOpen(true)}
@@ -2776,6 +2808,8 @@ export default function MarketDetailPage() {
               marketId={marketId}
               conditionId={conditionId}
               yesTokenId={yesTokenId}
+              marketSlug={market.slug}
+              marketQuestion={market.question}
             />
           </div>
         </div>

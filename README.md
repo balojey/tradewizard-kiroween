@@ -146,6 +146,13 @@ Every `NO_TRADE` persists a machine-readable reason (`consensus_failed`, `diverg
 - Probability shift threshold (0.01–1.00)
 - Webhook URL validation (HTTPS required)
 
+### Customer Support
+- Contextual help from an analysis verdict, a Portfolio Manager session, the nav, or the login screen
+- Public help pages and tokenised ticket threads (`/help`, `/help/t/[ref]`)
+- Signed-in ticket history under `/account/support`
+- Tickets carry a context snapshot (market, analysis, session, plan) so support sees the artifact, not just a description
+- Admin inbox with claim/release, guarded replies, SLA flags, and hourly housekeeping
+
 ### Autonomous Portfolio Manager
 - Six personas: Sniper, Scalper, Contrarian, Catalyst Hunter, Hedge Architect, Momentum Rider
 - User-chosen market, capital envelope, and persona; the agent cannot change them
@@ -318,6 +325,7 @@ tradewizard-kiroween/
 
 ### Product and architecture
 - [docs/tradewizard-overview.md](docs/tradewizard-overview.md) - Product and system overview
+- [docs/support-tickets-plan.md](docs/support-tickets-plan.md) - Customer support ticket design and delivery log
 - [docs/TradeWizard.md](docs/TradeWizard.md) - Original product specification
 - [docs/TradeWizard V2 — Platform Architecture & New Direction.md](docs/TradeWizard%20V2%20—%20Platform%20Architecture%20&%20New%20Direction.md) - V2 architecture direction
 - [docs/TradeWizard Debate Protocol.md](docs/TradeWizard%20Debate%20Protocol.md) - Multi-agent debate protocol

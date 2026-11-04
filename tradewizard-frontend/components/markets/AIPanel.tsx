@@ -7,11 +7,13 @@ import { Modal } from '@/components/ui/Modal';
 import { useMarketAnalysis } from '@/hooks/useMarketAnalysis';
 import { useAnalysisStatus, type AnalysisStatus } from '@/hooks/useAnalysisStatus';
 import { useAnalysisSubscriptions, useCancelAnalysisSubscription } from '@/hooks/useAnalysisSubscriptions';
+import { AnalysisSupportButton } from '@/components/support/AnalysisSupportButton';
 import { cn } from '@/utils/classNames';
 import { AlertTriangle, ArrowDown, ArrowUp, Brain, ChevronRight, Sparkles } from 'lucide-react';
 
 interface AIPanelProps {
   marketSlug: string;
+  marketQuestion?: string;
   /** Live YES token price in cents (0–100) from Polymarket API */
   yesCents?: number;
   onQuickBuy?: (side: 'yes' | 'no') => void;
@@ -20,7 +22,7 @@ interface AIPanelProps {
   disabled?: boolean;
 }
 
-export function AIPanel({ marketSlug, yesCents: liveYesCents, onQuickBuy, onRequestAnalysis, disabled = false }: AIPanelProps) {
+export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, onQuickBuy, onRequestAnalysis, disabled = false }: AIPanelProps) {
   const { data: analysis, isLoading: analysisLoading } = useMarketAnalysis(marketSlug);
   const analysisStatus = useAnalysisStatus(marketSlug);
   const [webResearchOpen, setWebResearchOpen] = useState(false);
@@ -389,6 +391,17 @@ export function AIPanel({ marketSlug, yesCents: liveYesCents, onQuickBuy, onRequ
             disabled={disabled}
           />
           <RecurringScheduleIndicator marketId={marketSlug} />
+        </div>
+
+        <div className="flex justify-center border-t border-border/60 px-4 py-3">
+          <AnalysisSupportButton
+            marketSlug={marketSlug}
+            marketId={analysis.marketId}
+            analysisId={analysis.analysisId}
+            recommendation={analysis.action}
+            marketQuestion={marketQuestion}
+            label="Something wrong with this verdict? Report it"
+          />
         </div>
       </div>
     </section>

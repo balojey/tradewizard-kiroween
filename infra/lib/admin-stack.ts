@@ -131,6 +131,15 @@ export class AdminStack extends cdk.Stack {
     // that can spare it.
     const reservedConcurrency = Number(process.env.ADMIN_API_RESERVED_CONCURRENCY ?? '0');
 
+    // Support replies are the only customer-facing email the portal sends. The
+    // sender is shared with the product (`shared/support-email.ts`) so the copy
+    // and the no-Reply-To rule cannot drift between surfaces.
+    const supportResendSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'SupportResendApiKey',
+      resourceName(config.envName, 'resend-api-key')
+    );
+
     this.adminApiHandler = new lambdaNode.NodejsFunction(this, 'AdminApiHandler', {
       functionName: resourceName(config.envName, 'admin-api'),
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -168,6 +177,13 @@ export class AdminStack extends cdk.Stack {
           .map((name) => resourceName(config.envName, name))
           .join(','),
         ADMIN_ALLOWED_ORIGINS: allowedOrigins.join(','),
+        EMAIL_PROVIDER: process.env.EMAIL_PROVIDER || 'resend',
+        RESEND_API_KEY_SECRET_ARN: supportResendSecret.secretArn,
+        RESEND_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
+        // No Reply-To until inbound email exists (support plan §5).
+        RESEND_REPLY_TO: '',
+        SES_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
+        APP_URL: process.env.APP_URL || (isProd ? 'https://tradewizard.live' : 'http://localhost:3000'),
       },
       bundling: {
         minify: isProd,
@@ -177,6 +193,7 @@ export class AdminStack extends cdk.Stack {
     });
 
     dbSecret.grantRead(this.adminApiHandler);
+    supportResendSecret.grantRead(this.adminApiHandler);
 
     // Membership management: admin-api reads and mutates Cognito groups.
     this.adminApiHandler.addToRolePolicy(
@@ -401,6 +418,38 @@ export class AdminStack extends cdk.Stack {
       schedule: events.Schedule.rate(cdk.Duration.hours(1)),
       targets: [new targets.LambdaFunction(rollupHandler)],
       description: 'Hourly management portal metrics rollup',
+    });
+
+    // ─── Support housekeeping (hourly) ────────────────────────────────────────
+
+    const supportHousekeeping = new lambdaNode.NodejsFunction(
+      this,
+      'SupportHousekeepingHandler',
+      {
+        functionName: resourceName(config.envName, 'support-housekeeping'),
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: 'services/support-housekeeping/handler.ts',
+        handler: 'handler',
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 256,
+        environment: {
+          ENVIRONMENT: config.envName,
+          DB_SECRET_ARN: dbSecret.secretArn,
+          DB_HOST: dbEndpoint,
+          DB_NAME: 'tradewizard',
+        },
+        bundling: { minify: isProd, sourceMap: !isProd },
+        description: 'Releases stale support claims and closes old resolved tickets',
+      }
+    );
+
+    dbSecret.grantRead(supportHousekeeping);
+
+    new events.Rule(this, 'SupportHousekeepingSchedule', {
+      ruleName: resourceName(config.envName, 'support-housekeeping'),
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      targets: [new targets.LambdaFunction(supportHousekeeping)],
+      description: 'Hourly support ticket housekeeping',
     });
 
     // ─── Denial metric + alarm ────────────────────────────────────────────────

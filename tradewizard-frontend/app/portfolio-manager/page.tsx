@@ -9,8 +9,10 @@ import {
   ChevronRight,
   History,
   ListChecks,
+  LifeBuoy,
 } from 'lucide-react';
 import { AppShell } from '@/components/shell/AppShell';
+import { SupportDialog } from '@/components/support/SupportDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -375,6 +377,7 @@ function SessionCard({
   const pauseSession = usePauseSession();
   const resumeSession = useResumeSession();
   const stopSession = useStopSession();
+  const [supportOpen, setSupportOpen] = useState(false);
 
   const { data: liveMarket } = useQuery<{
     question: string;
@@ -515,8 +518,7 @@ function SessionCard({
         </div>
       </div>
 
-      {(session.status === 'active' || session.status === 'paused') && (
-        <div className="flex items-center gap-2 border-t border-border/40 px-4 pb-3.5 pt-2.5 sm:px-5">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/40 px-4 pb-3.5 pt-2.5 sm:px-5">
           {session.status === 'active' && (
             <Button
               variant="secondary"
@@ -545,20 +547,54 @@ function SessionCard({
               Resume
             </Button>
           )}
-          <Button
-            variant="danger"
-            size="sm"
+          {(session.status === 'active' || session.status === 'paused') && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                stopSession.mutate(session.id);
+              }}
+              loading={stopSession.isPending}
+              aria-label="Stop session"
+            >
+              Stop
+            </Button>
+          )}
+
+          <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
-              stopSession.mutate(session.id);
+              setSupportOpen(true);
             }}
-            loading={stopSession.isPending}
-            aria-label="Stop session"
+            className="ml-auto inline-flex items-center gap-1.5 text-[0.68rem] text-muted transition-colors hover:text-fg"
           >
-            Stop
-          </Button>
-        </div>
-      )}
+            <LifeBuoy className="h-3.5 w-3.5" aria-hidden="true" />
+            Get help
+          </button>
+      </div>
+
+      <SupportDialog
+        open={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        defaultTopic="portfolio"
+        context={{
+          page: '/portfolio-manager',
+          sessionId: session.id,
+          marketId: session.marketId,
+        }}
+        contextSummary={[
+          { label: 'Session', value: session.id.slice(0, 8) },
+          { label: 'Status', value: getDisplayStatus(session) },
+          { label: 'Persona', value: session.personaName },
+          {
+            label: 'Market',
+            value:
+              marketTitle.length > 48 ? `${marketTitle.slice(0, 45)}…` : marketTitle,
+          },
+        ]}
+      />
     </div>
   );
 }

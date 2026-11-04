@@ -56,6 +56,7 @@ export class ComputeStack extends cdk.Stack {
   public readonly webhookDeliveryHandler: lambdaNode.NodejsFunction;
   public readonly notificationPrefsHandler: lambdaNode.NodejsFunction;
   public readonly subscriptionApiHandler: lambdaNode.NodejsFunction;
+  public readonly supportApiHandler: lambdaNode.NodejsFunction;
   public readonly resultsApiHandler: lambdaNode.NodejsFunction;
   public readonly subscriptionRenewalHandler: lambdaNode.NodejsFunction;
   public readonly portfolioActivationHandler: lambdaNode.NodejsFunction;
@@ -1079,6 +1080,52 @@ export class ComputeStack extends cdk.Stack {
     // Grant DB secret access for user provisioning
     dbSecret.grantRead(magicSyncHandler);
 
+    // ─── Support API ──────────────────────────────────────────────────────────
+    //
+    // Public ticket intake plus tokenised thread access. The submit and thread
+    // routes are AuthorizationType.NONE (an anonymous requester has no token),
+    // so the handler verifies an optional bearer itself. See
+    // docs/support-tickets-plan.md §4.
+
+    const supportIpPepperSecret = new secretsmanager.Secret(this, 'SupportIpPepperSecret', {
+      secretName: resourceName(config.envName, 'support-ip-pepper'),
+      description: 'Pepper used to pseudonymise requester IP addresses on support tickets',
+      generateSecretString: { passwordLength: 32, excludePunctuation: true },
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    this.supportApiHandler = new lambdaNode.NodejsFunction(this, 'SupportApiHandler', {
+      functionName: resourceName(config.envName, 'support-api'),
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: 'services/support-api/handler.ts',
+      handler: 'handler',
+      timeout: lambdaTimeout,
+      memorySize: 256,
+      environment: {
+        ...sharedEnv,
+        ...emailProviderEnv,
+        // Support mail comes from its own address; no Reply-To until inbound
+        // email exists (docs/support-tickets-plan.md §5).
+        RESEND_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
+        SES_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
+        RESEND_REPLY_TO: '',
+        USER_POOL_ID: userPool.userPoolId,
+        FRONTEND_CLIENT_ID: frontendClientId,
+        APP_URL: process.env.APP_URL || (isProd ? 'https://tradewizard.live' : 'http://localhost:3000'),
+        SUPPORT_IP_PEPPER_SECRET_ARN: supportIpPepperSecret.secretArn,
+      },
+      bundling: {
+        minify: isProd,
+        sourceMap: !isProd,
+      },
+      description: 'Public support ticket intake and tokenised thread access',
+    });
+
+    dbSecret.grantRead(this.supportApiHandler);
+    resendApiKeySecret.grantRead(this.supportApiHandler);
+    supportIpPepperSecret.grantRead(this.supportApiHandler);
+    rateLimitTable.grantReadWriteData(this.supportApiHandler);
+
     // ─── REST API Routes & Lambda Integrations ──────────────────────────────────
     // All routes defined here (same stack as Lambdas) to avoid cross-stack cycles.
 
@@ -1189,6 +1236,28 @@ export class ComputeStack extends cdk.Stack {
     // /auth/magic-sync (no Cognito auth - called before user has Cognito tokens)
     const auth = this.restApi.root.addResource('auth');
     auth.addResource('magic-sync').addMethod('POST', new apigateway.LambdaIntegration(magicSyncHandler, { proxy: true }), {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
+
+    // /support
+    //
+    // POST (submit) and the thread routes are unauthenticated at the gateway
+    // because anonymous requesters are supported; the Lambda verifies an optional
+    // bearer and the emailed token. Only "my tickets" requires Cognito.
+    const support = this.restApi.root.addResource('support');
+    const supportTickets = support.addResource('tickets');
+    const supportIntegration = new apigateway.LambdaIntegration(this.supportApiHandler, { proxy: true });
+
+    supportTickets.addMethod('POST', supportIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
+    supportTickets.addMethod('GET', supportIntegration, authMethodOptions);
+
+    const supportTicketByRef = supportTickets.addResource('{ref}');
+    supportTicketByRef.addMethod('GET', supportIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
+    supportTicketByRef.addResource('messages').addMethod('POST', supportIntegration, {
       authorizationType: apigateway.AuthorizationType.NONE,
     });
 

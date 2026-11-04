@@ -441,3 +441,59 @@ export interface AdminMember {
   roleRank: number;
   groups: string[];
 }
+
+export interface SupportTicketRow {
+  id: string;
+  ref: string;
+  subject: string;
+  status: "open" | "pending" | "resolved" | "closed";
+  priority: "low" | "normal" | "high" | "urgent";
+  topic: string;
+  requesterEmail: string;
+  assignedAdminSub: string | null;
+  createdAt: string;
+  lastMessageAt: string;
+  firstResponseAt: string | null;
+  overdue: boolean;
+  marketId: string | null;
+}
+
+export interface SupportTicketDetail extends SupportTicketRow {
+  body: string;
+  context: Record<string, string>;
+  userId: string | null;
+  assignedAt: string | null;
+  confirmationSent: boolean;
+  lastCustomerNotifiedAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+}
+
+export interface SupportMessage {
+  id: string;
+  authorType: "customer" | "admin" | "system";
+  authorAdminEmail: string | null;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+}
+
+export interface SupportTicketDetailPayload {
+  ticket: SupportTicketDetail;
+  messages: SupportMessage[];
+  requester: {
+    userId: string | null;
+    status: string | null;
+    plan: string | null;
+    createdAt: string | null;
+  };
+  canReply: boolean;
+}
+
+export interface SupportSummary {
+  open: number;
+  pending: number;
+  unassigned: number;
+  overdue: number;
+  slaHours: number;
+}

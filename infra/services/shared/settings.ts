@@ -51,6 +51,23 @@ export const SETTINGS: Record<string, SettingDefinition> = {
       'Refuse new portfolio-manager activations. Existing sessions keep trading unless the kill switch is used.',
     consumer: 'portfolio-activation',
   },
+  support_first_response_target_hours: {
+    key: 'support_first_response_target_hours',
+    type: 'string',
+    defaultValue: '24',
+    description:
+      'Target hours to first reply. Drives the overdue flag in the support inbox.',
+    consumer: 'admin support inbox',
+    allowed: ['4', '8', '12', '24', '48', '72'],
+  },
+  support_enabled: {
+    key: 'support_enabled',
+    type: 'boolean',
+    defaultValue: true,
+    description:
+      'Accept new support requests from the product. When off, the form hides and the endpoint returns 503.',
+    consumer: 'support-api',
+  },
   analysis_pause_message: {
     key: 'analysis_pause_message',
     type: 'string',

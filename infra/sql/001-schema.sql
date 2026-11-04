@@ -964,3 +964,131 @@ CREATE INDEX IF NOT EXISTS idx_admin_plan_overrides_expiry
 CREATE UNIQUE INDEX IF NOT EXISTS idx_no_duplicate_admin_refund
   ON credit_transactions (user_id, reference_id)
   WHERE reason = 'admin_refund';
+
+-- ============================================================================
+-- CUSTOMER SUPPORT TICKETS
+--
+-- In-product support: a ticket carries a snapshot of what the customer was
+-- looking at, so an answer does not depend on the analysis still existing.
+-- Anonymous requesters are supported: `user_id` is NULL and the emailed token
+-- (stored hashed) is the only way to read the thread.
+--
+-- Design notes live in docs/support-tickets-plan.md. Do not add columns here
+-- without a consumer in the same change.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ref TEXT NOT NULL UNIQUE,
+  requester_email TEXT NOT NULL,
+  -- Deleting an account must not leave its support history behind.
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  topic TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  priority TEXT NOT NULL DEFAULT 'normal',
+  subject TEXT NOT NULL,
+  -- First message, duplicated here so the inbox list does not join messages.
+  body TEXT NOT NULL,
+  context JSONB NOT NULL DEFAULT '{}'::jsonb,
+  context_hash TEXT,
+  app_version TEXT,
+  request_id TEXT,
+  assigned_admin_sub TEXT,
+  assigned_at TIMESTAMPTZ,
+  confirmation_sent BOOLEAN NOT NULL DEFAULT false,
+  last_customer_notified_at TIMESTAMPTZ,
+  first_response_at TIMESTAMPTZ,
+  last_message_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at TIMESTAMPTZ,
+  closed_at TIMESTAMPTZ,
+  access_token_hash TEXT NOT NULL,
+  access_token_expires_at TIMESTAMPTZ NOT NULL,
+  ip_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_support_topic
+    CHECK (topic IN ('analysis', 'portfolio', 'billing', 'login', 'data', 'other')),
+  CONSTRAINT valid_support_status
+    CHECK (status IN ('open', 'pending', 'resolved', 'closed')),
+  CONSTRAINT valid_support_priority
+    CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
+);
+
+-- A retried submit must return the original ticket, not create a second one.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_support_request_idempotency
+  ON support_tickets (requester_email, request_id)
+  WHERE request_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status
+  ON support_tickets (status, last_message_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user
+  ON support_tickets (user_id, created_at DESC);
+
+-- Duplicate-submission detection: same requester, same context, last 10 minutes.
+CREATE INDEX IF NOT EXISTS idx_support_tickets_context
+  ON support_tickets (requester_email, context_hash);
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_ref
+  ON support_tickets (ref);
+
+-- Stale-claim release scans for assigned tickets with no recent activity.
+CREATE INDEX IF NOT EXISTS idx_support_tickets_assignment
+  ON support_tickets (assigned_admin_sub, last_message_at)
+  WHERE assigned_admin_sub IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS support_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  author_type TEXT NOT NULL,
+  author_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  author_admin_sub TEXT,
+  author_admin_email TEXT,
+  body TEXT NOT NULL,
+  -- Internal notes never email and never appear in the customer thread.
+  is_internal BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_support_author
+    CHECK (author_type IN ('customer', 'admin', 'system'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_messages_ticket
+  ON support_messages (ticket_id, created_at);
+
+-- A retried customer reply must not appear twice in the thread.
+ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS request_id TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_support_message_idempotency
+  ON support_messages (ticket_id, request_id)
+  WHERE request_id IS NOT NULL;
+
+-- ----------------------------------------------------------------------------
+-- Multiple valid thread links per ticket
+--
+-- A reply used to rotate the single stored hash, which silently invalidated
+-- every earlier email. Customers scroll back and click the first one, so links
+-- are now additive: each email issues a token, all unexpired tokens work, and
+-- housekeeping deletes the old ones.
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS support_thread_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_thread_tokens_ticket
+  ON support_thread_tokens (ticket_id, expires_at);
+
+-- Backfill links that were issued before this table existed, then retire the
+-- single-hash columns so there is exactly one source of truth.
+INSERT INTO support_thread_tokens (ticket_id, token_hash, expires_at)
+SELECT id, access_token_hash, access_token_expires_at
+  FROM support_tickets
+ WHERE access_token_hash IS NOT NULL
+ON CONFLICT (token_hash) DO NOTHING;
+
+ALTER TABLE support_tickets DROP COLUMN IF EXISTS access_token_hash;
+ALTER TABLE support_tickets DROP COLUMN IF EXISTS access_token_expires_at;

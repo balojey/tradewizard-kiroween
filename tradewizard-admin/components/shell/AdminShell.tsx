@@ -51,7 +51,7 @@ export function AdminShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-[6px] focus:border focus:border-accent focus:bg-surface focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-fg"
@@ -65,7 +65,10 @@ export function AdminShell({
         <Topbar identity={identity} />
         <MobileNav identity={identity} />
 
-        <main id="main" className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-6 lg:px-8">
+        <main
+          id="main"
+          className="min-w-0 flex-1 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 md:px-6 md:pt-6 lg:px-8"
+        >
           {children}
         </main>
       </div>
