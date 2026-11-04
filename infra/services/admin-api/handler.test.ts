@@ -23,6 +23,10 @@ const {
   supportQueries,
   supportEmailMock,
   supportTokensMock,
+  newsletterQueries,
+  newsletterEmailMock,
+  newsletterRenderMock,
+  newsletterTokenMock,
   auditMock,
   presignMock,
   clientState,
@@ -155,6 +159,29 @@ const {
   supportTokensMock: {
     issueThreadToken: vi.fn(),
   },
+  newsletterQueries: {
+    listCampaigns: vi.fn(),
+    getCampaign: vi.fn(),
+    createCampaign: vi.fn(),
+    updateCampaign: vi.fn(),
+    countAudience: vi.fn(),
+    claimCampaign: vi.fn(),
+    snapshotRecipients: vi.fn(),
+    cancelCampaign: vi.fn(),
+    campaignSummary: vi.fn(),
+    deliveryBreakdown: vi.fn(),
+    listSubscribers: vi.fn(),
+  },
+  newsletterEmailMock: {
+    sendEmail: vi.fn(),
+    sendEmailBatch: vi.fn(),
+  },
+  newsletterRenderMock: {
+    renderNewsletter: vi.fn(),
+  },
+  newsletterTokenMock: {
+    createUnsubscribeToken: vi.fn(),
+  },
   auditMock: {
     withAudit: vi.fn(),
     writeAuditLog: vi.fn(),
@@ -228,6 +255,10 @@ vi.mock('./queries/members', () => memberQueries);
 vi.mock('./queries/support', () => supportQueries);
 vi.mock('../shared/support-email', () => supportEmailMock);
 vi.mock('../shared/support-tickets', () => supportTokensMock);
+vi.mock('./queries/newsletter', () => newsletterQueries);
+vi.mock('../shared/email', () => newsletterEmailMock);
+vi.mock('../shared/newsletter-render', () => newsletterRenderMock);
+vi.mock('../shared/newsletter-token', () => newsletterTokenMock);
 
 vi.mock('./lib/s3', () => ({
   presignPayloadUrl: presignMock,
@@ -299,6 +330,16 @@ const ROUTE_MATRIX: Array<{
   { method: 'POST', path: '/admin/analyses/requeue', minimumRole: 'admin' },
   { method: 'GET', path: '/admin/settings', minimumRole: 'admin' },
   { method: 'PUT', path: '/admin/settings/{key}', minimumRole: 'owner' },
+  { method: 'GET', path: '/admin/newsletter/summary', minimumRole: 'admin' },
+  { method: 'GET', path: '/admin/newsletter/subscribers', minimumRole: 'admin' },
+  { method: 'GET', path: '/admin/newsletter/campaigns', minimumRole: 'admin' },
+  { method: 'GET', path: '/admin/newsletter/campaigns/{id}', minimumRole: 'admin' },
+  { method: 'POST', path: '/admin/newsletter/campaigns', minimumRole: 'admin' },
+  { method: 'PUT', path: '/admin/newsletter/campaigns/{id}', minimumRole: 'admin' },
+  { method: 'POST', path: '/admin/newsletter/campaigns/{id}/preview', minimumRole: 'admin' },
+  { method: 'POST', path: '/admin/newsletter/campaigns/{id}/test', minimumRole: 'admin' },
+  { method: 'POST', path: '/admin/newsletter/campaigns/{id}/send', minimumRole: 'owner' },
+  { method: 'POST', path: '/admin/newsletter/campaigns/{id}/cancel', minimumRole: 'owner' },
   { method: 'GET', path: '/admin/support/summary', minimumRole: 'support' },
   { method: 'GET', path: '/admin/support/tickets', minimumRole: 'support' },
   { method: 'GET', path: '/admin/support/tickets/{id}', minimumRole: 'support' },
@@ -317,6 +358,7 @@ const QUERY_FNS = [
   ...Object.values(analysisQueries),
   ...Object.values(portfolioQueries),
   ...Object.values(supportQueries),
+  ...Object.values(newsletterQueries),
 ];
 
 function resolvePath(template: string): string {
@@ -336,6 +378,20 @@ function makeEvent(
   const path = rest.path ?? '/admin/me';
   // A body that satisfies each mutation's schema. Read routes ignore it.
   const REASON = 'matrix test reason';
+  const NEWSLETTER_CONTENT = {
+    heroTitle: 'Five markets the agents liked',
+    intro: 'Three markets moved, one was a miss, and one is still open.',
+    picks: [
+      {
+        question: 'Will the Fed cut rates in December?',
+        aiProbability: 68,
+        marketProbability: 54,
+        read: 'The agents see a stronger case for a cut than the market price implies.',
+        url: 'https://tradewizard.live/markets/fed-cut',
+      },
+    ],
+    closing: 'That is the week. Reply to this email if you want a market covered.',
+  };
   const bodyFor = (routePath: string): string => {
     if (routePath.endsWith('/credits')) return JSON.stringify({ amount: 10, reason: REASON });
     if (routePath.endsWith('/status')) return JSON.stringify({ status: 'suspended', reason: REASON });
@@ -343,6 +399,29 @@ function makeEvent(
       return JSON.stringify({ plan: 'pro', expiresAt: null, reason: REASON });
     if (routePath.includes('/settings/'))
       return JSON.stringify({ value: true, reason: REASON });
+    if (routePath.includes('/newsletter/campaigns/{id}/preview')) {
+      return JSON.stringify({
+        subject: 'Five markets the agents liked',
+        template: 'market_brief',
+        content: NEWSLETTER_CONTENT,
+      });
+    }
+    if (routePath.endsWith('/newsletter/campaigns')) {
+      return JSON.stringify({
+        subject: 'Five markets the agents liked',
+        template: 'market_brief',
+        content: NEWSLETTER_CONTENT,
+        reason: REASON,
+      });
+    }
+    if (routePath.endsWith('/newsletter/campaigns/{id}')) {
+      return JSON.stringify({
+        subject: 'Five markets the agents liked',
+        template: 'market_brief',
+        content: NEWSLETTER_CONTENT,
+        reason: REASON,
+      });
+    }
     if (routePath.endsWith('/support/tickets/{id}/messages'))
       return JSON.stringify({ body: 'a support reply', internal: false });
     if (routePath.endsWith('/support/tickets/{id}'))
@@ -401,6 +480,7 @@ beforeEach(() => {
   // Required for the kill-switch dispatch path.
   process.env.RISK_ENGINE_FUNCTION_NAME = 'tw-dev-portfolio-risk-engine';
   process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
+  process.env.NEWSLETTER_SEND_FUNCTION_NAME = 'tw-dev-newsletter-send';
 
   getUserIdMock.mockReset();
   getUserIdMock.mockResolvedValue('user-uuid-1');
@@ -473,6 +553,22 @@ beforeEach(() => {
     skipped: 0,
     totalRecipients: 2,
   });
+
+  newsletterQueries.listCampaigns.mockResolvedValue({ items: [], nextCursor: null });
+  newsletterQueries.campaignSummary.mockResolvedValue({ drafts: 0, sending: 0, sent: 0, subscribers: 3, unsubscribed: 1, suppressed: 0 });
+  newsletterQueries.listSubscribers.mockResolvedValue({ items: [], nextCursor: null });
+  newsletterQueries.getCampaign.mockResolvedValue(null);
+  newsletterQueries.createCampaign.mockResolvedValue({ id: 'campaign-1', subject: 'Subject' });
+  newsletterQueries.updateCampaign.mockResolvedValue({ id: 'campaign-1', subject: 'Subject', template: 'market_brief' });
+  newsletterQueries.countAudience.mockResolvedValue(3);
+  newsletterQueries.claimCampaign.mockResolvedValue({ id: 'campaign-1', status: 'sending' });
+  newsletterQueries.snapshotRecipients.mockResolvedValue(3);
+  newsletterQueries.cancelCampaign.mockResolvedValue({ id: 'campaign-1', status: 'cancelled' });
+  newsletterQueries.deliveryBreakdown.mockResolvedValue({ queued: 3 });
+  newsletterRenderMock.renderNewsletter.mockResolvedValue({ html: '<html></html>', text: 'text' });
+  newsletterTokenMock.createUnsubscribeToken.mockResolvedValue('token-1');
+  newsletterEmailMock.sendEmail.mockResolvedValue({ provider: 'resend', messageId: 'msg-1' });
+  newsletterEmailMock.sendEmailBatch.mockResolvedValue({ provider: 'resend', messageIds: [] });
 
   supportQueries.listTickets.mockResolvedValue({ items: [], nextCursor: null });
   supportQueries.summaryCounts.mockResolvedValue({ open: 0, pending: 0, unassigned: 0, overdue: 0 });
@@ -1258,6 +1354,7 @@ describe('billing and agents', () => {
 
   it('requeues an analysis as a scheduled fire', async () => {
     process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
+  process.env.NEWSLETTER_SEND_FUNCTION_NAME = 'tw-dev-newsletter-send';
 
     const response = await handler(
       makeEvent({
@@ -1279,6 +1376,7 @@ describe('billing and agents', () => {
 
   it('refuses to requeue while an analysis is already in flight', async () => {
     process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
+  process.env.NEWSLETTER_SEND_FUNCTION_NAME = 'tw-dev-newsletter-send';
     dedupMock.checkInFlight.mockResolvedValue('existing-request');
 
     const response = await handler(
@@ -1828,5 +1926,226 @@ describe('support inbox', () => {
 
     expect(response.statusCode).toBe(403);
     expect(supportQueries.updateTicket).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Newsletter campaigns ────────────────────────────────────────────────────
+
+function validNewsletterContent() {
+  return {
+    heroTitle: 'Five markets the agents liked',
+    intro: 'Three markets moved, one was a miss, and one is still open.',
+    picks: [
+      {
+        question: 'Will the Fed cut rates in December?',
+        aiProbability: 68,
+        marketProbability: 54,
+        read: 'The agents see a stronger case for a cut than the market price implies.',
+        url: 'https://tradewizard.live/markets/fed-cut',
+      },
+    ],
+    closing: 'That is the week.',
+  };
+}
+
+function campaignFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: USER_ID,
+    subject: 'Five markets the agents liked',
+    preheader: 'What moved this week',
+    template: 'market_brief',
+    content: validNewsletterContent(),
+    status: 'draft',
+    recipientCount: 3,
+    sentCount: 0,
+    failedCount: 0,
+    createdBy: 'admin@example.com',
+    createdAt: '2026-11-04T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('newsletter campaigns', () => {
+  it('rejects content the renderer would refuse', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/newsletter/campaigns',
+        role: 'admin',
+        body: JSON.stringify({
+          subject: 'Subject line',
+          template: 'market_brief',
+          reason: 'drafting the weekly issue',
+          content: { heroTitle: 'x', intro: '', picks: [] },
+        }),
+      })
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(newsletterQueries.createCampaign).not.toHaveBeenCalled();
+  });
+
+  it('refuses to send with no confirmed subscribers', async () => {
+    newsletterQueries.countAudience.mockResolvedValue(0);
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/newsletter/campaigns/${USER_ID}/send`,
+        role: 'owner',
+        body: JSON.stringify({ reason: 'sending the first issue' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(newsletterQueries.claimCampaign).not.toHaveBeenCalled();
+  });
+
+  it('claims the campaign and dispatches the sender', async () => {
+    runAuditWork();
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/newsletter/campaigns/${USER_ID}/send`,
+        role: 'owner',
+        body: JSON.stringify({ reason: 'sending the first issue' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(202);
+    expect(newsletterQueries.claimCampaign).toHaveBeenCalled();
+    expect(newsletterQueries.snapshotRecipients).toHaveBeenCalled();
+    expect(lambdaMock.send).toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.objectContaining({ InvocationType: 'Event' }) })
+    );
+    expect((body(response) as { data: unknown }).data).toMatchObject({ recipients: 3 });
+  });
+
+  it('refuses a second send of an already-claimed campaign', async () => {
+    runAuditWork();
+    newsletterQueries.claimCampaign.mockResolvedValue(null);
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/newsletter/campaigns/${USER_ID}/send`,
+        role: 'owner',
+        body: JSON.stringify({ reason: 'trying to send twice' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(lambdaMock.send).not.toHaveBeenCalled();
+  });
+
+  it('previews unsaved content through the production renderer', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/newsletter/campaigns/${USER_ID}/preview`,
+        role: 'admin',
+        body: JSON.stringify({
+          subject: 'Draft subject',
+          template: 'market_brief',
+          content: validNewsletterContent(),
+        }),
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(newsletterRenderMock.renderNewsletter).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: 'Draft subject' })
+    );
+  });
+
+  it('sends a test from the newsletter address, only to the operator', async () => {
+    runAuditWork();
+    newsletterQueries.getCampaign.mockResolvedValue(campaignFixture());
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/newsletter/campaigns/${USER_ID}/test`,
+        role: 'admin',
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(newsletterEmailMock.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'admin@example.com',
+        from: 'news@tradewizard.live',
+        subject: '[TEST] Five markets the agents liked',
+      })
+    );
+  });
+
+  it('only lets an owner send', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/newsletter/campaigns/${USER_ID}/send`,
+        role: 'admin',
+        body: JSON.stringify({ reason: 'admin attempts to send' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(403);
+    expect(newsletterQueries.claimCampaign).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('newsletter subscribers', () => {
+  it('lists subscribers with suppression state', async () => {
+    newsletterQueries.listSubscribers.mockResolvedValue({
+      items: [
+        {
+          email: 'person@example.com',
+          status: 'subscribed',
+          source: 'signup_prompt',
+          userId: USER_ID,
+          confirmedAt: '2026-11-04T00:00:00.000Z',
+          unsubscribedAt: null,
+          suppressedReason: null,
+          createdAt: '2026-11-04T00:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+    });
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'GET',
+        path: '/admin/newsletter/subscribers',
+        role: 'admin',
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(newsletterQueries.listSubscribers).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: undefined }),
+      expect.anything()
+    );
+    expect((body(response) as { data: unknown }).data).toHaveLength(1);
+  });
+
+  it('passes the status filter through', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'GET',
+        path: '/admin/newsletter/subscribers',
+        role: 'admin',
+        queryStringParameters: { status: 'unsubscribed' },
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(newsletterQueries.listSubscribers).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'unsubscribed' }),
+      expect.anything()
+    );
   });
 });

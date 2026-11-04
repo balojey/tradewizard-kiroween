@@ -297,6 +297,8 @@ The compute stack deploys 26 Lambda functions (25 in the compute stack + 1 Cogni
 | `portfolio-analysis-consumer` | `services/portfolio-analysis-consumer/handler.ts` | EventBridge | Pauses portfolio sessions when their recurring analysis subscription is cancelled or paused |
 | `support-api` | `services/support-api/handler.ts` | API Gateway (product REST) | Customer support tickets: submit, list, tokenised thread access, replies |
 | `support-housekeeping` | `services/support-housekeeping/handler.ts` | EventBridge Scheduler (hourly) | Release stale claims, expire thread tokens, close resolved tickets |
+| `newsletter-api` | `services/newsletter-api/handler.ts` | API Gateway (product REST) + public web view | Consent, unsubscribe, campaign web view, signed Resend delivery webhooks |
+| `newsletter-send` | `services/newsletter-send/handler.ts` | Lambda invoke (admin API) | Batch campaign delivery with per-recipient idempotency and a failure stop |
 
 ### Lambda Environment Variables
 

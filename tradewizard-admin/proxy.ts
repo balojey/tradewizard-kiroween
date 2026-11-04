@@ -4,32 +4,18 @@ import type { NextRequest } from "next/server";
 /**
  * Route guard for the portal (Next 16 `proxy` convention, formerly `middleware`).
  *
- * This only checks that a token cookie exists and has not expired. It does NOT
- * verify the signature — that happens in the API authorizer, which is the real
- * security boundary. The proxy exists so an unauthenticated visitor sees a login
- * page instead of a shell that immediately fails.
+ * It checks for the presence of the session marker cookie only — no token, no
+ * signature, no expiration logic. The marker exists so an unauthenticated
+ * visitor sees the login page instead of a shell that immediately fails; the
+ * API authorizer is the real security boundary, and the client refreshes its
+ * short-lived ID token behind this marker.
  */
 
-const AUTH_COOKIE = "tw_admin_id_token";
-
-function hasValidCookie(request: NextRequest): boolean {
-  const token = request.cookies.get(AUTH_COOKIE)?.value;
-  if (!token) return false;
-
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
-    return typeof payload.exp === "number" && payload.exp * 1000 > Date.now();
-  } catch {
-    return false;
-  }
-}
+const SESSION_COOKIE = "tw_admin_session";
 
 export default function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const authed = hasValidCookie(request);
+  const authed = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
 
   if (pathname === "/login") {
     if (authed) {

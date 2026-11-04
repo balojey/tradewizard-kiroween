@@ -30,8 +30,9 @@ if it is not already there.
 ## What this package is allowed to do
 
 - Talk to the admin API with a Cognito ID token.
-- Keep that token in `sessionStorage`, mirrored to a cookie only so the route guard
-  (`proxy.ts`) can redirect before render.
+- Keep the session in `localStorage` (a 30-day Cognito refresh token, silently
+  refreshed), with a non-credential `tw_admin_session` cookie marker only so the
+  route guard (`proxy.ts`) can choose login vs shell before render.
 
 It must never contain: wallet/Magic SDK code, Polymarket clients, trading logic,
 or any on-chain capability. The portal asks the backend to act; it never acts.
@@ -42,7 +43,8 @@ Email + password + TOTP, direct to Cognito (`USER_PASSWORD_AUTH` on the admin
 client only). Admins can enrol an MFA device from the portal with a QR code, and
 a rejected fresh-auth challenge links back into the reauthentication flow.
 Bootstrapping an admin is a terminal task — see runbook §1. Admin accounts must
-be dedicated identities; do not reuse a customer or personal account.
+be dedicated identities; do not reuse a customer or personal account. Portal
+sessions last 30 days; sensitive actions still require a fresh sign-in.
 
 ## Current scope
 
@@ -60,6 +62,9 @@ the operational controls:
 - **Support** - customer ticket inbox with context snapshots, claim/release,
   guarded replies, SLA and overdue flags, and hourly housekeeping. Context links
   open the market in the product app and the analysis record in a dialog.
+- **Newsletter** - campaign list and composer with typed templates, renderer
+  preview, test sends, owner-only send with fresh auth, cancellation, and a
+  subscriber list with status, search, and suppression reasons.
 - **Settings** - audited runtime settings, each naming its consumer: pause new
   analysis, edit the pause message, override the AI provider without a redeploy,
   and pause new Portfolio Manager activations while existing sessions keep

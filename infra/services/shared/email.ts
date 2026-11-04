@@ -33,12 +33,16 @@ export type EmailProvider = 'resend' | 'ses';
 
 export interface EmailMessage {
   to: string | string[];
+  /** Override the sender (e.g. news@ for marketing test sends). */
+  from?: string;
   subject: string;
   html?: string;
   text?: string;
   replyTo?: string;
   /** Stable key so provider retries don't send duplicates (Resend only). */
   idempotencyKey?: string;
+  /** Extra MIME headers, e.g. List-Unsubscribe for marketing mail. */
+  headers?: Record<string, string>;
 }
 
 export interface EmailSendResult {
@@ -49,10 +53,12 @@ export interface EmailSendResult {
 interface NormalizedEmailMessage {
   to: string[];
   subject: string;
+  from?: string;
   html?: string;
   text?: string;
   replyTo?: string;
   idempotencyKey?: string;
+  headers?: Record<string, string>;
 }
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -115,6 +121,104 @@ export async function sendEmail(
   return sendViaSes(normalized);
 }
 
+// ─── Batch ──────────────────────────────────────────────────────────────────────
+
+export interface EmailBatchResult {
+  provider: EmailProvider;
+  messageIds: string[];
+}
+
+/**
+ * Send several independently addressed emails in one provider call.
+ *
+ * Resend's batch endpoint accepts up to 100 messages per request and takes the
+ * account rate limit off the critical path: 10k recipients become 100 calls
+ * rather than 10k. Every message still carries its own subject, body and headers.
+ */
+export async function sendEmailBatch(messages: EmailMessage[]): Promise<EmailBatchResult> {
+  if (messages.length === 0) return { provider: resolveEmailProvider(), messageIds: [] };
+  if (messages.length > 100) {
+    throw new Error('Resend batch accepts at most 100 messages per call.');
+  }
+
+  const provider = resolveEmailProvider();
+
+  if (provider === 'ses') {
+    const ids: string[] = [];
+    for (const message of messages) {
+      const result = await sendEmail(message);
+      ids.push(result.messageId ?? '');
+    }
+    return { provider, messageIds: ids };
+  }
+
+  const normalized = messages.map(normalizeMessage);
+  const apiKey = await getResendApiKey();
+
+  const payload = normalized.map((message) => {
+    const entry: Record<string, unknown> = {
+      from: formatFromAddress(
+        message.from || process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL
+      ),
+      to: message.to,
+      subject: message.subject,
+    };
+
+    if (message.html) entry.html = message.html;
+    if (message.text) entry.text = message.text;
+    if (message.headers && Object.keys(message.headers).length > 0) {
+      entry.headers = message.headers;
+    }
+
+    const replyTo = message.replyTo || (process.env.RESEND_REPLY_TO || '').trim();
+    if (replyTo) entry.reply_to = replyTo;
+
+    return entry;
+  });
+
+  let response: Response;
+  try {
+    response = await fetch(`${RESEND_API_URL}/batch`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(RESEND_REQUEST_TIMEOUT_MS * 3),
+    });
+  } catch (error) {
+    throw new Error(
+      `Resend batch failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const responseBody = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Resend batch failed (${response.status}): ${extractErrorMessage(responseBody)}`
+    );
+  }
+
+  const parsed = JSON.parse(responseBody) as { data?: Array<{ id?: string }> };
+  const messageIds = (parsed.data ?? []).map((item) => item.id ?? '');
+
+  return { provider: 'resend', messageIds };
+}
+
+function normalizeHeaders(
+  headers: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+
+  const entries = Object.entries(headers)
+    .map(([key, value]) => [key.trim(), String(value).trim()] as const)
+    .filter(([key]) => key.length > 0);
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 // ─── Resend ─────────────────────────────────────────────────────────────────────
 
 async function sendViaResend(
@@ -132,7 +236,7 @@ async function sendViaResend(
 
   const payload: Record<string, unknown> = {
     from: formatFromAddress(
-      process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL
+      message.from || process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL
     ),
     to: message.to,
     subject: message.subject,
@@ -140,6 +244,9 @@ async function sendViaResend(
 
   if (message.html) payload.html = message.html;
   if (message.text) payload.text = message.text;
+  if (message.headers && Object.keys(message.headers).length > 0) {
+    payload.headers = message.headers;
+  }
 
   const replyTo = message.replyTo || (process.env.RESEND_REPLY_TO || '').trim();
   if (replyTo) payload.reply_to = replyTo;
@@ -337,12 +444,15 @@ function normalizeMessage(message: EmailMessage): NormalizedEmailMessage {
 
   const replyTo = message.replyTo?.trim() || undefined;
   const idempotencyKey = normalizeIdempotencyKey(message.idempotencyKey);
+  const headers = normalizeHeaders(message.headers);
 
   return {
     to: recipients,
     subject,
+    from: message.from?.trim() || undefined,
     html,
     text,
+    headers,
     replyTo,
     idempotencyKey,
   };

@@ -481,3 +481,41 @@ Links expire after 30 days. Every email we send issues its own link and **all
 unexpired links work**, so an older email is still safe to click — if one fails,
 it has expired or the address is wrong. Send another reply to issue a fresh one.
 If they have an account, they can also read the ticket at `/account/support`.
+
+
+---
+
+## 11. Newsletter delivery webhooks
+
+Bounces and complaints are what protect the sending domain, so they are wired
+before the first real issue.
+
+1. **Register the endpoint in Resend** → Webhooks → add
+   `https://<product-api>/newsletter/webhook/resend`, subscribe to
+   `email.bounced` and `email.complained`, and copy the signing secret.
+2. **Store the secret** in `tw-{env}-resend-webhook-secret`:
+
+```bash
+aws secretsmanager put-secret-value   --secret-id tw-dev-resend-webhook-secret   --secret-string "whsec_..."
+```
+
+The Lambda caches the secret per container; a rotation takes effect on new
+containers (a few minutes).
+
+### What each event does
+
+| Event | Delivery | Suppression |
+|---|---|---|
+| `email.bounced` (Permanent) | `bounced` with the provider message | **yes** |
+| `email.bounced` (Transient) | `bounced` | no — the address is fine |
+| `email.complained` | `complained` | **yes** |
+| anything else | untouched | no |
+
+Suppressed addresses are excluded when a campaign snapshots its audience, so they
+are never sent again. To let someone back in, delete their row:
+
+```sql
+DELETE FROM newsletter_suppressions WHERE email = 'person@example.com';
+```
+
+An unsigned or stale request returns `401` and changes nothing.

@@ -153,6 +153,15 @@ Every `NO_TRADE` persists a machine-readable reason (`consensus_failed`, `diverg
 - Tickets carry a context snapshot (market, analysis, session, plan) so support sees the artifact, not just a description
 - Admin inbox with claim/release, guarded replies, SLA flags, and hourly housekeeping
 
+### Newsletter
+- Opt-in "The Weekly Brief" with explicit consent; no pre-checked boxes
+- One-time post-sign-in prompt plus a durable account toggle
+- One-click unsubscribe (RFC 8058) and a public `/unsubscribe` page
+- Public web view for each published issue at `/newsletter/[slug]`
+- Admin composer with typed templates, production-renderer preview, test sends, cancellation, and owner-only send
+- Subscriber list with status, source, search, and suppression reasons
+- Signed Resend delivery webhooks for bounces and complaints; marketing mail is isolated from transactional email
+
 ### Autonomous Portfolio Manager
 - Six personas: Sniper, Scalper, Contrarian, Catalyst Hunter, Hedge Architect, Momentum Rider
 - User-chosen market, capital envelope, and persona; the agent cannot change them
@@ -326,6 +335,7 @@ tradewizard-kiroween/
 ### Product and architecture
 - [docs/tradewizard-overview.md](docs/tradewizard-overview.md) - Product and system overview
 - [docs/support-tickets-plan.md](docs/support-tickets-plan.md) - Customer support ticket design and delivery log
+- [docs/newsletter-plan.md](docs/newsletter-plan.md) - Newsletter consent, campaign, and delivery design
 - [docs/TradeWizard.md](docs/TradeWizard.md) - Original product specification
 - [docs/TradeWizard V2 — Platform Architecture & New Direction.md](docs/TradeWizard%20V2%20—%20Platform%20Architecture%20&%20New%20Direction.md) - V2 architecture direction
 - [docs/TradeWizard Debate Protocol.md](docs/TradeWizard%20Debate%20Protocol.md) - Multi-agent debate protocol

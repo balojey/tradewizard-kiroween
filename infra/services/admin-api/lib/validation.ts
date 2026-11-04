@@ -125,3 +125,22 @@ export const supportUpdateSchema = z
       value.assignedAdminSub !== undefined,
     { message: 'Provide at least one change' }
   );
+
+// ─── Newsletter ───────────────────────────────────────────────────────────────
+
+const newsletterTemplate = z.enum(['market_brief', 'product_update']);
+
+export const campaignContentSchema = z.object({
+  subject: z.string().trim().min(4, 'Subject is too short').max(140),
+  preheader: z.string().trim().max(140).optional(),
+  template: newsletterTemplate,
+  content: z.record(z.string(), z.unknown()),
+});
+
+export const campaignDraftSchema = campaignContentSchema.extend({ reason });
+
+export const campaignPreviewSchema = campaignContentSchema;
+
+export const campaignSendSchema = z.object({ reason });
+
+export const campaignCancelSchema = z.object({ reason });

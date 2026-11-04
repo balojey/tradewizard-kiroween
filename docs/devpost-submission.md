@@ -59,6 +59,7 @@ A Position Guard monitors open positions for regime shifts and stale markets. A 
 - A market-level analysis pool that deduplicates compute across users
 - A credit ledger with an immutable audit trail
 - Customer support tickets with contextual entry points, a tokenised thread, and an admin inbox
+- An opt-in editorial newsletter with explicit consent, one-click unsubscribe, and a public web view
 - An internal management portal with roles, MFA enrolment, audit logging, audited runtime settings, analysis requeue, billing and ops visibility, and support tooling
 - A Next.js 16 / React 19 trading terminal with real-time delivery
 

@@ -32,6 +32,7 @@ import { usePersonaSettings } from '@/hooks/usePersonaSettings';
 import { useCurrentPlan } from '@/hooks/useCurrentPlan';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuth } from '@/hooks/useAuth';
+import { NewsletterSettings } from '@/components/newsletter/NewsletterSettings';
 
 export default function SettingsPage() {
   const { plan, has } = useCurrentPlan();
@@ -530,6 +531,8 @@ export default function SettingsPage() {
                 </div>
               </section>
             </TierGate>
+
+            <NewsletterSettings />
 
             <section className="overflow-hidden rounded-2xl border border-border bg-surface">
               <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3.5">

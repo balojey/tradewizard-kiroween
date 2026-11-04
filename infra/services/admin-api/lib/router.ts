@@ -27,6 +27,7 @@ import { memberRoutes } from '../routes/members';
 import { settingsRoutes } from '../routes/settings';
 import { bootstrapRoutes } from '../routes/bootstrap';
 import { supportRoutes } from '../routes/support';
+import { newsletterRoutes } from '../routes/newsletter';
 
 export interface RouteContext {
   event: AdminApiEvent;
@@ -82,6 +83,7 @@ export const ROUTES: AdminRoute[] = [
   ...settingsRoutes,
   ...bootstrapRoutes,
   ...supportRoutes,
+  ...newsletterRoutes,
 ];
 
 const COMPILED: CompiledRoute[] = ROUTES.map(compile);

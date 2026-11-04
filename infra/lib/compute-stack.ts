@@ -57,6 +57,7 @@ export class ComputeStack extends cdk.Stack {
   public readonly notificationPrefsHandler: lambdaNode.NodejsFunction;
   public readonly subscriptionApiHandler: lambdaNode.NodejsFunction;
   public readonly supportApiHandler: lambdaNode.NodejsFunction;
+  public readonly newsletterApiHandler: lambdaNode.NodejsFunction;
   public readonly resultsApiHandler: lambdaNode.NodejsFunction;
   public readonly subscriptionRenewalHandler: lambdaNode.NodejsFunction;
   public readonly portfolioActivationHandler: lambdaNode.NodejsFunction;
@@ -1126,6 +1127,46 @@ export class ComputeStack extends cdk.Stack {
     supportIpPepperSecret.grantRead(this.supportApiHandler);
     rateLimitTable.grantReadWriteData(this.supportApiHandler);
 
+    // ─── Newsletter API (consent + unsubscribe) ──────────────────────────────
+    //
+    // Marketing consent is explicit and separate from notification preferences.
+    // The token key encrypts unsubscribe links so no address appears in a URL.
+
+    const resendWebhookSecret = new secretsmanager.Secret(this, 'ResendWebhookSecret', {
+      secretName: resourceName(config.envName, 'resend-webhook-secret'),
+      description: 'Svix signing secret for Resend delivery webhooks',
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    const newsletterTokenSecret = new secretsmanager.Secret(this, 'NewsletterTokenSecret', {
+      secretName: resourceName(config.envName, 'newsletter-token-key'),
+      description: 'AES key material for newsletter unsubscribe tokens',
+      generateSecretString: { passwordLength: 32, excludePunctuation: true },
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    this.newsletterApiHandler = new lambdaNode.NodejsFunction(this, 'NewsletterApiHandler', {
+      functionName: resourceName(config.envName, 'newsletter-api'),
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: 'services/newsletter-api/handler.ts',
+      handler: 'handler',
+      timeout: lambdaTimeout,
+      memorySize: 256,
+      environment: {
+        ...sharedEnv,
+        APP_URL: process.env.APP_URL || (isProd ? 'https://tradewizard.live' : 'http://localhost:3000'),
+        NEWSLETTER_TOKEN_SECRET_ARN: newsletterTokenSecret.secretArn,
+        RESEND_WEBHOOK_SECRET_ARN: resendWebhookSecret.secretArn,
+      },
+      bundling: { minify: isProd, sourceMap: !isProd },
+      description: 'Newsletter consent and one-click unsubscribe',
+    });
+
+    dbSecret.grantRead(this.newsletterApiHandler);
+    newsletterTokenSecret.grantRead(this.newsletterApiHandler);
+    resendWebhookSecret.grantRead(this.newsletterApiHandler);
+    rateLimitTable.grantReadWriteData(this.newsletterApiHandler);
+
     // ─── REST API Routes & Lambda Integrations ──────────────────────────────────
     // All routes defined here (same stack as Lambdas) to avoid cross-stack cycles.
 
@@ -1239,6 +1280,39 @@ export class ComputeStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.NONE,
     });
 
+    // /newsletter
+    //
+    // Subscribing is authenticated (the consent belongs to an account), while
+    // unsubscribe must work from an email client with no session at all.
+    const newsletterIntegration = new apigateway.LambdaIntegration(this.newsletterApiHandler, {
+      proxy: true,
+    });
+    const newsletterResource = this.restApi.root.addResource('newsletter');
+    const unsubscribeResource = newsletterResource.addResource('unsubscribe');
+    unsubscribeResource.addMethod('GET', newsletterIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
+    unsubscribeResource.addMethod('POST', newsletterIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
+
+    // Resend delivery events (bounces/complaints). The signature is verified in
+    // the Lambda; API Gateway cannot do Svix verification.
+    newsletterResource
+      .addResource('webhook')
+      .addResource('resend')
+      .addMethod('POST', newsletterIntegration, {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      });
+
+    // Public web view of a published issue.
+    newsletterResource
+      .addResource('web')
+      .addResource('{slug}')
+      .addMethod('GET', newsletterIntegration, {
+        authorizationType: apigateway.AuthorizationType.NONE,
+      });
+
     // /support
     //
     // POST (submit) and the thread routes are unauthenticated at the gateway
@@ -1270,6 +1344,11 @@ export class ComputeStack extends cdk.Stack {
     const notificationIntegration = new apigateway.LambdaIntegration(this.notificationPrefsHandler, { proxy: true });
     notifications.addMethod('GET', notificationIntegration, authMethodOptions);
     notifications.addMethod('PUT', notificationIntegration, authMethodOptions);
+
+    const userNewsletter = user.addResource('newsletter');
+    userNewsletter.addMethod('GET', newsletterIntegration, authMethodOptions);
+    userNewsletter.addMethod('POST', newsletterIntegration, authMethodOptions);
+    userNewsletter.addResource('dismiss').addMethod('POST', newsletterIntegration, authMethodOptions);
 
     // ─── Portfolio Manager Lambda Functions ───────────────────────────────────
 
