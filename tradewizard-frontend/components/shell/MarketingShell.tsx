@@ -117,6 +117,9 @@ export function MarketingShell({ children }: MarketingShellProps) {
             <Link href="#" className="hover:text-fg transition-colors">
               Privacy
             </Link>
+            <Link href="/help" className="hover:text-fg transition-colors">
+              Support
+            </Link>
             <Link href="#" className="hover:text-fg transition-colors">
               Docs
             </Link>

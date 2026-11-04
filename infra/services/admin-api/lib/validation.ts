@@ -87,3 +87,41 @@ export function idempotencyKey(
   if (trimmed.length === 0 || trimmed.length > 128) return null;
   return trimmed;
 }
+
+// ─── Support ──────────────────────────────────────────────────────────────────
+
+const supportStatus = z.enum(['open', 'pending', 'resolved', 'closed']);
+const supportPriority = z.enum(['low', 'normal', 'high', 'urgent']);
+
+export const supportReplySchema = z.object({
+  body: z
+    .string()
+    .trim()
+    .min(1, 'Reply cannot be empty')
+    .max(4000, 'Reply is too long'),
+  /** Internal notes never email and never appear in the customer thread. */
+  internal: z.boolean().optional(),
+  requestId: z
+    .string()
+    .trim()
+    .min(8)
+    .max(64)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional(),
+});
+
+export const supportUpdateSchema = z
+  .object({
+    status: supportStatus.optional(),
+    priority: supportPriority.optional(),
+    /** `null` releases the ticket; a sub assigns it (admin override). */
+    assignedAdminSub: z.string().trim().min(1).max(256).nullable().optional(),
+    reason,
+  })
+  .refine(
+    (value) =>
+      value.status !== undefined ||
+      value.priority !== undefined ||
+      value.assignedAdminSub !== undefined,
+    { message: 'Provide at least one change' }
+  );

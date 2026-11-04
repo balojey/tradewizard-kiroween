@@ -11,6 +11,7 @@ import {
   CreditCard,
   LogOut,
   ChevronRight,
+  LifeBuoy,
 } from 'lucide-react';
 import { APP_NAV_ITEMS } from '@/constants/navigation';
 import { TierGate } from '@/components/ui/TierGate';
@@ -22,6 +23,7 @@ import { CreditBadge } from '@/components/shell/CreditBadge';
 import { WalletBadge } from '@/components/shell/WalletBadge';
 import { ThemeToggle } from '@/components/shell/ThemeToggle';
 import { MobileTabBar } from '@/components/shell/MobileTabBar';
+import { SupportDialog } from '@/components/support/SupportDialog';
 
 const PROFILE_IMAGE_URL =
   'https://static-assets.artlogic.net/w_1200,c_limit,f_auto,fl_lossy,q_auto/ws-artlogicwebsite0889/usr/images/news/main_image/6/nft-bored-ape-yacht-club.png';
@@ -48,6 +50,7 @@ export function AppNav() {
   const { user, signOut } = useAuth();
   const { plan } = useCurrentPlan();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Lock body scroll when mobile menu is open
@@ -188,6 +191,15 @@ export function AppNav() {
           <WalletBadge />
           <CreditBadge />
           <span className="mx-0.5 h-5 w-px bg-border/70" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setSupportOpen(true)}
+            aria-label="Contact support"
+            title="Contact support"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <LifeBuoy className="h-4 w-4" aria-hidden="true" />
+          </button>
           <ThemeToggle />
           <Link href="/account" aria-label="Settings">
             <Image
@@ -204,6 +216,15 @@ export function AppNav() {
         <div className="hidden md:flex lg:hidden items-center gap-2">
           <CreditBadge />
           <span className="mx-0.5 h-5 w-px bg-border/70" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setSupportOpen(true)}
+            aria-label="Contact support"
+            title="Contact support"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <LifeBuoy className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
           <ThemeToggle />
           <Link href="/account" aria-label="Settings">
             <Image
@@ -307,6 +328,23 @@ export function AppNav() {
                 </p>
                 <ul className="flex flex-col gap-0.5" role="none">
                   <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMobileOpen(false);
+                        setSupportOpen(true);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-muted transition-colors hover:bg-surface-2/60 hover:text-fg active:bg-surface-2"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted">
+                        <LifeBuoy size={18} />
+                      </span>
+                      <span className="flex-1 text-left text-sm font-medium">Help &amp; support</span>
+                      <ChevronRight size={16} className="text-muted/50" />
+                    </button>
+                  </li>
+                  <li role="none">
                     <Link
                       href="/account"
                       role="menuitem"
@@ -355,6 +393,13 @@ export function AppNav() {
 
     </nav>
     <MobileTabBar hidden={mobileOpen} />
+    <SupportDialog
+      open={supportOpen}
+      onClose={() => setSupportOpen(false)}
+      defaultTopic={pathname.startsWith('/portfolio-manager') ? 'portfolio' : 'other'}
+      context={{ page: pathname }}
+      contextSummary={[{ label: 'Page', value: pathname }]}
+    />
     </>
   );
 }

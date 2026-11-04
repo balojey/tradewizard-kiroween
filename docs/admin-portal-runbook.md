@@ -440,3 +440,44 @@ because removal and role changes force a global sign-out.
 - **Payment reconciliation** — mutations exist for trial extension only.
 - **Audit export** — query the table or use the AWS console.
 - **Global (platform-wide) kill switch** — not implemented; per-user only.
+
+
+---
+
+## 10. Working a support ticket
+
+Customers reach this inbox from the product (AI verdict, Portfolio Manager session,
+`/help`). Every ticket carries the context they had open.
+
+1. **Open `/support`.** Filters: status, assignee (Anyone / Mine / Unassigned),
+   topic. The header shows open, unassigned, overdue and waiting-on-customer
+   counts. `overdue` means no first reply within the target in Settings
+   (`support_first_response_target_hours`).
+2. **Claim before you type.** Claim is atomic — if someone got there first you
+   get `409 ALREADY_CLAIMED` naming the holder. Replying to a ticket held by
+   someone else is refused unless you are admin+.
+3. **Reply or note.** `Send reply` emails the customer and moves the ticket to
+   `waiting on customer`. `Internal note` never emails and never appears in the
+   customer's thread — use it for what the next operator needs.
+4. **Anti-burst.** A second reply inside 60 seconds is stored but not emailed,
+   and says so. Fix the typo, don't send a third.
+5. **Update** (status / priority / assignment) needs a reason ≥8 characters; it
+   lands in `/audit`. Resolving emails the customer a short notice with no link.
+6. **Closed tickets** refuse replies. Set status back to `open` first.
+7. **Housekeeping runs hourly**: claims idle for 8 hours are released (so a
+   ticket is never invisible work), and tickets resolved more than 7 days ago are
+   closed.
+
+### When the email fails
+
+The message is stored either way. If `delivery: failed`, the customer sees it
+when they open their last thread link; send another reply to retry the email.
+If `delivery: suppressed`, a reply went out under a minute earlier — the existing
+link is valid and already shows the new message.
+
+### When the customer says the link does not work
+
+Links expire after 30 days. Every email we send issues its own link and **all
+unexpired links work**, so an older email is still safe to click — if one fails,
+it has expired or the address is wrong. Send another reply to issue a fresh one.
+If they have an account, they can also read the ticket at `/account/support`.

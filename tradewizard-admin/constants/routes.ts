@@ -34,6 +34,7 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
     items: [
       { label: "Users", href: "/users", requires: "analyst", ready: true, hint: "Accounts and credits" },
       { label: "Billing", href: "/billing", requires: "analyst", ready: true, hint: "Payments and renewals" },
+      { label: "Support", href: "/support", requires: "support", ready: true, hint: "Customer requests" },
     ],
   },
   {

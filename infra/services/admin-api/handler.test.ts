@@ -20,6 +20,9 @@ const {
   lambdaMock,
   orderMock,
   memberQueries,
+  supportQueries,
+  supportEmailMock,
+  supportTokensMock,
   auditMock,
   presignMock,
   clientState,
@@ -99,6 +102,8 @@ const {
     listSettings: vi.fn(),
     setSetting: vi.fn(),
     resetSettingsCacheForTests: vi.fn(),
+    warmSettings: vi.fn(),
+    getSettingSync: vi.fn(),
     SETTINGS: {},
   },
   killSwitchMock: {
@@ -127,6 +132,28 @@ const {
     removeFromGroup: vi.fn(),
     countOwners: vi.fn(),
     globalSignOut: vi.fn(),
+  },
+  supportQueries: {
+    listTickets: vi.fn(),
+    getTicketById: vi.fn(),
+    lockTicket: vi.fn(),
+    listMessages: vi.fn(),
+    requesterInfo: vi.fn(),
+    claimTicket: vi.fn(),
+    releaseTicket: vi.fn(),
+    assignTicket: vi.fn(),
+    insertAdminMessage: vi.fn(),
+    recordReply: vi.fn(),
+    updateTicket: vi.fn(),
+    summaryCounts: vi.fn(),
+    findMessageByRequestId: vi.fn(),
+  },
+  supportEmailMock: {
+    sendSupportReply: vi.fn(),
+    sendSupportResolved: vi.fn(),
+  },
+  supportTokensMock: {
+    issueThreadToken: vi.fn(),
   },
   auditMock: {
     withAudit: vi.fn(),
@@ -198,6 +225,10 @@ vi.mock('../shared/portfolio-orders', () => orderMock);
 
 vi.mock('./queries/members', () => memberQueries);
 
+vi.mock('./queries/support', () => supportQueries);
+vi.mock('../shared/support-email', () => supportEmailMock);
+vi.mock('../shared/support-tickets', () => supportTokensMock);
+
 vi.mock('./lib/s3', () => ({
   presignPayloadUrl: presignMock,
   PAYLOAD_URL_TTL_SECONDS: 60,
@@ -268,6 +299,13 @@ const ROUTE_MATRIX: Array<{
   { method: 'POST', path: '/admin/analyses/requeue', minimumRole: 'admin' },
   { method: 'GET', path: '/admin/settings', minimumRole: 'admin' },
   { method: 'PUT', path: '/admin/settings/{key}', minimumRole: 'owner' },
+  { method: 'GET', path: '/admin/support/summary', minimumRole: 'support' },
+  { method: 'GET', path: '/admin/support/tickets', minimumRole: 'support' },
+  { method: 'GET', path: '/admin/support/tickets/{id}', minimumRole: 'support' },
+  { method: 'POST', path: '/admin/support/tickets/{id}/claim', minimumRole: 'support' },
+  { method: 'POST', path: '/admin/support/tickets/{id}/release', minimumRole: 'support' },
+  { method: 'POST', path: '/admin/support/tickets/{id}/messages', minimumRole: 'support' },
+  { method: 'PUT', path: '/admin/support/tickets/{id}', minimumRole: 'support' },
   { method: 'GET', path: '/admin/bootstrap/status', minimumRole: 'analyst' },
   { method: 'POST', path: '/admin/bootstrap/mfa-enrolled', minimumRole: 'analyst' },
 ];
@@ -278,6 +316,7 @@ const QUERY_FNS = [
   ...Object.values(userQueries),
   ...Object.values(analysisQueries),
   ...Object.values(portfolioQueries),
+  ...Object.values(supportQueries),
 ];
 
 function resolvePath(template: string): string {
@@ -304,6 +343,10 @@ function makeEvent(
       return JSON.stringify({ plan: 'pro', expiresAt: null, reason: REASON });
     if (routePath.includes('/settings/'))
       return JSON.stringify({ value: true, reason: REASON });
+    if (routePath.endsWith('/support/tickets/{id}/messages'))
+      return JSON.stringify({ body: 'a support reply', internal: false });
+    if (routePath.endsWith('/support/tickets/{id}'))
+      return JSON.stringify({ status: 'resolved', reason: REASON });
     if (routePath.endsWith('/requeue'))
       return JSON.stringify({ marketId: '0xmarket123', reason: REASON });
     if (routePath.includes('/admins'))
@@ -431,6 +474,30 @@ beforeEach(() => {
     totalRecipients: 2,
   });
 
+  supportQueries.listTickets.mockResolvedValue({ items: [], nextCursor: null });
+  supportQueries.summaryCounts.mockResolvedValue({ open: 0, pending: 0, unassigned: 0, overdue: 0 });
+  supportQueries.getTicketById.mockResolvedValue(null);
+  supportQueries.lockTicket.mockResolvedValue(null);
+  supportQueries.listMessages.mockResolvedValue([]);
+  supportQueries.requesterInfo.mockResolvedValue({ userId: null, status: null, plan: null, createdAt: null });
+  supportQueries.claimTicket.mockResolvedValue(true);
+  supportQueries.releaseTicket.mockResolvedValue(true);
+  supportQueries.assignTicket.mockResolvedValue(undefined);
+  supportQueries.insertAdminMessage.mockResolvedValue({
+    id: 'message-1',
+    authorType: 'admin',
+    authorAdminEmail: 'admin@example.com',
+    body: 'a support reply',
+    isInternal: false,
+    createdAt: '2026-11-03T00:00:00.000Z',
+  });
+  supportQueries.recordReply.mockResolvedValue(undefined);
+  supportTokensMock.issueThreadToken.mockResolvedValue('fresh-thread-token');
+  supportQueries.updateTicket.mockResolvedValue(undefined);
+  supportQueries.findMessageByRequestId.mockResolvedValue(null);
+  supportEmailMock.sendSupportReply.mockResolvedValue({ provider: 'resend' });
+  supportEmailMock.sendSupportResolved.mockResolvedValue({ provider: 'resend' });
+
   memberQueries.listMembers.mockResolvedValue([]);
   memberQueries.findUserByEmail.mockResolvedValue({
     sub: 'new-sub',
@@ -455,6 +522,8 @@ beforeEach(() => {
   sqsMock.send.mockResolvedValue({});
   settingsMock.listSettings.mockResolvedValue([]);
   settingsMock.setSetting.mockResolvedValue(undefined);
+  settingsMock.warmSettings.mockResolvedValue(undefined);
+  settingsMock.getSettingSync.mockReturnValue('24');
   dedupMock.checkInFlight.mockResolvedValue(null);
   dedupMock.markInFlight.mockResolvedValue(undefined);
   dedupMock.clearInFlight.mockResolvedValue(undefined);
@@ -1553,5 +1622,211 @@ describe('CORS', () => {
     const response = await handler(makeEvent());
 
     expect(response.headers['Cache-Control']).toBe('no-store');
+  });
+});
+
+// ─── Support inbox ────────────────────────────────────────────────────────────
+
+function supportTicket(overrides: Record<string, unknown> = {}) {
+  return {
+    id: USER_ID,
+    ref: 'TW-4F2K9Q',
+    subject: 'Wrong recommendation',
+    status: 'open',
+    priority: 'normal',
+    topic: 'analysis',
+    requesterEmail: 'person@example.com',
+    assignedAdminSub: null,
+    createdAt: '2026-11-03T10:00:00.000Z',
+    lastMessageAt: '2026-11-03T10:00:00.000Z',
+    firstResponseAt: null,
+    overdue: false,
+    marketId: '0xmarket',
+    body: 'The analysis recommends BUY YES but the market resolved NO.',
+    context: { marketId: '0xmarket' },
+    userId: null,
+    assignedAt: null,
+    confirmationSent: true,
+    lastCustomerNotifiedAt: null,
+    resolvedAt: null,
+    closedAt: null,
+    ...overrides,
+  };
+}
+
+function runAuditWork(): void {
+  auditMock.withAudit.mockImplementation(
+    async (
+      _client: unknown,
+      _params: unknown,
+      work: (auditId: string) => Promise<{ result: unknown }>
+    ) => (await work('audit-1')).result
+  );
+}
+
+describe('support inbox', () => {
+  it('refuses a second claim and names the current holder', async () => {
+    runAuditWork();
+    supportQueries.getTicketById.mockResolvedValue(
+      supportTicket({ assignedAdminSub: 'other-sub' })
+    );
+    supportQueries.claimTicket.mockResolvedValue(false);
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/support/tickets/${USER_ID}/claim`,
+        role: 'support',
+      })
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(body(response).error).toMatchObject({
+      code: 'ALREADY_CLAIMED',
+      details: { assignedAdminSub: 'other-sub' },
+    });
+  });
+
+  it('refuses a reply to a ticket held by another operator', async () => {
+    supportQueries.lockTicket.mockResolvedValue(
+      supportTicket({ assignedAdminSub: 'other-sub' })
+    );
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/support/tickets/${USER_ID}/messages`,
+        role: 'support',
+        body: JSON.stringify({ body: 'Let me help with this.' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(body(response).error).toMatchObject({ code: 'NOT_YOURS' });
+    expect(supportQueries.insertAdminMessage).not.toHaveBeenCalled();
+  });
+
+  it('claims an unassigned ticket on first reply and emails the customer', async () => {
+    runAuditWork();
+    supportQueries.lockTicket.mockResolvedValue(supportTicket());
+    supportQueries.getTicketById.mockResolvedValue(supportTicket());
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/support/tickets/${USER_ID}/messages`,
+        role: 'support',
+        body: JSON.stringify({ body: 'Looking into this now.' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(supportEmailMock.sendSupportReply).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: 'TW-4F2K9Q', to: 'person@example.com' })
+    );
+    expect(supportTokensMock.issueThreadToken).toHaveBeenCalledWith(expect.anything(), USER_ID);
+    expect(supportQueries.claimTicket).toHaveBeenCalledWith(expect.anything(), USER_ID, 'sub-1');
+    expect(supportQueries.recordReply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ emailed: true, internal: false })
+    );
+  });
+
+  it('stores a second reply inside a minute without emailing again', async () => {
+    runAuditWork();
+    supportQueries.lockTicket.mockResolvedValue(
+      supportTicket({ lastCustomerNotifiedAt: new Date().toISOString() })
+    );
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/support/tickets/${USER_ID}/messages`,
+        role: 'support',
+        body: JSON.stringify({ body: 'Correction: I meant the other run.' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect((body(response) as { data: unknown }).data).toMatchObject({
+      emailSent: false,
+      suppressed: true,
+    });
+    expect(supportEmailMock.sendSupportReply).not.toHaveBeenCalled();
+    // No new email means the customer's existing link must keep working.
+    expect(supportTokensMock.issueThreadToken).not.toHaveBeenCalled();
+  });
+
+  it('never emails an internal note', async () => {
+    runAuditWork();
+    supportQueries.lockTicket.mockResolvedValue(supportTicket());
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: `/admin/support/tickets/${USER_ID}/messages`,
+        role: 'support',
+        body: JSON.stringify({ body: 'Checking the S3 payload first.', internal: true }),
+      })
+    );
+
+    expect(response.statusCode).toBe(201);
+    expect(supportEmailMock.sendSupportReply).not.toHaveBeenCalled();
+    expect(supportTokensMock.issueThreadToken).not.toHaveBeenCalled();
+    expect(supportQueries.recordReply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ internal: true, emailed: false })
+    );
+  });
+
+  it('requires a reason to change status', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'PUT',
+        path: `/admin/support/tickets/${USER_ID}`,
+        role: 'support',
+        body: JSON.stringify({ status: 'resolved' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(body(response).error).toMatchObject({ code: 'BAD_REQUEST' });
+    expect(supportQueries.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it('emails the customer when a ticket is resolved', async () => {
+    runAuditWork();
+    supportQueries.getTicketById.mockResolvedValue(supportTicket({ status: 'resolved' }));
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'PUT',
+        path: `/admin/support/tickets/${USER_ID}`,
+        role: 'support',
+        body: JSON.stringify({ status: 'resolved', reason: 'answered the question' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(supportEmailMock.sendSupportResolved).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: 'TW-4F2K9Q', to: 'person@example.com' })
+    );
+  });
+
+  it('only lets admins reassign a ticket', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'PUT',
+        path: `/admin/support/tickets/${USER_ID}`,
+        role: 'support',
+        body: JSON.stringify({
+          assignedAdminSub: 'someone-else',
+          reason: 'handing this over to a colleague',
+        }),
+      })
+    );
+
+    expect(response.statusCode).toBe(403);
+    expect(supportQueries.updateTicket).not.toHaveBeenCalled();
   });
 });

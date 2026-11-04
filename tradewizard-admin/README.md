@@ -57,6 +57,9 @@ the operational controls:
   and a two-phase kill switch.
 - **Members** - owner-managed portal membership: invite from the portal, then
   revoke access immediately when needed.
+- **Support** - customer ticket inbox with context snapshots, claim/release,
+  guarded replies, SLA and overdue flags, and hourly housekeeping. Context links
+  open the market in the product app and the analysis record in a dialog.
 - **Settings** - audited runtime settings, each naming its consumer: pause new
   analysis, edit the pause message, override the AI provider without a redeploy,
   and pause new Portfolio Manager activations while existing sessions keep
@@ -82,10 +85,10 @@ applications:
   - appRoot: tradewizard-admin
 ```
 
-Then set `NEXT_PUBLIC_ADMIN_API_BASE_URL`, `NEXT_PUBLIC_ADMIN_CLIENT_ID`, and
-`NEXT_PUBLIC_COGNITO_REGION` in the Amplify environment, and attach
-`admin.tradewizard.live`. Finally add that origin to `ADMIN_ALLOWED_ORIGINS` in
-the Admin stack and redeploy.
+Then set `NEXT_PUBLIC_ADMIN_API_BASE_URL`, `NEXT_PUBLIC_ADMIN_CLIENT_ID`,
+`NEXT_PUBLIC_COGNITO_REGION` and `NEXT_PUBLIC_PRODUCT_BASE_URL` in the Amplify
+environment, and attach `admin.tradewizard.live`. Finally add that origin to
+`ADMIN_ALLOWED_ORIGINS` in the Admin stack and redeploy.
 
 ### Local production build
 

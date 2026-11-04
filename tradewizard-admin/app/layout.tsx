@@ -4,6 +4,7 @@ import { Ubuntu, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/providers";
 import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
+import { IosViewportGuard } from "@/components/pwa/IosViewportGuard";
 
 // Same two families as the product, so the portal reads as TradeWizard rather
 // than as a generic dashboard. Mono is reserved for identifiers and numerals.
@@ -32,11 +33,17 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "TW Ops",
-    statusBarStyle: "black-translucent",
+    // Opaque status bar: content starts below it, so the shell never has to
+    // guess where the notch ends.
+    statusBarStyle: "black",
   },
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Lets the shell paint edge-to-edge and use env(safe-area-inset-*) itself.
+  viewportFit: "cover",
   themeColor: "#0e1116",
   colorScheme: "dark",
 };
@@ -52,6 +59,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-screen antialiased">
         <Providers>{children}</Providers>
         <ServiceWorkerRegistrar />
+        <IosViewportGuard />
       </body>
     </html>
   );

@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock3,
   CreditCard,
+  LifeBuoy,
   LogOut,
   SlidersHorizontal,
   Target,
@@ -529,6 +530,32 @@ export default function SettingsPage() {
                 </div>
               </section>
             </TierGate>
+
+            <section className="overflow-hidden rounded-2xl border border-border bg-surface">
+              <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <LifeBuoy className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold text-fg">Support</h2>
+                  <p className="text-[0.6rem] text-muted">Requests and replies</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <p className="text-[0.65rem] leading-relaxed text-muted">
+                  Something wrong with an analysis or a Portfolio Manager session?
+                  Open a request and we&apos;ll investigate. Replies also arrive by
+                  email.
+                </p>
+                <Link
+                  href="/account/support"
+                  className="mt-3 inline-flex items-center gap-1 text-[0.65rem] font-medium text-accent transition-colors hover:text-fg"
+                >
+                  View support requests
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </div>
+            </section>
 
             <section className="overflow-hidden rounded-2xl border border-border bg-surface">
               <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3.5">

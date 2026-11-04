@@ -26,6 +26,7 @@ import { killSwitchRoutes } from '../routes/kill-switch';
 import { memberRoutes } from '../routes/members';
 import { settingsRoutes } from '../routes/settings';
 import { bootstrapRoutes } from '../routes/bootstrap';
+import { supportRoutes } from '../routes/support';
 
 export interface RouteContext {
   event: AdminApiEvent;
@@ -80,6 +81,7 @@ export const ROUTES: AdminRoute[] = [
   ...memberRoutes,
   ...settingsRoutes,
   ...bootstrapRoutes,
+  ...supportRoutes,
 ];
 
 const COMPILED: CompiledRoute[] = ROUTES.map(compile);
