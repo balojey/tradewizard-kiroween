@@ -142,7 +142,10 @@ export class AuthStack extends cdk.Stack {
       preventUserExistenceErrors: true,
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
-      refreshTokenValidity: cdk.Duration.hours(8),
+      // A portal session is meant to survive a working day and a browser
+      // restart. The ID/access tokens stay short (1 hour, silently refreshed);
+      // only the refresh token is long-lived, and sign-out revokes it.
+      refreshTokenValidity: cdk.Duration.days(30),
     });
 
     // Role groups. Membership is the only grant of admin capability — there is

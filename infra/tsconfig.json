@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    "jsx": "react-jsx",
     "lib": ["es2022", "dom"],
     // "dom" is needed only because viem/ox ship .ts sources that reference
     // browser globals (webauthn paths we never execute in Lambda). Type-only.

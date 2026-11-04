@@ -445,6 +445,58 @@ export class AdminStack extends cdk.Stack {
 
     dbSecret.grantRead(supportHousekeeping);
 
+    // ─── Newsletter sender ───────────────────────────────────────────────────
+
+    const newsletterTokenSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'NewsletterTokenKey',
+      resourceName(config.envName, 'newsletter-token-key')
+    );
+
+    const newsletterSendHandler = new lambdaNode.NodejsFunction(
+      this,
+      'NewsletterSendHandler',
+      {
+        functionName: resourceName(config.envName, 'newsletter-send'),
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: 'services/newsletter-send/handler.ts',
+        handler: 'handler',
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 1024,
+        environment: {
+          ENVIRONMENT: config.envName,
+          DB_SECRET_ARN: dbSecret.secretArn,
+          DB_HOST: dbEndpoint,
+          DB_NAME: 'tradewizard',
+          APP_URL: process.env.APP_URL || (isProd ? 'https://tradewizard.live' : 'http://localhost:3000'),
+          NEWSLETTER_TOKEN_SECRET_ARN: newsletterTokenSecret.secretArn,
+          NEWSLETTER_FROM_EMAIL: process.env.NEWSLETTER_FROM_EMAIL || 'news@tradewizard.live',
+          NEWSLETTER_POSTAL_ADDRESS: process.env.NEWSLETTER_POSTAL_ADDRESS || '',
+          EMAIL_PROVIDER: process.env.EMAIL_PROVIDER || 'resend',
+          RESEND_API_KEY_SECRET_ARN: supportResendSecret.secretArn,
+          RESEND_FROM_EMAIL: process.env.NEWSLETTER_FROM_EMAIL || 'news@tradewizard.live',
+          RESEND_REPLY_TO: '',
+          SES_FROM_EMAIL: process.env.NEWSLETTER_FROM_EMAIL || 'news@tradewizard.live',
+        },
+        bundling: { minify: isProd, sourceMap: !isProd },
+        description: 'Renders and sends newsletter campaign batches',
+      }
+    );
+
+    dbSecret.grantRead(newsletterSendHandler);
+    supportResendSecret.grantRead(newsletterSendHandler);
+    newsletterTokenSecret.grantRead(newsletterSendHandler);
+
+    this.adminApiHandler.addEnvironment(
+      'NEWSLETTER_SEND_FUNCTION_NAME',
+      newsletterSendHandler.functionName
+    );
+    this.adminApiHandler.addEnvironment(
+      'NEWSLETTER_FROM_EMAIL',
+      process.env.NEWSLETTER_FROM_EMAIL || 'news@tradewizard.live'
+    );
+    newsletterSendHandler.grantInvoke(this.adminApiHandler);
+
     new events.Rule(this, 'SupportHousekeepingSchedule', {
       ruleName: resourceName(config.envName, 'support-housekeeping'),
       schedule: events.Schedule.rate(cdk.Duration.hours(1)),

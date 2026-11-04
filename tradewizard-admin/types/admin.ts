@@ -497,3 +497,71 @@ export interface SupportSummary {
   overdue: number;
   slaHours: number;
 }
+
+export interface NewsletterPick {
+  question: string;
+  aiProbability: number;
+  marketProbability: number;
+  read: string;
+  url?: string;
+}
+
+export interface ProductUpdateSection {
+  heading: string;
+  body: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+}
+
+export interface ProductUpdateContent {
+  heroTitle: string;
+  intro: string;
+  sections: ProductUpdateSection[];
+  closing?: string;
+}
+
+export type NewsletterContent = MarketBriefContent | ProductUpdateContent;
+
+export interface MarketBriefContent {
+  heroTitle: string;
+  intro: string;
+  picks: NewsletterPick[];
+  closing?: string;
+}
+
+export interface NewsletterCampaign {
+  id: string;
+  subject: string;
+  preheader: string | null;
+  template: "market_brief" | "product_update";
+  content: NewsletterContent;
+  status: "draft" | "sending" | "sent" | "failed" | "cancelled";
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  createdBy: string;
+  approvedBy?: string | null;
+  createdAt: string;
+  startedAt?: string | null;
+  sentAt?: string | null;
+}
+
+export interface NewsletterSummary {
+  drafts: number;
+  sending: number;
+  sent: number;
+  subscribers: number;
+  unsubscribed: number;
+  suppressed: number;
+}
+
+export interface NewsletterSubscriber {
+  email: string;
+  status: "subscribed" | "unsubscribed";
+  source: string;
+  userId: string | null;
+  confirmedAt: string | null;
+  unsubscribedAt: string | null;
+  suppressedReason: string | null;
+  createdAt: string;
+}

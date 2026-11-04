@@ -60,6 +60,14 @@ export const SETTINGS: Record<string, SettingDefinition> = {
     consumer: 'admin support inbox',
     allowed: ['4', '8', '12', '24', '48', '72'],
   },
+  newsletter_enabled: {
+    key: 'newsletter_enabled',
+    type: 'boolean',
+    defaultValue: true,
+    description:
+      'Offer the newsletter: hides the sign-in prompt and refuses new opt-ins. Unsubscribing always works.',
+    consumer: 'newsletter-api',
+  },
   support_enabled: {
     key: 'support_enabled',
     type: 'boolean',

@@ -30,6 +30,8 @@ Around these sit the pieces a real product needs: passwordless Cognito Magic Lin
 
 Customers can also ask for help from the analysis or session that prompted the question. Tickets carry a context snapshot and a tokenised thread, and the admin inbox handles claim, reply, and resolution.
 
+An opt-in editorial newsletter, The Weekly Brief, runs on explicit consent, one-click unsubscribe, and signed delivery webhooks. Campaigns are composed and sent from the admin portal, with a public web view for every published issue.
+
 ## Why this is a Frankenstein
 
 TradeWizard is a working chimera, not a themed wrapper:

@@ -2,6 +2,7 @@
 
 import { type ReactNode } from 'react';
 import { AppNav } from '@/components/shell/AppNav';
+import { NewsletterPrompt } from '@/components/newsletter/NewsletterPrompt';
 
 export interface AppShellProps {
   children: ReactNode;
@@ -24,6 +25,8 @@ export function AppShell({ children, banner }: AppShellProps) {
       </a>
       {banner}
       <AppNav />
+      <NewsletterPrompt />
+
       <main
         id="main-content"
         tabIndex={-1}

@@ -52,6 +52,12 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
     ],
   },
   {
+    label: "Growth",
+    items: [
+      { label: "Newsletter", href: "/newsletter", requires: "admin", ready: true, hint: "Campaigns" },
+    ],
+  },
+  {
     label: "Governance",
     items: [
       { label: "Audit", href: "/audit", requires: "analyst", ready: true, hint: "Every mutation" },

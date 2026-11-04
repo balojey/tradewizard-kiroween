@@ -1084,11 +1084,128 @@ CREATE INDEX IF NOT EXISTS idx_support_thread_tokens_ticket
 
 -- Backfill links that were issued before this table existed, then retire the
 -- single-hash columns so there is exactly one source of truth.
-INSERT INTO support_thread_tokens (ticket_id, token_hash, expires_at)
-SELECT id, access_token_hash, access_token_expires_at
-  FROM support_tickets
- WHERE access_token_hash IS NOT NULL
-ON CONFLICT (token_hash) DO NOTHING;
+-- Only on databases that still have the single-hash columns (first run after
+-- the multi-token migration). Later runs must not reference a dropped column.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'support_tickets' AND column_name = 'access_token_hash'
+  ) THEN
+    INSERT INTO support_thread_tokens (ticket_id, token_hash, expires_at)
+    SELECT id, access_token_hash, access_token_expires_at
+      FROM support_tickets
+     WHERE access_token_hash IS NOT NULL
+    ON CONFLICT (token_hash) DO NOTHING;
+  END IF;
+END $$;
 
 ALTER TABLE support_tickets DROP COLUMN IF EXISTS access_token_hash;
 ALTER TABLE support_tickets DROP COLUMN IF EXISTS access_token_expires_at;
+
+-- ============================================================================
+-- NEWSLETTER (marketing email)
+--
+-- Deliberately separate from notification_preferences: those are alert
+-- preferences for transactional/analysis mail, not consent to marketing.
+-- See docs/newsletter-plan.md.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  email TEXT PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'subscribed',
+  source TEXT NOT NULL,
+  consent_version TEXT,
+  ip_hash TEXT,
+  user_agent TEXT,
+  confirmed_at TIMESTAMPTZ,
+  unsubscribed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_newsletter_status CHECK (status IN ('subscribed', 'unsubscribed')),
+  CONSTRAINT valid_newsletter_source CHECK (
+    source IN ('signup_prompt', 'account_toggle', 'admin', 'public_form', 'unsubscribe_link')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_newsletter_subscribers_user
+  ON newsletter_subscribers (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_newsletter_subscribers_status
+  ON newsletter_subscribers (status);
+
+CREATE TABLE IF NOT EXISTS newsletter_suppressions (
+  email TEXT PRIMARY KEY,
+  reason TEXT NOT NULL,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_suppression_reason CHECK (
+    reason IN ('unsubscribed', 'bounced', 'complained', 'manual')
+  )
+);
+
+-- The one-time post-sign-in prompt is per account, not per device.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS newsletter_prompted_at TIMESTAMPTZ;
+
+-- ============================================================================
+-- NEWSLETTER CAMPAIGNS
+--
+-- One row per issue. Deliveries are written as a snapshot when sending starts,
+-- so subscribing or unsubscribing mid-flight cannot change this issue's audience.
+-- `unique (campaign_id, email)` is the double-send guard.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS newsletter_campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subject TEXT NOT NULL,
+  preheader TEXT,
+  template TEXT NOT NULL DEFAULT 'market_brief',
+  content JSONB NOT NULL DEFAULT '{}'::jsonb,
+  audience JSONB NOT NULL DEFAULT '{"type":"all"}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'draft',
+  scheduled_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  created_by TEXT NOT NULL,
+  approved_by TEXT,
+  recipient_count INTEGER NOT NULL DEFAULT 0,
+  sent_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_campaign_status CHECK (
+    status IN ('draft', 'sending', 'sent', 'failed', 'cancelled')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_newsletter_campaigns_status
+  ON newsletter_campaigns (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS newsletter_deliveries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES newsletter_campaigns(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  provider_message_id TEXT,
+  error TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT valid_delivery_status CHECK (
+    status IN ('queued', 'sending', 'sent', 'failed', 'skipped', 'bounced', 'complained')
+  ),
+  CONSTRAINT unique_campaign_recipient UNIQUE (campaign_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_newsletter_deliveries_campaign
+  ON newsletter_deliveries (campaign_id, status);
+
+-- Public web view of an issue (the "view in browser" link).
+ALTER TABLE newsletter_campaigns ADD COLUMN IF NOT EXISTS slug TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletter_campaigns_slug
+  ON newsletter_campaigns (slug)
+  WHERE slug IS NOT NULL;
