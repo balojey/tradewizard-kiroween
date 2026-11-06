@@ -44,7 +44,7 @@ The workflow orchestrates analysis through sequential and parallel stages in a s
 6. **Agent Signal Fusion** (deterministic, no LLM): Market-anchored log-odds aggregation with evidence-scaled pass-through (60% for moderate edges, 30% for large edges, 0% above 30% as model error), Brier-calibrated agent weights, conflict/alignment scoring, and non-directional risk agents. Low-confidence no-view signals are ignored
 7. **Thesis Construction**: Strands Agent generates competing bull and bear theses from fused signal
 8. **Cross-Examination**: Strands Agent applies 5 adversarial tests (evidence, causality, timing, liquidity, tail risk) to both theses
-9. **Consensus Engine** (deterministic, no LLM): Uses the anchored fused probability. Fails on disagreement > 30% or confidence < 20%, blocks implausible edges (> 15%), and requires the thesis that won cross-examination to confirm the trade direction (minimum score margin 1.0)
+9. **Consensus Engine** (deterministic, no LLM): Uses the live consensus configuration (`CONSENSUS_MODE=anchored` by default - market-anchored fusion and an edge floor; `agent` opts into the confidence-weighted, de-biased vote). Fails on disagreement/confidence, blocks implausible edges (> 15%), applies the cost and ensemble-noise floors, and requires the thesis that won cross-examination to confirm the trade direction (minimum score margin 1.0)
 10. **Risk Philosophy Agents**: Three parallel Strands Agents (aggressive, conservative, neutral) provide position sizing guidance
 11. **Recommendation Generation**: Strands Agent synthesizes final trade action (LONG_YES, LONG_NO, NO_TRADE) with entry/exit zones, EV, and explanation
 

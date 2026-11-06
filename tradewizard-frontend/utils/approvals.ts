@@ -11,7 +11,7 @@ import {
   NEG_RISK_CTF_EXCHANGE_ADDRESS,
   NEG_RISK_ADAPTER_ADDRESS,
 } from "@/constants/tokens";
-import { POLYGON_RPC_URL } from "@/constants/polymarket";
+import { getPolygonRpcUrl } from "@/constants/polymarket";
 
 const MAX_UINT256 =
   "115792089237316195423570985008687907853269984665640564039457584007913129639935";
@@ -41,7 +41,7 @@ const erc1155Abi = [
 
 const publicClient = createPublicClient({
   chain: polygon,
-  transport: http(POLYGON_RPC_URL),
+  transport: http(getPolygonRpcUrl()),
 });
 
 const USDC_E_SPENDERS = [

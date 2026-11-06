@@ -9,14 +9,31 @@
  * migration window; new code should prefer this client.
  */
 
-import { createSecureClient, remoteBuilderSigning } from "@polymarket/client";
+import {
+  createSecureClient,
+  forkEnvironmentConfig,
+  production,
+  remoteBuilderSigning,
+} from "@polymarket/client";
 import { signerFrom } from "@polymarket/client/ethers-v5";
 import type { providers } from "ethers";
-import { REMOTE_SIGNING_URL } from "@/constants/polymarket";
+import { getPolygonRpcUrl, REMOTE_SIGNING_URL } from "@/constants/polymarket";
 
 export type TradeWizardSecureClient = Awaited<
   ReturnType<typeof createSecureClient>
 >;
+
+/**
+ * The SDK's production environment hard-codes a public RPC. Fork it with the
+ * app's RPC (browser: the same-origin proxy, which splits large batches and
+ * falls back across providers).
+ */
+function resolveSdkEnvironment() {
+  return forkEnvironmentConfig(
+    { name: production.name, rpc: getPolygonRpcUrl() },
+    production,
+  );
+}
 
 export interface CreateTradeWizardClientParams {
   /** Ethers v5 signer (e.g. the Magic EOA signer). */
@@ -46,6 +63,7 @@ export async function createTradeWizardClient(
   const base = {
     signer: signerFrom(params.ethersSigner as never),
     apiKey: remoteBuilderSigning({ url: REMOTE_SIGNING_URL() }),
+    environment: resolveSdkEnvironment(),
     ...(params.walletAddress ? { wallet: params.walletAddress } : {}),
   };
 

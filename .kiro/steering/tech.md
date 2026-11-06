@@ -336,8 +336,11 @@ npm run lint             # Check linting
 
 - Graceful degradation at every layer - partial failures don't crash the pipeline
 - Consensus can fail (disagreement > 30% or confidence < 20%) - system refuses to recommend rather than giving low-confidence output
+- NO_TRADE reasons are machine-readable and persisted to `analysis_results.no_trade_reason`: `consensus_failed`, `divergence_cap`, `edge_below_threshold`, `edge_below_significance`, `thesis_veto`, plus recommendation-stage `levels_rejected`, `recommendation_failed`, and `analysis_failed`
 - Divergence circuit breaker: edges > 15% against the market are treated as model error and return NO_TRADE
-- Signal fusion is market-anchored with evidence-scaled pass-through (60% for edges <= 15%, 30% for 15-30%, 0% above 30%), and agent weights use Brier calibration; low-confidence no-view signals are ignored
+- Live action uses the anchored consensus by default (`CONSENSUS_MODE=anchored`): market-anchored fusion with evidence-scaled pass-through (60% for edges <= 15%, 30% for 15-30%, 0% above 30%), an edge floor, and thesis confirmation. `CONSENSUS_MODE=agent` opts into the confidence-weighted, de-biased majority vote with the market's actual round-trip cost. Both configs use Brier calibration; low-confidence no-view signals are ignored
+- Both consensus configs are computed every run; the non-live one is persisted to the `shadow_*` columns for the live-vs-other comparison
+- Delivery payloads carry `confidence` = ensemble confidence in the call. `winProbability` is the traded token's win probability and is a different number; do not relabel one as the other
 - Cross-examination is a confirmation gate: the winning bull/bear thesis must agree with the trade direction by a margin of at least 1.0; role-play theses are never averaged into probability
 - CloudWatch alarms: execution time > 60s (warn), > 120s (critical), DLQ depth > 0, daily Bedrock spend > 80% budget
 - Per-analysis cost tracking (model costs, tool costs, compute duration)

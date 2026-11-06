@@ -4,6 +4,7 @@ export {
   CLOB_API_URL,
   POLYMARKET_PROFILE_URL,
   POLYGON_RPC_URL,
+  getPolygonRpcUrl,
   REMOTE_SIGNING_URL,
 } from "./api";
 

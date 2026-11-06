@@ -33,7 +33,9 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
 
   const action = analysis?.action;
   const edge = analysis?.metadata?.edge ?? 0;
-  const confidence = analysis?.winProbability ?? 0;
+  // Confidence is the ensemble's confidence in the call, not the traded
+  // token's win probability. Older results predate consensusConfidence.
+  const confidence = analysis?.metadata?.consensusConfidence ?? analysis?.winProbability ?? 0;
   const consensusProb = analysis?.metadata?.consensusProbability ?? 0;
   const marketProb = analysis?.metadata?.marketProbability ?? 0;
   const summary = analysis?.explanation?.summary ?? '';
@@ -170,7 +172,7 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold leading-tight text-fg">AI verdict</h2>
             <p className="text-[0.6rem] text-muted">
-              {analysis.metadata.agentsUsed?.length || 14} agents · one consensus
+              {analysis.metadata.agentsUsed?.length ?? 14} agents · one consensus
             </p>
           </div>
           {analysis.executedAt && (
@@ -246,9 +248,9 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
             value={`${Math.round(confidence * 100)}%`}
           />
           <VerdictMetric
-            label="Expected"
-            value={`${ev > 0 ? '+' : ''}${(ev * 100).toFixed(1)}%`}
-            tone={ev > 0 ? 'yes' : ev < 0 ? 'no' : 'muted'}
+            label="Expected / share"
+            value={action === 'NO_TRADE' ? '—' : `${ev > 0 ? '+' : ''}${(ev * 100).toFixed(1)}¢`}
+            tone={action === 'NO_TRADE' ? 'muted' : ev > 0 ? 'yes' : ev < 0 ? 'no' : 'muted'}
           />
           <VerdictMetric
             label="Liquidity"
@@ -289,7 +291,7 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
               label="Bull vs bear"
               meta={
                 analysis.crossExamination
-                  ? `${analysis.crossExamination.bullScore}–${analysis.crossExamination.bearScore}`
+                  ? `Bull ${analysis.crossExamination.bullScore.toFixed(1)} · Bear ${analysis.crossExamination.bearScore.toFixed(1)}`
                   : undefined
               }
             >
@@ -302,7 +304,10 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
           )}
 
           {consensusCents != null && (
-            <PanelDisclosure label="Model agreement" meta={`${consensusCents}¢`}>
+            <PanelDisclosure
+              label="Model agreement"
+              meta={`AI ${action === 'LONG_NO' ? 100 - consensusCents : consensusCents}¢`}
+            >
               <ConsensusDetail
                 consensusProb={consensusProb}
                 marketProb={marketProb}
@@ -956,7 +961,7 @@ function DebatePanel({
           )}
           {crossExamination && (
             <div className="mt-2 pt-2 border-t border-border/30 text-[0.6rem] text-muted">
-              Cross-exam score: <span className="font-mono font-medium text-yes">{crossExamination.bullScore}/10</span>
+              Cross-exam score: <span className="font-mono font-medium text-yes">{crossExamination.bullScore.toFixed(1)} / 5</span>
             </div>
           )}
         </div>
@@ -990,7 +995,7 @@ function DebatePanel({
           )}
           {crossExamination && (
             <div className="mt-2 pt-2 border-t border-border/30 text-[0.6rem] text-muted">
-              Cross-exam score: <span className="font-mono font-medium text-no">{crossExamination.bearScore}/10</span>
+              Cross-exam score: <span className="font-mono font-medium text-no">{crossExamination.bearScore.toFixed(1)} / 5</span>
             </div>
           )}
         </div>

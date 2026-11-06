@@ -23,6 +23,7 @@ import { useAnalysisSubscriptions } from '@/hooks/useAnalysisSubscriptions';
 import { useSpotlight, type SpotlightItem } from '@/hooks/useSpotlight';
 import { cn } from '@/utils/classNames';
 import { formatTimeAgo, getYesProbability } from '@/utils/marketDisplay';
+import { yesPriceFromOutcomes } from '@/utils/outcomePrices';
 import { BarChart3 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -443,7 +444,7 @@ function SearchInput({
                       </div>
                       {market.outcomePrices && !market.closed && (
                         <span className="text-xs font-mono font-bold text-yes shrink-0">
-                          {(() => { try { return Math.round(parseFloat(JSON.parse(market.outcomePrices)[0]) * 100); } catch { return 0; } })()}¢
+                          {Math.round((yesPriceFromOutcomes(market.outcomes, market.outcomePrices) ?? 0) * 100)}¢
                         </span>
                       )}
                     </a>
@@ -669,7 +670,7 @@ function SpotlightItemRow({ item }: { item: SpotlightItem }) {
           'font-bold uppercase px-1.5 py-0.5 rounded',
           isYes ? 'bg-yes/12 text-yes' : 'bg-no/12 text-no'
         )}>
-          {isYes ? 'Yes' : 'No'} {aiCents}%
+          {isYes ? 'Yes' : 'No'} {aiCents}¢
         </span>
         <span className="text-ai font-semibold">+{edgeCents}¢ edge</span>
         <span className="text-muted ml-auto">{formatTimeAgo(item.executedAt)}</span>

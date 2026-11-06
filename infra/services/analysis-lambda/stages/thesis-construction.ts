@@ -221,14 +221,19 @@ function parseTheses(
   }
 
   // ── Defensive correction: detect inverted bear probability ──
-  // The bear thesis fair_probability should represent P(YES) from a bearish view,
-  // meaning it should be LOWER than the bull thesis fair_probability.
-  // If bear's probability is higher than bull's, the LLM likely output P(NO) instead
-  // of P(YES). Auto-invert to fix.
-  if (bearThesis.fairProbability > bullThesis.fairProbability) {
+  // Both theses must express P(YES). The reliable failure mode is the bear
+  // agent reporting P(NO): a high value (> 0.5) while the bull case is on the
+  // YES side (< 0.5). Only invert that combination - a small honest difference
+  // between two bearish estimates is not evidence of a space inversion.
+  const looksInverted =
+    bearThesis.fairProbability > 0.5 &&
+    bullThesis.fairProbability < 0.5 &&
+    bearThesis.fairProbability > bullThesis.fairProbability;
+
+  if (looksInverted) {
     console.warn(
-      `[ThesisConstruction] Bear fair_probability (${bearThesis.fairProbability.toFixed(3)}) > ` +
-      `Bull fair_probability (${bullThesis.fairProbability.toFixed(3)}) - inverting bear probability. ` +
+      `[ThesisConstruction] Bear fair_probability (${bearThesis.fairProbability.toFixed(3)}) is on the NO side ` +
+      `while Bull is on the YES side (${bullThesis.fairProbability.toFixed(3)}) - inverting bear probability. ` +
       `LLM likely output P(NO) instead of P(YES) for the bear thesis.`
     );
     bearThesis.fairProbability = 1 - bearThesis.fairProbability;
@@ -291,7 +296,10 @@ function createFallbackResult(fusedSignal: FusedSignal, startTime: number): Thes
     },
     bearThesis: {
       direction: 'bear',
-      fairProbability: 1 - fallbackProbability,
+      // Both theses express P(YES). A neutral fallback uses the same estimate
+      // for both sides; 1 - p would assert the bear case and fabricate a
+      // divergence the evidence does not support.
+      fairProbability: fallbackProbability,
       keyArguments: ['Thesis unavailable - using fused signal probability as fallback'],
       confidence: 0.3,
     },

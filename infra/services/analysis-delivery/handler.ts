@@ -21,7 +21,7 @@ import {
   GoneException,
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import { getConnectionsByUserId, removeConnection } from '../shared/connections';
-import { getUserIdByCognitoSub, getConnectionString } from '../shared/db';
+import { getConnectionString } from '../shared/db';
 
 const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT || '';
 
@@ -211,20 +211,10 @@ async function deliverProgress(message: AnalysisProgressEvent): Promise<void> {
     return; // Can't deliver without userId
   }
 
-  // The userId from Python orchestrator is the Cognito sub (passed through
-  // from the Lambda payload). WebSocket connections are stored by internal
-  // users.id. Try to resolve; fall back to raw userId if lookup fails.
-  let resolvedUserId = userId;
-  try {
-    const internalId = await getUserIdByCognitoSub(userId);
-    if (internalId) {
-      resolvedUserId = internalId;
-    }
-  } catch {
-    // Fall through with original userId
-  }
-
-  const connectionIds = await getConnectionsByUserId(resolvedUserId);
+  // Progress events are published with the canonical internal users.id
+  // (analysis-request → orchestrator → analysis-lambda), which is also the key
+  // WebSocket connections are stored under. No Cognito-sub translation here.
+  const connectionIds = await getConnectionsByUserId(userId);
   if (connectionIds.length === 0) {
     return; // No active connections, skip silently
   }

@@ -12,13 +12,13 @@ import getMagic from "@/lib/magic";
 import { providers } from "ethers";
 import { polygon } from "viem/chains";
 import { WalletContext, WalletContextType } from "./WalletContext";
-import { POLYGON_RPC_URL } from "@/constants/polymarket";
+import { getPolygonRpcUrl } from "@/constants/polymarket";
 import { cognitoAuthClient } from "@/lib/cognito-auth";
 import { useAuthContext } from "./AuthProvider";
 
 const publicClient = createPublicClient({
   chain: polygon,
-  transport: http(POLYGON_RPC_URL),
+  transport: http(getPolygonRpcUrl()),
 });
 
 /**

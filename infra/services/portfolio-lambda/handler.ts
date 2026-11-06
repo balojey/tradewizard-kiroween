@@ -313,6 +313,7 @@ function buildAgentPrompt(payload: PortfolioPayload): string {
   const { analysisResult, portfolioState, marketData, decisionType } = payload;
 
   // For exit_evaluation, analysisResult may be absent (Position Guard invocations)
+  const isNoTrade = analysisResult?.action === 'LONG_NO';
   const analysisSection = analysisResult
     ? `## Analysis Result
 - Action: ${analysisResult.action}
@@ -322,7 +323,8 @@ function buildAgentPrompt(payload: PortfolioPayload): string {
 - Liquidity Risk: ${analysisResult.liquidityRisk}
 - Signal Alignment: ${analysisResult.signalAlignment}
 - Confidence: ${analysisResult.confidence}
-- Analysis ID: ${analysisResult.analysisResultId}`
+- Analysis ID: ${analysisResult.analysisResultId}
+- Price space: ${isNoTrade ? 'NO' : 'YES'} token. Entry, target, and stop are all in this token's price space.`
     : `## Analysis Result
 No recent analysis available. Use the read_full_analysis and get_market_data tools to gather current context.`;
 
@@ -340,7 +342,11 @@ ${marketDataNote}
 ${analysisSection}
 
 ## Market Data
-- Current Price: ${marketData.currentPrice === 0 ? 'Unknown (use get_market_data tool)' : marketData.currentPrice}
+- Current Price: ${
+    marketData.currentPrice === 0
+      ? 'Unknown (use get_market_data tool)'
+      : `YES ${marketData.currentPrice} / NO ${(1 - marketData.currentPrice).toFixed(4)}`
+  }
 - Edge: ${marketData.edge === 0 && decisionType === 'exit_evaluation' ? 'Unknown (use tools)' : marketData.edge}
 - Signal Alignment: ${marketData.signalAlignment === 0 && decisionType === 'exit_evaluation' ? 'Unknown (use tools)' : marketData.signalAlignment}
 

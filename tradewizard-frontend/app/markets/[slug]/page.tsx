@@ -25,6 +25,11 @@ import { Badge } from '@/components/ui/Badge';
 import { AnalysisSupportButton } from '@/components/support/AnalysisSupportButton';
 import { cn } from '@/utils/classNames';
 import {
+  yesNoTokenIds,
+  yesPriceFromOutcomes,
+  yesTokenIdFromClobTokenIds,
+} from '@/utils/outcomePrices';
+import {
   AlertTriangle,
   ArrowDownRight,
   ArrowLeft,
@@ -54,17 +59,15 @@ import { Modal } from '@/components/ui/Modal';
 
 function getYesProbability(market: PolymarketMarket): number {
   if (market.realtimePrices) {
-    const tokenIds = market.clobTokenIds ? JSON.parse(market.clobTokenIds) : [];
-    if (tokenIds[0] && market.realtimePrices[tokenIds[0]]) {
-      return Math.round(market.realtimePrices[tokenIds[0]].midPrice * 100);
+    const yesTokenId = yesTokenIdFromClobTokenIds(market.outcomes, market.clobTokenIds);
+    if (yesTokenId && market.realtimePrices[yesTokenId]) {
+      return Math.round(market.realtimePrices[yesTokenId].midPrice * 100);
     }
   }
-  if (market.outcomePrices) {
-    try {
-      const prices = JSON.parse(market.outcomePrices);
-      if (prices[0]) return Math.round(parseFloat(prices[0]) * 100);
-    } catch { }
-  }
+
+  const yesPrice = yesPriceFromOutcomes(market.outcomes, market.outcomePrices);
+  if (yesPrice !== null) return Math.round(yesPrice * 100);
+
   return 50;
 }
 
@@ -890,16 +893,11 @@ function OrderBookPanel({ market }: { market: PolymarketMarket }) {
   const isMobile = useIsMobile();
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Extract token IDs
+  // Extract token IDs by outcome label (order is not contractual).
   const { yesTokenId, noTokenId } = useMemo(() => {
-    if (!market.clobTokenIds) return { yesTokenId: null, noTokenId: null };
-    try {
-      const ids = JSON.parse(market.clobTokenIds);
-      return { yesTokenId: ids[0] || null, noTokenId: ids[1] || null };
-    } catch {
-      return { yesTokenId: null, noTokenId: null };
-    }
-  }, [market.clobTokenIds]);
+    const ids = yesNoTokenIds(market.outcomes, market.clobTokenIds);
+    return { yesTokenId: ids.yes, noTokenId: ids.no };
+  }, [market.outcomes, market.clobTokenIds]);
 
   // Fetch real order book data with WebSocket updates
   const { yesBook, noBook, isLoading, error } = useOrderBook(yesTokenId, noTokenId);
@@ -1504,6 +1502,7 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
 
   const bullThesis = data.bullThesis ?? (data as any).bull_thesis;
   const bearThesis = data.bearThesis ?? (data as any).bear_thesis;
+  const riskPerspectives = data.riskPerspectivesRaw ?? data.riskPerspectives;
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-4 bg-surface-2/30">
@@ -1514,15 +1513,15 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
 
       {/* Quick stats */}
       <div className="flex flex-wrap gap-4 text-xs">
-        {data.expectedValue !== undefined && (
+        {data.action !== 'NO_TRADE' && data.expectedValue !== undefined && (
           <div>
-            <span className="text-muted">EV: </span>
+            <span className="text-muted">EV / share: </span>
             <span className={cn('font-mono font-medium', data.expectedValue >= 0 ? 'text-yes' : 'text-no')}>
-              {data.expectedValue >= 0 ? '+' : ''}{(data.expectedValue * 100).toFixed(1)}%
+              {data.expectedValue >= 0 ? '+' : ''}{(data.expectedValue * 100).toFixed(1)}¢
             </span>
           </div>
         )}
-        {data.winProbability !== undefined && (
+        {data.action !== 'NO_TRADE' && data.winProbability > 0 && (
           <div>
             <span className="text-muted">Win Prob: </span>
             <span className="font-mono font-medium">{Math.round(data.winProbability * 100)}%</span>
@@ -1530,14 +1529,20 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
         )}
         {data.entryZone && (
           <div>
-            <span className="text-muted">Entry: </span>
+            <span className="text-muted">Entry{data.action === 'LONG_NO' ? ' (NO)' : ''}: </span>
             <span className="font-mono">{Math.round(data.entryZone[0] * 100)}–{Math.round(data.entryZone[1] * 100)}¢</span>
           </div>
         )}
         {data.targetZone && (
           <div>
-            <span className="text-muted">Target: </span>
+            <span className="text-muted">Target{data.action === 'LONG_NO' ? ' (NO)' : ''}: </span>
             <span className="font-mono">{Math.round(data.targetZone[0] * 100)}–{Math.round(data.targetZone[1] * 100)}¢</span>
+          </div>
+        )}
+        {data.stopLoss > 0 && (
+          <div>
+            <span className="text-muted">Stop{data.action === 'LONG_NO' ? ' (NO)' : ''}: </span>
+            <span className="font-mono">{Math.round(data.stopLoss * 100)}¢</span>
           </div>
         )}
       </div>
@@ -1599,10 +1604,10 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
       )}
 
       {/* Risk Perspectives */}
-      {data.riskPerspectives && data.riskPerspectives !== 'Risk perspectives unavailable.' && (
+      {riskPerspectives && riskPerspectives !== 'Risk perspectives unavailable.' && (
         <Expandable summary="Risk Perspectives" defaultOpen={false}>
           <pre className="text-xs text-fg/70 whitespace-pre-wrap leading-relaxed font-sans pt-1">
-            {data.riskPerspectives}
+            {riskPerspectives}
           </pre>
         </Expandable>
       )}
@@ -2110,6 +2115,9 @@ function CallRow({
           : 'border-border bg-surface-2 text-muted';
   const cents = (value: number | null) =>
     value === null ? '-' : `${Math.round(value * 100)}¢`;
+  // Backend edge is consensus - market in YES space. A NO trade's edge is the
+  // inverse, matching the AI panel and insights page.
+  const displayEdge = rec.recommendation === 'LONG_NO' ? -rec.edge : rec.edge;
 
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-2.5">
@@ -2128,9 +2136,9 @@ function CallRow({
         <div className="truncate text-[0.58rem] text-muted">
           Target {cents(rec.targetPrice)} · Stop {cents(rec.stopLossPrice)} ·
           Edge{' '}
-          <span className={rec.edge > 0 ? 'text-yes' : rec.edge < 0 ? 'text-no' : ''}>
-            {rec.edge > 0 ? '+' : ''}
-            {Math.round(rec.edge * 100)}¢
+          <span className={displayEdge > 0 ? 'text-yes' : displayEdge < 0 ? 'text-no' : ''}>
+            {displayEdge > 0 ? '+' : ''}
+            {Math.round(displayEdge * 100)}¢
           </span>{' '}
           ·{' '}
           {new Date(rec.executedAt).toLocaleDateString(undefined, {
@@ -2653,16 +2661,11 @@ export default function MarketDetailPage() {
     staleTime: 30_000,
   });
 
-  // Extract token IDs for price history
+  // Extract token IDs for price history by outcome label.
   const { yesTokenId, noTokenId } = useMemo(() => {
-    if (!market?.clobTokenIds) return { yesTokenId: null, noTokenId: null };
-    try {
-      const ids = JSON.parse(market.clobTokenIds);
-      return { yesTokenId: ids[0] || null, noTokenId: ids[1] || null };
-    } catch {
-      return { yesTokenId: null, noTokenId: null };
-    }
-  }, [market]);
+    const ids = yesNoTokenIds(market?.outcomes, market?.clobTokenIds);
+    return { yesTokenId: ids.yes, noTokenId: ids.no };
+  }, [market?.outcomes, market?.clobTokenIds]);
 
   // Fetch real-time token prices
   const { data: realtimePrices } = useQuery<Record<string, { bidPrice: number; askPrice: number; midPrice: number; spread: number }>>({

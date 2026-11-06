@@ -34,6 +34,16 @@ export interface MarketAnalysisResult {
     agentsUsed: string[];
     marketQuestion?: string;
     disagreementIndex?: number;
+    /** Ensemble confidence in the call (0–1), distinct from winProbability. */
+    consensusConfidence?: number;
+    /** Fused-signal alignment (0–1). */
+    signalAlignment?: number;
+    riskRewardRatio?: number;
+    volatility?: number;
+    marketEndDate?: string;
+    divergenceGuardTriggered?: boolean;
+    thesisVetoTriggered?: boolean;
+    noTradeReason?: string;
   };
   executedAt?: string;
   // Full analysis detail (merged from S3 detail file by results-api)
@@ -90,6 +100,7 @@ export function useMarketAnalysis(marketId: string | null) {
             marketId: string;
             recommendation: string;
             consensusProbability: number;
+            /** Ensemble confidence in the call (0-1). */
             confidence: number;
             executedAt: string;
           }>;
@@ -117,7 +128,9 @@ export function useMarketAnalysis(marketId: string | null) {
             targetZone: [0, 0],
             stopLoss: 0,
             expectedValue: 0,
-            winProbability: latest.consensusProbability,
+            // The summary does not carry the traded-token win probability.
+            // Do not substitute consensus P(YES); it is a different number.
+            winProbability: 0,
             liquidityRisk: 'medium' as const,
             explanation: {
               summary: '',
@@ -132,6 +145,7 @@ export function useMarketAnalysis(marketId: string | null) {
               marketProbability: 0,
               edge: 0,
               confidenceBand: [0, 0],
+              consensusConfidence: latest.confidence,
               totalLlmCalls: 0,
               executionDurationMs: 0,
               agentsUsed: [],

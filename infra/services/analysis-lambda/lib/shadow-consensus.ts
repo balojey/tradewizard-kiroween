@@ -1,11 +1,14 @@
 /**
- * Shadow consensus - the agent-driven aggregation, run alongside the live one.
+ * Agent-driven consensus.
  *
- * This implements the config we want to move to, WITHOUT changing what users
- * see. The live pipeline (`signal-fusion` -> `consensus-engine`) anchors each
- * agent's absolute probability to the market prior, shrinks the ensemble's
- * deviation, and gates the result on a fixed probability edge. That design
- * cannot express two things:
+ * This is the opt-in agent-driven consensus (`CONSENSUS_MODE=agent`). By
+ * default the original `signal-fusion` -> `consensus-engine` anchored path
+ * decides the live action; this result is still computed every run and stored
+ * as the comparison config (`shadow_*` columns).
+ *
+ * The anchored path anchors each agent's absolute probability to the market
+ * prior, shrinks the ensemble's deviation, and gates the result on a fixed
+ * probability edge. That design cannot express two things:
  *
  *   1. A trade on the *favourite* side. Producing one requires the ensemble to
  *      be more extreme than the market, which agents that "treat the price as a
@@ -29,10 +32,10 @@
  *
  * Deterministic and pure: no IO, no clocks, no env access at call time.
  *
- * The result is recorded on `_analysisDetail.shadowConsensus` and persisted so
- * `recommendation-scorer` can grade both configs against realised price moves.
- * Nothing here affects the live recommendation until the shadow data says it
- * should.
+ * Both configs are computed on every run. The live action comes from this
+ * module under `CONSENSUS_MODE=agent`; under `anchored` this result is recorded
+ * on `_analysisDetail.shadowConsensus` so `recommendation-scorer` can grade the
+ * two configurations against the same realised price move.
  */
 
 import type { AgentSignal } from './types';

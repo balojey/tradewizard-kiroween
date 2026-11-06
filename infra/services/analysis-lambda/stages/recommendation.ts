@@ -113,14 +113,11 @@ The ordering is ALWAYS: stop_loss < entry < target. You buy at entry, profit at 
 - If the market resolves soon, require a tighter, evidence-based stop rather than a wide speculative one.
 
 ### Expected Value
-- The platform recomputes EV deterministically using the consensus-derived win probability, floored by the market-implied probability unless the edge is large enough to be credible.
+- The platform recomputes EV deterministically. The Risk Gate section of the user prompt states the exact win-probability rule for this run.
 - EV = (win_probability * (target_mid - entry_mid)) - ((1 - win_probability) * (entry_mid - stop_loss)).
 - Must be positive for any trade recommendation.
-- If EV is negative at that conservative win probability, output NO_TRADE.
-- **win_probability** is the probability of winning:
-  - For LONG_YES: consensus P(YES), floored at the current market P(YES).
-  - For LONG_NO: 1 - consensus P(YES), floored at 1 - current market P(YES).
-- Do not invent a win probability that contradicts consensus or the market.
+- If EV is negative under the stated win probability, output NO_TRADE.
+- **win_probability** is the probability that the token being bought wins. Use the consensus-derived value stated in the Risk Gate section. Never invent a probability that contradicts consensus or the market.
 
 ### Explanation
 Provide a clear, human-readable explanation:
@@ -160,7 +157,7 @@ Return a JSON object:
 - If the consensus engine blocked the trade because the model disagreed with the market too much, always recommend NO_TRADE.
 - The explanation must be honest about uncertainty.
 - ALL prices must satisfy: stop_loss < entry_zone[0] ≤ entry_zone[1] < target_zone[0] ≤ target_zone[1].
-- The target distance must be at least 1.5x the stop distance. If you cannot construct such a trade, output NO_TRADE.
+- The target distance must satisfy the reward/risk rule in the Risk Gate section of the user prompt.
 - For LONG_NO: convert YES probabilities to NO prices (1 - YES_prob) before outputting.`;
 
 // ============================================================================
@@ -257,7 +254,7 @@ export async function runRecommendation(
       console.warn(
         `[Recommendation] Rejected by deterministic validation: ${outcome.reason} - using NO_TRADE fallback`,
       );
-      return createFallbackResult(input, startTime, outcome.reason);
+      return createFallbackResult(input, startTime, outcome.reason, 'levels_rejected');
     }
 
     // JSON extraction failed - use NO_TRADE fallback
@@ -266,11 +263,12 @@ export async function runRecommendation(
       input,
       startTime,
       'the model response did not contain a valid JSON recommendation',
+      'recommendation_failed',
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[Recommendation] Failed: ${message} - using NO_TRADE fallback`);
-    return createFallbackResult(input, startTime, message);
+    return createFallbackResult(input, startTime, message, 'recommendation_failed');
   }
 }
 
@@ -329,6 +327,34 @@ function buildRecommendationPrompt(input: RecommendationInput): string {
       `- Confidence: ${input.consensusOutput.consensusResult.confidence.toFixed(3)}\n` +
       `- Disagreement Index: ${input.consensusOutput.consensusResult.disagreementIndex.toFixed(3)}\n` +
       `- Consensus Failed: ${input.consensusOutput.consensusResult.failed}`,
+  );
+
+  // The EV/win-probability and reward/risk rules differ between gate profiles.
+  // State the active rule explicitly instead of letting the model assume the
+  // `strict` floor (which made it self-veto tradeable `actionable` edges).
+  const profile: GateProfile = input.gateProfile ?? readGateProfile();
+  const consensusTokenProbability =
+    input.consensusOutput.action === 'LONG_NO'
+      ? 1 - input.consensusOutput.consensusResult.probability
+      : input.consensusOutput.consensusResult.probability;
+  const marketTokenProbability =
+    input.consensusOutput.action === 'LONG_NO'
+      ? 1 - input.marketProbability
+      : input.marketProbability;
+
+  sections.push(
+    `## Risk Gate (${profile} profile)\n` +
+      (input.consensusOutput.action === 'NO_TRADE'
+        ? `- The consensus engine has already closed this trade (NO_TRADE); the rules below are for explanation only - you must output NO_TRADE.\n`
+        : '') +
+      (profile === 'actionable'
+        ? `- Win probability for EV is the consensus estimate: ${consensusTokenProbability.toFixed(3)}. ` +
+          `It is NOT floored at the market-implied probability (${marketTokenProbability.toFixed(3)}).\n` +
+          `- The target distance must satisfy both the flat ${MIN_RISK_REWARD_RATIO.toFixed(1)}:1 reward/risk floor and the EV break-even distance at that win probability. ` +
+          `The platform expands a too-close target deterministically instead of rejecting the trade - propose your best levels rather than outputting NO_TRADE solely because the first target is tight.\n`
+        : `- Win probability for EV is the consensus estimate (${consensusTokenProbability.toFixed(3)}) when the edge is credible ` +
+          `(>= ${MIN_ACTIONABLE_EDGE.toFixed(2)} and confidence >= 0.5); otherwise it is floored at the market-implied probability (${marketTokenProbability.toFixed(3)}).\n` +
+          `- The target distance must be at least ${MIN_RISK_REWARD_RATIO.toFixed(1)}x the stop distance. If you cannot construct such a trade, output NO_TRADE.\n`),
   );
 
   sections.push(
@@ -544,8 +570,13 @@ export function parseRecommendation(
       }
 
       const previousTargetMid = targetMid;
-      if (targetHigh >= requiredTargetMid) {
+      // Keep the model's upper target when it already clears the required
+      // distance, but never let it exceed the token's price ceiling. The old
+      // code retained e.g. 1.00 and then averaged to a mid above MAX.
+      const cappedTargetHigh = Math.min(targetHigh, MAX_TARGET_PRICE);
+      if (cappedTargetHigh > requiredTargetMid) {
         targetLow = requiredTargetMid;
+        targetHigh = cappedTargetHigh;
       } else {
         targetLow = requiredTargetMid;
         targetHigh = requiredTargetMid;
@@ -603,6 +634,8 @@ export function parseRecommendation(
     agentsUsed: input.agentsUsed,
     marketQuestion: input.marketQuestion,
     disagreementIndex: input.consensusOutput.consensusResult.disagreementIndex,
+    consensusConfidence: input.consensusOutput.consensusResult.confidence,
+    signalAlignment: input.fusedSignal.signalAlignment,
     riskRewardRatio: isNoTrade ? undefined : riskRewardRatio,
     volatility: input.volatility,
     marketEndDate: input.marketEndDate,
@@ -680,6 +713,7 @@ function createFallbackResult(
   input: RecommendationInput,
   startTime: number,
   reason?: string,
+  fallbackReason: 'levels_rejected' | 'recommendation_failed' = 'recommendation_failed',
 ): RecommendationStageResult {
   const executionDurationMs = Date.now() - input.executionStartTime;
 
@@ -728,10 +762,18 @@ function createFallbackResult(
       'Thesis margin was too weak to confirm the trade',
     ];
   } else if (isConsensusFailed) {
-    summary = `NO_TRADE: Consensus failed with ${(disagreement * 100).toFixed(1)}% disagreement among agents. Too much uncertainty to take a position.`;
-    coreThesis = `Agent disagreement index (${disagreement.toFixed(3)}) exceeds the 30% threshold, indicating fundamentally conflicting views on this market's direction.`;
-    uncertaintyNote = `High disagreement suggests the market is in a genuinely uncertain state where different analytical frameworks reach opposing conclusions. Wait for clarity before entering.`;
-    failureScenarios = ['Agent disagreement too high', 'Conflicting directional signals'];
+    const confidence = input.consensusOutput.consensusResult.confidence;
+    summary =
+      `NO_TRADE: Consensus did not reach an actionable majority ` +
+      `(disagreement ${(disagreement * 100).toFixed(1)}%, confidence ${(confidence * 100).toFixed(1)}%). ` +
+      `Too much uncertainty to take a position.`;
+    coreThesis =
+      `The ensemble's disagreement index (${disagreement.toFixed(3)}) or confidence ` +
+      `(${confidence.toFixed(3)}) is outside the range required to act.`;
+    uncertaintyNote =
+      `This can mean the agents genuinely conflict, or that too few agents formed a ` +
+      `confident view. Wait for clearer evidence before entering.`;
+    failureScenarios = ['No actionable consensus majority', 'Conflicting directional signals'];
   } else if (isNoTradeAction && Math.abs(edge) < (input.consensusOutput.edgeFloor ?? MIN_ACTIONABLE_EDGE)) {
     const floor = input.consensusOutput.edgeFloor ?? MIN_ACTIONABLE_EDGE;
     summary = `NO_TRADE: Edge of ${(edge * 100).toFixed(1)}% is below the ${(floor * 100).toFixed(1)}% floor for this market's spread. Insufficient mispricing to justify transaction costs.`;
@@ -753,6 +795,14 @@ function createFallbackResult(
     uncertaintyNote = 'Full analysis could not be completed. No trade recommended.';
     failureScenarios = ['Recommendation agent failure'];
   }
+
+  // Label the fallback so quality analytics can separate a consensus gate from
+  // a recommendation-stage failure instead of lumping both into "(none)".
+  const noTradeReason: TradeRecommendation['metadata']['noTradeReason'] =
+    input.consensusOutput.noTradeReason ??
+    (input.consensusOutput.action !== 'NO_TRADE'
+      ? fallbackReason
+      : 'recommendation_failed');
 
   const recommendation: TradeRecommendation = {
     marketId: input.marketId,
@@ -784,11 +834,13 @@ function createFallbackResult(
       agentsUsed: input.agentsUsed,
       marketQuestion: input.marketQuestion,
       disagreementIndex: input.consensusOutput.consensusResult.disagreementIndex,
+      consensusConfidence: input.consensusOutput.consensusResult.confidence,
+      signalAlignment: input.fusedSignal.signalAlignment,
       volatility: input.volatility,
       marketEndDate: input.marketEndDate,
       divergenceGuardTriggered: input.consensusOutput.divergenceGuardTriggered,
       thesisVetoTriggered: input.consensusOutput.thesisVetoTriggered,
-      noTradeReason: input.consensusOutput.noTradeReason,
+      noTradeReason,
     },
   };
 
@@ -807,6 +859,50 @@ interface CorrectedPrices {
   entryZone: [number, number];
   targetZone: [number, number];
   stopLoss: number;
+}
+
+/** Minimum distance between adjacent levels when repairing overlapping zones. */
+const MIN_LEVEL_GAP = 0.005;
+
+/**
+ * Repair a directionally-correct but geometrically-overlapping price set.
+ *
+ * The documented invariant is
+ *   stopLoss < entryZone[0] ≤ entryZone[1] < targetZone[0] ≤ targetZone[1]
+ * and downstream consumers (portfolio executor, scorer) rely on it. The old
+ * "relaxed" checks accepted a stop inside the entry zone and a target
+ * overlapping it, which leaked malformed levels into storage.
+ *
+ * Repairs are conservative: the stop is moved just below the entry zone and the
+ * target is lifted above it, preserving the model's target width. Returns null
+ * when the repair would push the target beyond the token's price ceiling.
+ */
+function enforceStrictOrdering(
+  entryZone: [number, number],
+  targetZone: [number, number],
+  stopLoss: number,
+): CorrectedPrices | null {
+  const [entryLow, entryHigh] = entryZone;
+
+  const correctedStop =
+    stopLoss < entryLow ? stopLoss : clampPrice(entryLow - MIN_LEVEL_GAP);
+  if (!(correctedStop < entryLow)) return null;
+
+  let [targetLow, targetHigh] = targetZone;
+  if (!(targetLow > entryHigh)) {
+    const width = Math.max(MIN_LEVEL_GAP, targetHigh - targetLow);
+    targetLow = entryHigh + MIN_LEVEL_GAP;
+    targetHigh = targetLow + width;
+  }
+
+  targetHigh = Math.min(targetHigh, MAX_TARGET_PRICE);
+  if (!(targetHigh > targetLow) || !(targetLow > entryHigh)) return null;
+
+  return {
+    entryZone,
+    targetZone: [targetLow, targetHigh],
+    stopLoss: correctedStop,
+  };
 }
 
 /**
@@ -877,15 +973,13 @@ function validateAndCorrectPrices(
         `sl ${stopLoss.toFixed(3)} → ${correctedStopLoss.toFixed(3)}`,
       );
 
-      // Validate corrected ordering
-      if (correctedStopLoss < correctedEntry[0] && correctedEntry[1] < correctedTarget[0]) {
-        return { entryZone: correctedEntry, targetZone: correctedTarget, stopLoss: correctedStopLoss };
-      }
-
-      // Even after conversion, ordering is off - try to salvage with relaxed check
-      if (correctedStopLoss < correctedEntry[1] && correctedEntry[0] < correctedTarget[1]) {
-        return { entryZone: correctedEntry, targetZone: correctedTarget, stopLoss: correctedStopLoss };
-      }
+      // Validate and, if necessary, repair the corrected ordering.
+      const repaired = enforceStrictOrdering(
+        correctedEntry,
+        correctedTarget,
+        correctedStopLoss,
+      );
+      if (repaired) return repaired;
 
       // Conversion didn't fix it - unsalvageable
       console.warn(
@@ -898,13 +992,15 @@ function validateAndCorrectPrices(
 
     // Already in NO-space or close enough - validate ordering
     if (stopLoss < entry[0] && entry[1] < target[0]) {
-      // Perfect ordering
-      return { entryZone: entry, targetZone: target, stopLoss };
+      // Perfect ordering - still enforce the token price ceiling.
+      const cappedTargetHigh = Math.min(target[1], MAX_TARGET_PRICE);
+      if (target[0] > cappedTargetHigh) return null;
+      return { entryZone: entry, targetZone: [target[0], cappedTargetHigh], stopLoss };
     }
 
-    // Relaxed: allow slight overlap but still directionally correct
+    // Directionally correct but possibly overlapping - repair into strict order.
     if (stopLoss < entry[1] && entry[0] < target[1] && targetMid > entryMid && stopLoss < entryMid) {
-      return { entryZone: entry, targetZone: target, stopLoss };
+      return enforceStrictOrdering(entry, target, stopLoss);
     }
 
     // Check if it's completely inverted (entry > target, sl > entry) - YES-space
@@ -920,10 +1016,7 @@ function validateAndCorrectPrices(
         `sl ${stopLoss.toFixed(3)} → ${correctedStopLoss.toFixed(3)}`,
       );
 
-      if (correctedStopLoss < correctedEntry[1] && correctedEntry[0] < correctedTarget[1]) {
-        return { entryZone: correctedEntry, targetZone: correctedTarget, stopLoss: correctedStopLoss };
-      }
-      return null;
+      return enforceStrictOrdering(correctedEntry, correctedTarget, correctedStopLoss);
     }
 
     console.warn(
@@ -937,13 +1030,15 @@ function validateAndCorrectPrices(
   if (action === 'LONG_YES') {
     // Expected YES-token space: entry near marketProb, target > entry, sl < entry
     if (stopLoss < entry[0] && entry[1] < target[0]) {
-      // Perfect ordering
-      return { entryZone: entry, targetZone: target, stopLoss };
+      // Perfect ordering - still enforce the token price ceiling.
+      const cappedTargetHigh = Math.min(target[1], MAX_TARGET_PRICE);
+      if (target[0] > cappedTargetHigh) return null;
+      return { entryZone: entry, targetZone: [target[0], cappedTargetHigh], stopLoss };
     }
 
-    // Relaxed: allow slight overlap but still directionally correct
+    // Directionally correct but possibly overlapping - repair into strict order.
     if (stopLoss < entry[1] && entry[0] < target[1] && targetMid > entryMid && stopLoss < entryMid) {
-      return { entryZone: entry, targetZone: target, stopLoss };
+      return enforceStrictOrdering(entry, target, stopLoss);
     }
 
     // When market is near 0.50, skip space-conversion heuristics
@@ -967,10 +1062,7 @@ function validateAndCorrectPrices(
         `sl ${stopLoss.toFixed(3)} → ${correctedStopLoss.toFixed(3)}`,
       );
 
-      if (correctedStopLoss < correctedEntry[1] && correctedEntry[0] < correctedTarget[1]) {
-        return { entryZone: correctedEntry, targetZone: correctedTarget, stopLoss: correctedStopLoss };
-      }
-      return null;
+      return enforceStrictOrdering(correctedEntry, correctedTarget, correctedStopLoss);
     }
 
     // Stop loss above entry - common LLM mistake. Clamp it below entry.
@@ -980,13 +1072,8 @@ function validateAndCorrectPrices(
         `[Recommendation] LONG_YES stop-loss ${stopLoss.toFixed(3)} was above entry ${entry[0].toFixed(3)} - ` +
         `corrected to ${correctedStopLoss.toFixed(3)} (15% below entry low)`,
       );
-      if (correctedStopLoss < entry[0] && entry[1] < target[0]) {
-        return { entryZone: entry, targetZone: target, stopLoss: correctedStopLoss };
-      }
-      // Relaxed check
-      if (correctedStopLoss < entry[1] && entry[0] < target[1]) {
-        return { entryZone: entry, targetZone: target, stopLoss: correctedStopLoss };
-      }
+      const repaired = enforceStrictOrdering(entry, target, correctedStopLoss);
+      if (repaired) return repaired;
     }
 
     console.warn(

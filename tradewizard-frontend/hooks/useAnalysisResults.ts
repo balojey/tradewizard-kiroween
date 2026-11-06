@@ -80,6 +80,16 @@ export interface AnalysisResultDetail {
     agentsUsed: string[];
     marketQuestion: string;
     disagreementIndex?: number;
+    /** Ensemble confidence in the call (0–1), distinct from winProbability. */
+    consensusConfidence?: number;
+    /** Fused-signal alignment (0–1). */
+    signalAlignment?: number;
+    riskRewardRatio?: number;
+    volatility?: number;
+    marketEndDate?: string;
+    divergenceGuardTriggered?: boolean;
+    thesisVetoTriggered?: boolean;
+    noTradeReason?: string;
   };
   // ─── Full analysis detail (present for results after agent memory launch) ─
   agentSignals?: AgentSignal[];
@@ -89,7 +99,13 @@ export interface AnalysisResultDetail {
   crossExamination?: CrossExaminationResult;
   consensus?: ConsensusResult;
   riskPerspectives?: string;
+  /** Raw labelled risk output from the three philosophy agents. */
+  riskPerspectivesRaw?: string;
   webResearchSummary?: string;
+  /** Which consensus configuration produced the live call. */
+  consensusMode?: 'agent' | 'anchored';
+  /** Non-live consensus output kept for comparison. */
+  anchoredConsensus?: unknown;
 }
 
 interface AnalysisHistoryPage {
