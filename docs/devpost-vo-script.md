@@ -44,7 +44,7 @@ For Pro and Elite there is the Portfolio Manager. I choose the market, the capit
 
 Under the hood: Lambda, Aurora, DynamoDB, SQS, and SNS. One analysis per market is shared across users, so cost scales with markets, not traffic. Every recommendation is scored after it resolves, and every agent's accuracy feeds back into the next analysis.
 
-Kiro built it with us. Thirty-two specs, four steering documents, five hooks that typecheck each package and guard the deterministic gates, and MCP servers for the Polymarket and Magic Link docs.
+Kiro built it with us. Thirty-four specs, four steering documents, five hooks that typecheck each package and guard the deterministic gates, and MCP servers for the Polymarket and Magic Link docs.
 
 Fourteen specialists. Three gates. One kill switch. TradeWizard - an AI hedge fund for real-world outcomes, built to know when to stay out.
 
@@ -62,6 +62,6 @@ When the evidence holds, the recommendation includes entry, target, mandatory st
 
 For Pro and Elite, the Portfolio Manager executes inside guardrails the user pre-approves. The agent decides. A separate executor enforces. The kill switch fails closed.
 
-Kiro gave us thirty-two specs, four steering documents, and five hooks that protect the gates.
+Kiro gave us thirty-four specs, four steering documents, and five hooks that protect the gates.
 
 Fourteen specialists. Three gates. One kill switch. TradeWizard - built to know when to stay out.

@@ -405,11 +405,9 @@ stale context is ignored.
 
 ### 6.5 Sessions
 
-- Admin app client: ID token 1 h, refresh 8 h (vs. 30 days for end users).
-- Token held in `sessionStorage` only; cleared on tab close.
-- `tw_admin_id_token` cookie mirrors the ID token solely for the admin
-  middleware, with `SameSite=Strict` and `Secure`. The middleware only checks
-  presence + `exp` (same approach as the product), never authorization.
+- Admin app client: ID token 1 h, refresh 30 days; the ID token is silently refreshed.
+- Session held in `localStorage` under `tw_admin_session`; a legacy `sessionStorage` value is migrated and removed.
+- `tw_admin_session` cookie is a presence marker only (`SameSite=Strict`, `Secure`); it carries no token. `proxy.ts` uses it to choose login vs shell, never to authorize. The API authorizer remains the security boundary.
 - Re-authentication is required for owner-level actions (settings, role changes)
   — enforced by requiring a fresh token (`auth_time` within 10 minutes).
 
@@ -789,7 +787,7 @@ adding it to `constants/audit-actions.ts` in the admin app.
 
 ```
 tradewizard-admin/
-├── proxy.ts                   # Next 16 route guard: all routes except /login require tw_admin_id_token
+├── proxy.ts                   # Next 16 route guard: all routes except /login require the tw_admin_session marker
 ├── app/
 │   ├── layout.tsx  globals.css
 │   ├── login/page.tsx         # email + password + TOTP
@@ -920,7 +918,7 @@ review, not the repo.
 
 | File | Change |
 |---|---|
-| `lib/auth-stack.ts` | Admin app client (`userSrp` only, 1 h ID / 8 h refresh); four `CfnUserPoolGroup`s; export `AdminClientId` |
+| `lib/auth-stack.ts` | Admin app client (`userSrp` only, 1 h ID / 30-day refresh); four `CfnUserPoolGroup`s; export `AdminClientId` |
 | `lib/admin-stack.ts` *(new)* | Authorizer + `admin-api` + route definition + `admin-metrics-rollup` + EventBridge rule; REST API with CORS allowlist (`https://admin.tradewizard.live`, `http://localhost:3001` in dev), throttle 20 rps / 40 burst, access logs |
 | `bin/tradewizard.ts` | Instantiate `AdminStack` after `ComputeStack`; pass `userPool`, `dbSecret`, `dbEndpoint`, `analysisBucket`, `rateLimitTable`, `eventBus`, `analysisQueue` |
 | `lib/monitoring-stack.ts` | Alarms: `AdminApi5xx`, `AdminAuthDenied`, `AdminRollupFailed`, `AdminAuditWriteFailed` |
@@ -966,7 +964,7 @@ assumed; the evidence column says how to re-check it.
 | # | Control | Status | Evidence |
 |---|---|---|---|
 | 1 | Admin API has its own origin; CORS is an explicit allowlist | ✅ | Preflight `OPTIONS` from `http://localhost:3001` → 204 with that origin; a disallowed origin is never echoed (unit test + manual) |
-| 2 | ID token 1 h / refresh 8 h; `sessionStorage`; cookie `SameSite=Strict` | ✅ | `auth-stack.ts` client config + `lib/session.ts`; tab close ends the session |
+| 2 | ID token 1 h / 30-day refresh; session in `localStorage`; presence-only `SameSite=Strict` cookie | ✅ | `auth-stack.ts` client config + `lib/session.ts`; the session survives a restart, the cookie carries no token, and the authorizer remains the boundary |
 | 3 | MFA required in prod and actually enforced | ✅ | `ADMIN_REQUIRE_MFA` defaults to `true` in every env; a live admin token without a TOTP factor was denied `403 MFA_REQUIRED`, and the fix for the casing bug is covered by tests |
 | 4 | Authorizer rejects access tokens, wrong audience/issuer, expired | ✅ | `aws-jwt-verify` with `tokenUse: 'id'` + client id; unit tests cover expiry, wrong client, missing claims |
 | 5 | Handler re-checks role; property test for every route × role | ✅ | Route × role matrix test fails the build when a route is added without a row; denied calls are asserted not to reach the database |

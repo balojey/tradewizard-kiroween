@@ -67,7 +67,7 @@ One analysis per market per hour, shared across all users. Ten thousand requests
 
 🧵 BUILT WITH KIRO
 
-• 32 specs under `.kiro/specs/` - requirements → design → tasks
+• 34 specs under `.kiro/specs/` - requirements → design → tasks
 • 4 steering documents: product, structure, tech, and Kiroween submission rules
 • 5 hooks: typecheck each package on save, guard the deterministic gates, close out spec tasks
 • MCP servers for Magic Link and Polymarket documentation

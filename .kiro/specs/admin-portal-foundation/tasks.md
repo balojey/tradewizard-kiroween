@@ -1,0 +1,49 @@
+# Implementation Plan
+
+- [x] 1. Establish the isolated portal package
+  - Create `tradewizard-admin/` as a Next.js 16 App Router package with its own `package.json`.
+  - Add the root `amplify.yml` `appRoot` entry and the separate Amplify deployment.
+  - Add `robots.ts`, the root `noindex` metadata, and the portal icons.
+- [x] 2. Add Cognito admin authentication
+  - Create the admin app client with `USER_PASSWORD_AUTH` and TOTP.
+  - Add the `tw-analyst`, `tw-support`, `tw-admin`, and `tw-owner` groups.
+  - Implement `admin-authorizer` with ID-token verification, group ranking, and the MFA gate.
+  - Implement `shared/admin-auth.ts` with `getAdminIdentity`, `requireRole`, and `requireFreshAuth`.
+- [x] 3. Add self-service MFA and reauthentication
+  - Add `/admin/bootstrap/status` and the enrolment routes.
+  - Build `MfaSetup` with QR display and verification.
+  - Build `ReauthNotice` with a sign-in-again path that returns to the current page.
+  - Audit `admin.mfa.enrolled`.
+- [x] 4. Add the admin data model
+  - Create `admin_audit_log`, `admin_user_notes`, `admin_plan_overrides`, `system_settings`, and `admin_metrics_daily`.
+  - Add the append-only triggers for the audit table.
+  - Add the audit idempotency index.
+- [x] 5. Build the admin API skeleton
+  - Create `admin-stack.ts` with the REST API, authorizer, and scoped IAM.
+  - Add the typed router, response helpers, validation, and cursor pagination.
+  - Implement `GET /admin/me`.
+  - Add `seed-admin.ts` and the owner bootstrap path.
+- [x] 6. Build the portal shell
+  - Add `AdminAuthProvider`, `proxy.ts`, login, and the route guard.
+  - Build the grouped sidebar, top bar, mobile jump list, and breadcrumbs.
+  - Add the `Page`, `Panel`, `Stat`, `Dialog`, `DataTable`, and `Filters` primitives.
+  - Enforce role-aware navigation and hide unavailable actions.
+- [x] 7. Ship read-only visibility
+  - Overview with 24h/7d/30d metrics and the hourly rollup.
+  - Users list/detail with credits, analyses, sessions, payments, and notes.
+  - Analyses list/detail with quality analytics and presigned S3 payloads.
+  - Portfolio sessions, exposure, trades, and decisions.
+  - Billing ledger, agents/calibration, ops health, and markets/analysis pool.
+  - Append-only audit viewer with filters.
+- [x] 8. Add operational hardening
+  - Alarm on authorizer denials, API 5xx, and rollup failures.
+  - Add the admin CORS allowlist and scoped IAM grants.
+  - Add forced sign-out and last-owner protection.
+  - Add the 30-day session model with a non-credential cookie marker.
+  - Add the installable PWA manifest, icons, and conservative service worker.
+- [x] 9. Verify the foundation
+  - Add handler tests for auth, roles, validation, audit, idempotency, and pagination.
+  - Add the RBAC property test across the route matrix.
+  - Run `npx tsc --noEmit` in `tradewizard-admin/` and `infra/`.
+  - Run `npm run synth:dev` after stack changes.
+  - Confirm the security checklist in `docs/admin-portal-architecture.md` §12.
