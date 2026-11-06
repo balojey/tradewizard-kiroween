@@ -42,7 +42,7 @@ Use [docs/kiroween-submission.md](kiroween-submission.md) for the Devpost text d
 
 Use [docs/kiro-usage.md](kiro-usage.md) for the full write-up. The short version:
 
-- **Spec-driven development.** Thirty-two specs under `.kiro/specs/` define the agent league, 11-stage workflow, autonomous Portfolio Manager, wallet subscriptions, delivery frontend, admin API, and memory system. Each has requirements, a design, and an ordered task list.
+- **Spec-driven development.** Thirty-four specs under `.kiro/specs/` define the agent league, 11-stage workflow, autonomous Portfolio Manager, wallet subscriptions, delivery frontend, admin API, management portal, and memory system. Most follow requirements → design → tasks with an ordered task list.
 - **Steering.** Four documents under `.kiro/steering/` encode the product model, package boundaries, technical invariants, and submission rules. The most important rule is negative: deterministic stages contain no model calls.
 - **Agent hooks.** Five hooks under `.kiro/hooks/` typecheck each package on save, run an agent review when a deterministic gate changes, and close out completed spec tasks.
 - **MCP.** `.kiro/settings/mcp.json` connects the agent to Magic Link and Polymarket documentation so integration details are verified rather than recalled.

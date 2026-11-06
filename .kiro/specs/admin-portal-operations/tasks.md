@@ -1,0 +1,50 @@
+# Implementation Plan
+
+- [x] 1. Enforce the mutation envelope
+  - Require role, fresh auth, reason, audit, and idempotency for every write.
+  - Add explicit confirmation and no optimistic updates in the UI.
+  - Cover success, forbidden, validation, and replay in handler tests.
+- [x] 2. Ship the kill switch
+  - Add the per-user activate and reset routes.
+  - Halt synchronously by writing the DynamoDB state, then dispatch the exit to the risk engine asynchronously.
+  - Keep the halt in place when the exit dispatch fails and return the dispatch outcome.
+  - Expose the control on user detail and session detail with explicit confirmation.
+  - Run a live dev drill before production.
+- [x] 3. Ship portfolio session controls
+  - Add pause, resume, and terminate with role and reason rules.
+  - Keep exits and guards active while paused.
+  - Delegate execution to shared portfolio services; no CLOB code in the portal.
+  - Add session detail, trades, decisions, P&L, and the kill switch.
+- [x] 4. Ship user and account operations
+  - Add credit grants, plan overrides with expiry, suspension, and support notes.
+  - Use the shared credit ledger and notification modules.
+  - Protect retries with audit idempotency.
+- [x] 5. Ship portal membership
+  - Add owner-only member list, role change, remove, and invite.
+  - Add the invite flow with `AdminCreateUser` and first-sign-in password choice.
+  - Add MFA enrolment and fresh-auth recovery to the login flow.
+  - Enforce last-owner protection with `409 LAST_OWNER`.
+- [x] 6. Ship runtime settings
+  - Add the `system_settings` registry with a consumer per key.
+  - Wire `analysis_paused`, `analysis_pause_message`, `ai_provider`, `pm_activations_paused`, `support_enabled`, `support_first_response_target_hours`, and `newsletter_enabled`.
+  - Add 60-second caching, synchronous warm-up, and default fallback.
+  - Audit owner-only writes with a reason.
+- [x] 7. Ship analysis operations
+  - Add cache invalidation, refund-all-recipients, and market requeue.
+  - Clear the in-flight marker atomically before dispatch.
+  - Add quality analytics, no-trade reason breakdown, and presigned payload viewing.
+- [x] 8. Ship the customer support inbox
+  - Add the ticket list, detail, context panel, claim, release, reply, status, and resolve.
+  - Enforce role, ownership, row locks, token rotation, and email suppression.
+  - Add the hourly housekeeping worker for stale claims and resolved tickets.
+- [x] 9. Ship newsletter operations
+  - Add campaign list, composer, preview, test send, owner send, cancel, and delivery counts.
+  - Add the subscriber list with status, source, search, and suppression.
+  - Add the batch sender with audience snapshots, idempotent deliveries, and a failure stop.
+  - Add signed bounce/complaint webhooks and suppression.
+- [x] 10. Verify the operations layer
+  - Add focused tests for kill switch, sessions, settings, support concurrency, newsletter sending, and webhook signatures.
+  - Run the RBAC matrix test across every write route.
+  - Typecheck `infra/` and `tradewizard-admin/`.
+  - Verify privileged actions against live dev and record what was verified live.
+  - Update the security checklist and admin runbook.

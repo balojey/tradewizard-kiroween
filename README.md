@@ -28,12 +28,12 @@ The seam is Kiro. Every non-trivial slice of the backend and frontend has a spec
 
 | Artifact | Count | What it does |
 |----------|-------|--------------|
-| [`.kiro/specs/`](.kiro/specs/) | 32 specs | Requirements → design → tasks for features such as the agent league, autonomous portfolio manager, delivery frontend, admin portal, and analysis gates |
+| [`.kiro/specs/`](.kiro/specs/) | 34 specs | Requirements → design → tasks for features such as the agent league, autonomous portfolio manager, delivery frontend, admin portal, and analysis gates |
 | [`.kiro/steering/`](.kiro/steering/) | 4 documents | `product.md`, `structure.md`, `tech.md`, and `kiroween.md` give the agent the product model, package boundaries, and submission constraints |
 | [`.kiro/hooks/`](.kiro/hooks/) | 5 hooks | Typecheck the three packages on save, guard the deterministic gates with an agent review, and close out completed spec tasks |
 | [`.kiro/settings/mcp.json`](.kiro/settings/mcp.json) | 2 active servers | Magic Link and Polymarket documentation, so the agent can verify integration details instead of guessing |
 
-Read [docs/kiro-usage.md](docs/kiro-usage.md) for the judge-facing write-up, including the spec workflow, the hook table, and the MCP setup.
+Read [docs/kiro-usage.md](docs/kiro-usage.md) for the judge-facing write-up, including the spec workflow, the hook table, and the MCP setup. The management portal has its own pair of specs: [`admin-portal-foundation`](.kiro/specs/admin-portal-foundation/requirements.md) covers the isolated package, auth/MFA, RBAC, audit spine, admin API, read surfaces, and shell; [`admin-portal-operations`](.kiro/specs/admin-portal-operations/requirements.md) covers every mutation, the kill switch, session controls, membership, runtime settings, support, and newsletter.
 
 ## Components
 
@@ -307,7 +307,7 @@ Payments are made via on-chain USDC.e transfers on Polygon:
 ```
 tradewizard-kiroween/
 ├── .kiro/                  # Kiro specs, steering, hooks, and MCP configuration
-│   ├── specs/             # 32 feature specs (requirements → design → tasks)
+│   ├── specs/             # 34 feature specs (requirements → design → tasks)
 │   ├── steering/          # Product, structure, tech, and submission rules
 │   ├── hooks/             # Typecheck and gate-protection hooks
 │   └── settings/mcp.json  # Active MCP servers
@@ -331,6 +331,8 @@ tradewizard-kiroween/
 ### Kiroween submission
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Devpost text description and category rationale
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used: specs, steering, hooks, MCP
+- [.kiro/specs/admin-portal-foundation](.kiro/specs/admin-portal-foundation/requirements.md) - Portal package, auth/MFA, RBAC, audit, API, read surfaces, and shell
+- [.kiro/specs/admin-portal-operations](.kiro/specs/admin-portal-operations/requirements.md) - Mutations, kill switch, session controls, membership, settings, support, and newsletter
 - [docs/devpost-form.md](docs/devpost-form.md) - Ready-to-paste Devpost fields, test instructions, and pre-submit checklist
 - [docs/devpost-vo-script.md](docs/devpost-vo-script.md) - Demo voiceover, under three minutes
 - [docs/youtube-description.md](docs/youtube-description.md) - Video title, description, and chapters

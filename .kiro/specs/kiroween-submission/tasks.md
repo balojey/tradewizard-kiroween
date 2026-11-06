@@ -36,3 +36,8 @@
   - Check that every relative documentation link resolves.
   - Confirm the demo script reads under three minutes.
   - Confirm no `.env` or secret files exist in the tree.
+- [x] 9. Add management portal specs
+  - Add `.kiro/specs/admin-portal-foundation/` with requirements, design, and tasks.
+  - Add `.kiro/specs/admin-portal-operations/` with requirements, design, and tasks.
+  - Link both specs from the README and the Kiro usage write-up.
+  - Update the spec counts and the portal session documentation.

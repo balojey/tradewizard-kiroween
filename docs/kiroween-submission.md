@@ -49,13 +49,15 @@ The parts should not fit together this cleanly. What holds them together is Kiro
 
 ### Spec-driven development
 
-The repository contains **32 specs** under [`.kiro/specs/`](../.kiro/specs/) - thirty-one product specs plus the spec for this submission. Most follow the requirements → design → tasks rhythm and cover a real slice of the product, including:
+The repository contains **34 specs** under [`.kiro/specs/`](../.kiro/specs/) - thirty-three product specs plus the spec for this submission. Most follow the requirements → design → tasks rhythm and cover a real slice of the product, including:
 
 - [`advanced-agent-league`](../.kiro/specs/advanced-agent-league/requirements.md) - the fourteen-agent league and signal contracts
 - [`autonomous-portfolio-manager`](../.kiro/specs/autonomous-portfolio-manager/requirements.md) - personas, guardrails, and execution lifecycle
 - [`market-intelligence-engine`](../.kiro/specs/market-intelligence-engine/requirements.md) - the 11-stage analysis workflow
 - [`phase3-delivery-frontend`](../.kiro/specs/phase3-delivery-frontend/requirements.md) - auth, WebSocket delivery, and results viewer
 - [`wallet-subscription-system`](../.kiro/specs/wallet-subscription-system/requirements.md) - on-chain plans, credits, and renewal
+- [`admin-portal-foundation`](../.kiro/specs/admin-portal-foundation/requirements.md) - isolated portal package, auth/MFA, RBAC, audit spine, admin API, read surfaces, and UI shell
+- [`admin-portal-operations`](../.kiro/specs/admin-portal-operations/requirements.md) - mutation envelope, kill switch, session controls, membership, runtime settings, support inbox, and newsletter
 - [`admin-api`](../docs/admin-portal-architecture.md) - the internal portal's route contracts and audit model
 
 The specs are not decoration. They define the acceptance criteria, the edge cases, and the task order that the implementation followed. When a model or a contributor is unsure what a stage is allowed to do, the spec is the tiebreaker.
@@ -161,7 +163,7 @@ The Portfolio Manager's decision agent has a read-only tool layer. It cannot pla
 - **Bounded-autonomy execution.** A fail-closed kill switch, mandatory exits, hard loss limits, cooldowns, capital conservation, and mutual exclusion between executor and guard.
 - **A market-level analysis pool.** Cost scales with markets analyzed, not users requesting.
 - **Closed-loop learning.** Every recommendation is scored, every agent has a leaderboard, and memory feeds back into signal weighting.
-- **A spec-first build.** Thirty-two specs, four steering documents, five hooks, and two MCP servers keep a large system coherent.
+- **A spec-first build.** Thirty-four specs, four steering documents, five hooks, and two MCP servers keep a large system coherent.
 - **A serverless platform that idles at roughly fifteen to twenty dollars a month.** No NAT, no ElastiCache, no always-on compute.
 
 ## What we learned
@@ -187,7 +189,7 @@ The Portfolio Manager's decision agent has a read-only tool layer. It cannot pla
 
 | Kiro capability | Evidence in this repository |
 |-----------------|-----------------------------|
-| Spec-driven development | 32 specs in `.kiro/specs/`, each with requirements, design, and tasks |
+| Spec-driven development | 34 specs in `.kiro/specs/`, each with a design and ordered tasks |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
 | Agent hooks | 5 JSON hooks in `.kiro/hooks/` for typechecks, gate protection, and spec follow-through |
 | MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation servers |

@@ -16,7 +16,7 @@ tradewizard-kiroween/
 ├── LICENSE                               # MIT, detected by GitHub
 ├── README.md                             # product + Kiroween framing + quick start
 ├── .kiro/
-│   ├── specs/                            # 32 specs; requirements → design → tasks
+│   ├── specs/                            # 34 specs; requirements → design → tasks
 │   ├── steering/                         # product, structure, tech, kiroween
 │   ├── hooks/                            # 5 functional hooks
 │   └── settings/mcp.json                 # Magic Link + Polymarket docs MCP
@@ -40,7 +40,7 @@ The product is a genuine chimera: model inference from multiple providers, deter
 
 ### Kiro evidence over invented history
 
-The repository already contains 32 specs, 3 steering documents, and MCP configuration. The submission adds hooks that run real commands and a steering document that encodes the submission rules. The Kiro write-up describes only these artifacts and does not claim Crew, CLI, Web, powers, or property-based testing.
+The repository already contains 33 product specs, 3 steering documents, and MCP configuration. The submission adds hooks that run real commands and a steering document that encodes the submission rules. The Kiro write-up describes only these artifacts and does not claim Crew, CLI, Web, powers, or property-based testing.
 
 ### Hooks
 

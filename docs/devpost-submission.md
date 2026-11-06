@@ -79,7 +79,7 @@ The Kiroween Frankenstein category asks for a chimera of technologies that shoul
 | Surface | Next.js 16, React 19, Tailwind 4, TanStack Query | WebSocket cache integration |
 | Process | Kiro specs, steering, hooks, MCP | The stitching that keeps the layers coherent |
 
-Most of these layers are ordinary on their own. The unusual part is the contract between them: the model layer produces signals, the deterministic layer decides what to do with them, and the execution layer enforces what the autonomous manager is allowed to do. Kiro is how that contract stayed coherent across 32 specs and three packages.
+Most of these layers are ordinary on their own. The unusual part is the contract between them: the model layer produces signals, the deterministic layer decides what to do with them, and the execution layer enforces what the autonomous manager is allowed to do. Kiro is how that contract stayed coherent across 34 specs and three packages.
 
 ## Architecture
 
@@ -253,7 +253,7 @@ The user is never in the dark about a wrong recommendation. Failure is a first-c
 
 The full write-up is in [kiro-usage.md](kiro-usage.md). In short:
 
-- **32 specs** under `.kiro/specs/` define the agent league, portfolio manager, delivery frontend, wallet subscriptions, admin API, memory system, and more. Each has requirements, design, and tasks.
+- **34 specs** under `.kiro/specs/` define the agent league, portfolio manager, delivery frontend, wallet subscriptions, admin API, management portal, memory system, and more. Each has requirements, design, and tasks.
 - **4 steering documents** under `.kiro/steering/` encode the product model, package boundaries, technical invariants, and submission rules.
 - **5 hooks** under `.kiro/hooks/` typecheck the three packages on save, protect the deterministic gates with an agent review, and close out spec tasks.
 - **2 active MCP servers** in `.kiro/settings/mcp.json` provide Magic Link and Polymarket documentation to the agent.
@@ -281,7 +281,7 @@ The repository is the evidence. We do not claim Kiro Crew, CLI, Web, powers, cus
 - **Bounded-autonomy execution.** Fail-closed kill switch, mandatory exits, hard loss limits, cooldowns, capital conservation, and executor/guard mutual exclusion.
 - **A market-level analysis pool.** Cost scales with markets analyzed, not users requesting.
 - **Closed-loop learning.** Every recommendation is scored; every agent has a leaderboard; memory feeds back into weighting.
-- **A spec-first build.** 32 specs, 4 steering documents, 5 hooks, and 2 MCP servers keep a large system coherent.
+- **A spec-first build.** 34 specs, 4 steering documents, 5 hooks, and 2 MCP servers keep a large system coherent.
 - **A serverless platform that idles at roughly fifteen to twenty dollars a month.** No NAT, no ElastiCache, no always-on compute.
 
 ## What we learned

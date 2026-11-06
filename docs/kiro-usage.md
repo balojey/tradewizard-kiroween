@@ -43,7 +43,7 @@ The important part is not that the loop existed. It is that the loop left artifa
 
 ## 3. Spec-driven development
 
-There are **32 specs** under [`.kiro/specs/`](../.kiro/specs/), each with a design document and an ordered task list. Thirty-one are product specs; the thirty-second specifies this Kiroween submission. Most follow the requirements → design → tasks rhythm; one legacy fix spec uses a `bugfix.md` document instead of a requirements file.
+There are **34 specs** under [`.kiro/specs/`](../.kiro/specs/), each with a design document and an ordered task list. Thirty-three are product specs; the thirty-fourth specifies this Kiroween submission. Most follow the requirements → design → tasks rhythm; one legacy fix spec uses a `bugfix.md` document instead of a requirements file.
 
 ### Representative specs
 
@@ -56,6 +56,10 @@ There are **32 specs** under [`.kiro/specs/`](../.kiro/specs/), each with a desi
 | [`wallet-subscription-system`](../.kiro/specs/wallet-subscription-system/requirements.md) | Defines on-chain plans, credits, allowances, and renewal |
 | [`lambda-strands-migration`](../.kiro/specs/lambda-strands-migration/requirements.md) | Defines the move to self-hosted Strands agents on Lambda |
 | [`agent-memory-system`](../.kiro/specs/agent-memory-system/requirements.md) | Defines per-agent isolated memory and why cross-agent history is excluded |
+| [`admin-portal-foundation`](../.kiro/specs/admin-portal-foundation/requirements.md) | Defines the isolated portal, auth/MFA, RBAC, audit spine, admin API, read surfaces, and UI shell |
+| [`admin-portal-operations`](../.kiro/specs/admin-portal-operations/requirements.md) | Defines the mutation envelope, kill switch, session controls, membership, runtime settings, support, and newsletter |
+
+The two admin portal specs are deliberately split. The foundation spec covers why the portal is a separate package and how identity, authorization, audit, and every read surface work. The operations spec covers every write the portal is allowed to make and the invariants that make each one reviewable. Together they trace the portal from package boundary to the kill switch.
 
 ### What a spec looks like in practice
 
@@ -206,10 +210,11 @@ For completeness, and because the submission rules reward honesty:
 
 | Claim | Where to verify |
 |-------|-----------------|
-| 32 specs | `find .kiro/specs -mindepth 1 -maxdepth 1 -type d \| wc -l` |
+| 34 specs | `find .kiro/specs -mindepth 1 -maxdepth 1 -type d \| wc -l` |
 | Spec format | `.kiro/specs/*/requirements.md`, `design.md`, `tasks.md` |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
 | Hooks | `.kiro/hooks/*.json` |
+| Admin portal specs | `.kiro/specs/admin-portal-foundation/`, `.kiro/specs/admin-portal-operations/` |
 | MCP | `.kiro/settings/mcp.json` |
 | Deterministic gates | `infra/services/analysis-lambda/stages/signal-fusion.ts`, `consensus-engine.ts`, `recommendation.ts`, `infra/services/analysis-lambda/lib/shadow-consensus.ts` |
 | 14 agents | `infra/services/analysis-lambda/stages/intelligence-agents.ts` (`ALL_AGENT_NAMES`) |
