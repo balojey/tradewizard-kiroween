@@ -102,6 +102,17 @@ export interface TradeRecommendation {
     agentsUsed: string[];
     marketQuestion: string;
     disagreementIndex?: number;
+    /**
+     * Ensemble confidence in the consensus call (0-1). This is the number
+     * labelled "Confidence" in the UI/delivery channels; it is distinct from
+     * `winProbability`, which is the chance the traded token wins.
+     */
+    consensusConfidence?: number;
+    /**
+     * Fused-signal alignment (1 = every directional agent agreed). Carried
+     * through to the portfolio manager; do not derive this from confidence.
+     */
+    signalAlignment?: number;
     /** Deterministic risk/reward check result. */
     riskRewardRatio?: number;
     /** Annualized or raw price volatility used for level generation. */
@@ -121,7 +132,10 @@ export interface TradeRecommendation {
       | 'divergence_cap'
       | 'edge_below_threshold'
       | 'edge_below_significance'
-      | 'thesis_veto';
+      | 'thesis_veto'
+      | 'levels_rejected'
+      | 'recommendation_failed'
+      | 'analysis_failed';
   };
   _analysisDetail?: unknown;
 }

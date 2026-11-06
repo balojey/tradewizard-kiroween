@@ -1,21 +1,21 @@
 import type { PolymarketMarket } from '@/hooks/useMarkets';
+import { yesPriceFromOutcomes, yesTokenIdFromClobTokenIds } from '@/utils/outcomePrices';
 
 /** Resolve the YES probability (0–100) from live prices, falling back to outcome prices. */
 export function getYesProbability(market: PolymarketMarket): number {
   if (market.realtimePrices) {
-    const tokenIds = market.clobTokenIds ? JSON.parse(market.clobTokenIds) : [];
-    if (tokenIds[0] && market.realtimePrices[tokenIds[0]]) {
-      return Math.round(market.realtimePrices[tokenIds[0]].midPrice * 100);
+    const yesTokenId = yesTokenIdFromClobTokenIds(
+      market.outcomes,
+      market.clobTokenIds,
+    );
+    if (yesTokenId && market.realtimePrices[yesTokenId]) {
+      return Math.round(market.realtimePrices[yesTokenId].midPrice * 100);
     }
   }
-  if (market.outcomePrices) {
-    try {
-      const prices = JSON.parse(market.outcomePrices);
-      if (prices[0]) return Math.round(parseFloat(prices[0]) * 100);
-    } catch {
-      // Ignore malformed outcome prices
-    }
-  }
+
+  const yesPrice = yesPriceFromOutcomes(market.outcomes, market.outcomePrices);
+  if (yesPrice !== null) return Math.round(yesPrice * 100);
+
   return 50;
 }
 

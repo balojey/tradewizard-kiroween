@@ -35,6 +35,7 @@ import { usePersonaSettings } from '@/hooks/usePersonaSettings';
 import { usePortfolioDecisions } from '@/hooks/usePortfolioDecisions';
 import { useCurrentPlan } from '@/hooks/useCurrentPlan';
 import { cn } from '@/utils/classNames';
+import { yesTokenIdFromClobTokenIds } from '@/utils/outcomePrices';
 
 type DetailTab = 'capital' | 'decisions' | 'trades';
 
@@ -392,11 +393,19 @@ function SessionCard({
       if (!metaRes.ok) return null;
       const market = await metaRes.json();
       const question = market?.question ?? '';
-      const clobTokenIds = market?.clobTokenIds;
+      // The CLOB response carries `tokens` rather than Gamma's parallel arrays.
+      const tokens = Array.isArray(market?.tokens) ? market.tokens : null;
+      const clobTokenIds =
+        market?.clobTokenIds ||
+        (tokens ? JSON.stringify(tokens.map((t: { token_id: string }) => t.token_id)) : null);
+      const outcomes =
+        market?.outcomes ||
+        (tokens ? JSON.stringify(tokens.map((t: { outcome: string }) => t.outcome)) : null);
       if (!clobTokenIds) return { question, yes: null, no: null };
 
       const tokenIds = JSON.parse(clobTokenIds);
-      if (!tokenIds[0]) return { question, yes: null, no: null };
+      const yesTokenId = yesTokenIdFromClobTokenIds(outcomes, clobTokenIds);
+      if (!yesTokenId) return { question, yes: null, no: null };
 
       const priceRes = await fetch('/api/polymarket/public-prices', {
         method: 'POST',
@@ -406,7 +415,7 @@ function SessionCard({
       if (!priceRes.ok) return { question, yes: null, no: null };
 
       const priceMap = await priceRes.json();
-      const yesPrice = priceMap[tokenIds[0]]?.midPrice;
+      const yesPrice = priceMap[yesTokenId]?.midPrice;
       if (yesPrice == null) return { question, yes: null, no: null };
 
       return {

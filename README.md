@@ -74,6 +74,8 @@ User → Next.js Frontend (Cognito Auth)
 
 The division of responsibility is deliberate. Models run inference. The deterministic stages - signal fusion, consensus, expected-value rejection, schema validation - run in application code. The Portfolio Manager's executor, risk engine, and kill switch never depend on a model deciding to behave.
 
+On the frontend, wallet calls route through a same-origin Polygon JSON-RPC proxy that splits large batches and falls back across providers. Outcome sides (YES/NO) are resolved by label, never by array index, in both analysis and execution.
+
 The inference provider is a configuration boundary, not a rewrite. `AI_PROVIDER=bedrock` (default) and `AI_PROVIDER=nebius` route the same Strands agent code to different providers, so the agent layer is not coupled to a single vendor.
 
 ### Analysis Pipeline (11 Stages)
@@ -86,11 +88,11 @@ The inference provider is a configuration boundary, not a rewrite. `AI_PROVIDER=
 6. **Signal Fusion** (deterministic) - Market-anchored log-odds aggregation. Each agent forecast is de-biased against its own fitted calibration line, evidence-scaled pass-through decides how much of the ensemble's edge survives, Brier-calibrated weights set influence, and a standard-error noise floor plus conflict detection describe how much of the result is signal
 7. **Thesis Construction** - Competing bull and bear theses
 8. **Cross-Examination** - 5 adversarial tests on both theses
-9. **Consensus Engine** (deterministic) - Applies the gate profile: an edge floor derived from the market's spread + slippage and two standard errors of ensemble noise, thesis confirmation, and the divergence cap. Fails to `NO_TRADE` on disagreement > 30% or confidence < 20%, and records the gate that produced the refusal
+9. **Consensus Engine** (deterministic) - Uses `CONSENSUS_MODE=anchored` by default: market-anchored fusion, the gate profile's edge floor derived from the market's spread + slippage, two standard errors of ensemble noise, thesis confirmation, and the divergence cap. `CONSENSUS_MODE=agent` opts into the confidence-weighted, de-biased vote. Fails to `NO_TRADE` on disagreement > 30% or confidence < 20%, and records the reason that produced the refusal
 10. **Risk Philosophy Agents** - Aggressive, conservative, neutral position sizing
 11. **Recommendation Generation** - LONG_YES, LONG_NO, or NO_TRADE with entry/exit zones
 
-Both sides of this split are measured. Every analysis also computes an agent-driven (shadow) consensus next to the live one, and both are graded on the same 24-hour price move (`live_pnl` vs `shadow_pnl`). The shadow decision is never shown to users - it is the evidence used before changing a gate.
+Both consensus configurations are computed on every run. The non-live one is stored in the `shadow_*` columns and both are graded on the same 24-hour price move (`live_pnl` vs `shadow_pnl`). The shadow decision is never shown to users - it is the evidence used before switching modes or changing a gate.
 
 ### Gate Configuration
 
@@ -99,13 +101,14 @@ The deterministic gates are environment knobs, not prompt text, so a gate can be
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `GATE_PROFILE` | `actionable` | `actionable` derives the edge floor from the spread + slippage and treats thesis disagreement as a confidence haircut; `strict` restores the flat 4c floor and hard thesis veto |
+| `CONSENSUS_MODE` | `anchored` | `anchored` uses market-anchored fusion plus the edge floor for the live action; `agent` opts into the confidence-weighted, de-biased vote (both are computed each run) |
 | `FUSION_MAX_PASS_THROUGH` | `0.6` | Fraction of the ensemble's raw edge allowed through for moderate (≤15%) disagreements; 15–30% passes at half that, >30% is treated as model error |
 | `MIN_ACTIONABLE_EDGE` | `0.04` | Flat edge floor under the `strict` profile (high-liquidity markets require 1.5×) |
 | `MIN_EDGE_SIGMA` | `2` | How many standard errors of ensemble noise an edge must clear to count as signal |
 | `MAX_ACTIONABLE_DIVERGENCE` | `0.15` | Credibility cap on model-vs-market disagreement |
 | `SHADOW_PNL_HORIZON_HOURS` | `24` | Fixed horizon on which the live and shadow decisions are compared |
 
-Every `NO_TRADE` persists a machine-readable reason (`consensus_failed`, `divergence_cap`, `edge_below_threshold`, `edge_below_significance`, `thesis_veto`), so "why is everything NO_TRADE?" is a query rather than an interpretation.
+Every `NO_TRADE` persists a machine-readable reason (`consensus_failed`, `divergence_cap`, `edge_below_threshold`, `edge_below_significance`, `thesis_veto`, plus recommendation-stage `levels_rejected`, `recommendation_failed`, and `analysis_failed`), so "why is everything NO_TRADE?" is a query rather than an interpretation.
 
 ## Frontend Features
 

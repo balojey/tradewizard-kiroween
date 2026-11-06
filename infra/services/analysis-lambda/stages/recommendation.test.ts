@@ -282,3 +282,88 @@ describe('parseRecommendation - actionable profile', () => {
     }
   });
 });
+
+describe('parseRecommendation - level geometry', () => {
+  it('repairs overlapping entry and target zones into strict ordering', () => {
+    const input = buildInput('LONG_YES', 0.6, 0.6);
+    const outcome = parseRecommendation(
+      {
+        entry_zone: [0.58, 0.6],
+        target_zone: [0.59, 0.64],
+        stop_loss: 0.56,
+        expected_value: 0.01,
+        win_probability: 0.6,
+      },
+      input,
+    );
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      const { entryZone, targetZone, stopLoss } = outcome.recommendation;
+      expect(stopLoss).toBeLessThan(entryZone[0]);
+      expect(entryZone[1]).toBeLessThan(targetZone[0]);
+      expect(targetZone[0]).toBeLessThanOrEqual(targetZone[1]);
+    }
+  });
+
+  it('repairs a stop that sits inside the entry zone', () => {
+    const input = buildInput('LONG_YES', 0.6, 0.6);
+    const outcome = parseRecommendation(
+      {
+        entry_zone: [0.58, 0.62],
+        target_zone: [0.66, 0.7],
+        stop_loss: 0.59,
+        expected_value: 0.01,
+        win_probability: 0.6,
+      },
+      input,
+    );
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      const { entryZone, stopLoss } = outcome.recommendation;
+      expect(stopLoss).toBeLessThan(entryZone[0]);
+    }
+  });
+
+  it('never lets the target exceed the token price ceiling', () => {
+    const input = buildInput('LONG_YES', 0.8, 0.76);
+    const outcome = parseRecommendation(
+      {
+        entry_zone: [0.7, 0.72],
+        target_zone: [0.73, 1.0],
+        stop_loss: 0.6,
+        expected_value: 0.01,
+        win_probability: 0.8,
+      },
+      input,
+    );
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.recommendation.targetZone[1]).toBeLessThanOrEqual(0.98);
+      expect(outcome.recommendation.entryZone[1]).toBeLessThan(
+        outcome.recommendation.targetZone[0],
+      );
+    }
+  });
+
+  it('carries the fused signal alignment into metadata', () => {
+    const input = buildInput('LONG_YES', 0.62, 0.5);
+    const outcome = parseRecommendation(
+      {
+        entry_zone: [0.49, 0.51],
+        target_zone: [0.58, 0.6],
+        stop_loss: 0.47,
+        expected_value: 0.04,
+        win_probability: 0.62,
+      },
+      input,
+    );
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.recommendation.metadata.signalAlignment).toBeCloseTo(0.8, 6);
+    }
+  });
+});

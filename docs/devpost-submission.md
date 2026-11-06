@@ -147,7 +147,7 @@ A thesis stage generates competing bull and bear cases from the fused signal. A 
 
 ### Gate 3 - Consensus Engine (no LLM)
 
-The engine applies the active gate profile:
+The engine uses `CONSENSUS_MODE=anchored` by default (`agent` opts into the confidence-weighted, de-biased vote):
 
 - an edge floor derived from the market's spread plus slippage and two standard errors of ensemble noise
 - thesis confirmation
@@ -160,6 +160,9 @@ It fails to `NO_TRADE` on disagreement above 30% or confidence below 20%, and pe
 - `edge_below_threshold`
 - `edge_below_significance`
 - `thesis_veto`
+- `levels_rejected`
+- `recommendation_failed`
+- `analysis_failed`
 
 The recommendation stage validates schema and price ordering. If expected value is non-positive, the recommendation is rejected and replaced with `NO_TRADE`. These are deterministic checks the models cannot override.
 
@@ -168,6 +171,7 @@ The recommendation stage validates schema and price ordering. If expected value 
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `GATE_PROFILE` | `actionable` | `actionable` derives the edge floor from spread + slippage; `strict` restores the flat 4c floor and hard thesis veto |
+| `CONSENSUS_MODE` | `anchored` | `anchored` uses market-anchored fusion + edge floor for the live action; `agent` opts into the confidence-weighted, de-biased vote (both run every analysis) |
 | `FUSION_MAX_PASS_THROUGH` | `0.6` | Fraction of raw ensemble edge allowed through for moderate disagreement |
 | `MIN_ACTIONABLE_EDGE` | `0.04` | Flat edge floor under the `strict` profile |
 | `MIN_EDGE_SIGMA` | `2` | Standard errors of ensemble noise an edge must clear |
@@ -176,7 +180,7 @@ The recommendation stage validates schema and price ordering. If expected value 
 
 ### Shadow consensus is measurement only
 
-Every analysis also computes an agent-driven shadow consensus next to the live one. Both are graded on the same fixed-horizon price move. The shadow decision is never shown to users and never influences the live recommendation. It is the evidence used before changing a gate.
+Every analysis computes both consensus configurations. The non-live one is stored in the `shadow_*` columns and both are graded on the same fixed-horizon price move. The shadow decision is never shown to users and never influences the live recommendation. It is the evidence used before switching modes or changing a gate.
 
 ## Bounded autonomy
 

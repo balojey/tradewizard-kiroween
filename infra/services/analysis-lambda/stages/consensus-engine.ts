@@ -41,7 +41,13 @@ export type NoTradeReason =
   /** Edge clears trading costs but is not distinguishable from ensemble noise. */
   | 'edge_below_significance'
   /** Cross-examination favoured the opposite case (or was a tie). */
-  | 'thesis_veto';
+  | 'thesis_veto'
+  /** The consensus wanted a trade but the model's levels failed deterministic validation. */
+  | 'levels_rejected'
+  /** The recommendation stage itself could not produce a usable recommendation. */
+  | 'recommendation_failed'
+  /** The analysis aborted before a recommendation could be produced. */
+  | 'analysis_failed';
 
 /** Full output of the consensus engine stage */
 export interface ConsensusEngineOutput {
@@ -67,6 +73,36 @@ export interface ConsensusEngineOutput {
   divergenceGuardTriggered?: boolean;
 }
 
+/**
+ * Which consensus configuration decides the live action.
+ *
+ * - `anchored` (default): the original market-anchored fusion + edge-floor
+ *   path. Direction comes from the aggregate fair value vs the market.
+ * - `agent`: the confidence-weighted, de-biased agent vote. This is the config
+ *   the shadow measurement was built to evaluate; it is opt-in.
+ */
+export type ConsensusMode = 'agent' | 'anchored';
+
+export function readConsensusMode(): ConsensusMode {
+  const raw = (process.env.CONSENSUS_MODE ?? '').trim().toLowerCase();
+  return raw === 'agent' ? 'agent' : 'anchored';
+}
+
+/**
+ * The agent-driven result computed by `lib/shadow-consensus.ts`. Declared here
+ * structurally (rather than importing the module) so the deterministic engine
+ * stays independent of the shadow implementation.
+ */
+export interface AgentDrivenConsensus {
+  action: TradeAction;
+  voteScore: number;
+  edge: number;
+  fairProbability: number;
+  costFloor: number;
+  abstainShare: number;
+  reason: string;
+}
+
 export interface ConsensusOptions {
   /** Observed bid-ask spread in probability points. Drives the edge floor. */
   spread?: number;
@@ -77,6 +113,10 @@ export interface ConsensusOptions {
    * actionable profile the edge must clear `MIN_EDGE_SIGMA` multiples of this.
    */
   fairValueStandardError?: number;
+  /** Which consensus configuration to use. Defaults to CONSENSUS_MODE (anchored). */
+  mode?: ConsensusMode;
+  /** Agent-driven result, required when `mode === 'agent'`. */
+  agentDriven?: AgentDrivenConsensus;
 }
 
 /** Minimum edge threshold for low/medium liquidity markets. */
@@ -385,10 +425,168 @@ export function evaluateAction(
 }
 
 /**
+ * Build the live consensus from the agent-driven vote.
+ *
+ * Direction comes from the confidence-weighted majority (`agent.action`), not
+ * from a probability edge against the market. Magnitude is the de-biased
+ * ensemble edge, and the same capital-protection gates as the anchored path
+ * still apply:
+ *   - divergence cap (model error, not opportunity),
+ *   - high-liquidity cost multiplier,
+ *   - the ensemble noise floor (`MIN_EDGE_SIGMA`),
+ *   - minimum confidence,
+ *   - thesis confirmation / veto.
+ *
+ * This is what lets the pipeline express a genuine majority on the favourite
+ * side while remaining unable to manufacture a large edge against a liquid
+ * market.
+ */
+export function runAgentConsensus(
+  fusedSignal: FusedSignal,
+  bullThesis: Thesis,
+  bearThesis: Thesis,
+  crossExam: CrossExamResult,
+  marketProbability: number,
+  liquidityRisk: 'low' | 'medium' | 'high',
+  agent: AgentDrivenConsensus,
+  options: ConsensusOptions = {},
+): ConsensusEngineOutput {
+  const profile = options.profile ?? readGateProfile();
+  const market = clamp(marketProbability, 0, 1);
+  const fair = clamp(agent.fairProbability, 0, 1);
+  const edge = fair - market;
+  const voteScore = clamp(agent.voteScore, -1, 1);
+  const participation = clamp(1 - agent.abstainShare, 0, 1);
+
+  // Confidence: blend the anchored ensemble's confidence with the strength and
+  // participation of the vote, then apply the same thesis/cross-exam haircuts.
+  const strongerThesis =
+    crossExam.bearScore > crossExam.bullScore ? bearThesis : bullThesis;
+  const thesisDivergence = clamp(
+    Math.abs(strongerThesis.fairProbability - fair),
+    0,
+    1,
+  );
+  const thesisConfidenceFactor = 1 - 0.3 * thesisDivergence;
+  const crossExamBalance = 1 - Math.abs(crossExam.bullScore - crossExam.bearScore) / 10;
+  const crossExamFactor = 0.85 + 0.15 * clamp(crossExamBalance, 0, 1);
+  const voteConfidence = Math.abs(voteScore);
+  const baseConfidence = clamp(
+    0.5 * clamp(fusedSignal.fusionConfidence, 0, 1) +
+      0.5 * voteConfidence * participation,
+    0,
+    1,
+  );
+  const confidence = clamp(
+    baseConfidence * thesisConfidenceFactor * crossExamFactor,
+    0,
+    1,
+  );
+  // Report the ensemble's forecast dispersion (the same measure the anchored
+  // path uses), not "1 - vote strength". A bare quorum is still a majority,
+  // and presenting it as 70% disagreement would misread the agents.
+  const disagreementIndex = clamp(
+    fusedSignal.signalDisagreement !== undefined
+      ? fusedSignal.signalDisagreement
+      : 1 - fusedSignal.signalAlignment,
+    0,
+    1,
+  );
+
+  // Preserve the anchored path's cost and noise gates. The shadow action used
+  // its own cost floor; re-applying here adds the high-liquidity multiplier and
+  // the ensemble noise floor.
+  // `strict` keeps the original flat floor; `actionable` uses the market's
+  // actual round-trip cost.
+  const baseCostFloor =
+    profile === 'strict' ? MIN_ACTIONABLE_EDGE : agent.costFloor;
+  const costFloor =
+    liquidityRisk === 'high'
+      ? baseCostFloor * HIGH_LIQUIDITY_MULTIPLIER
+      : baseCostFloor;
+  // The noise floor is an `actionable`-only gate, mirroring evaluateAction.
+  const significanceFloor =
+    profile === 'actionable' &&
+    Number.isFinite(options.fairValueStandardError) &&
+    (options.fairValueStandardError ?? 0) > 0
+      ? MIN_EDGE_SIGMA * (options.fairValueStandardError as number)
+      : 0;
+  const edgeFloor = Math.max(costFloor, significanceFloor);
+
+  let action: TradeAction = agent.action;
+  let noTradeReason: NoTradeReason | null = null;
+
+  if (action === 'NO_TRADE') {
+    noTradeReason = /no majority|quorum|no directional/i.test(agent.reason)
+      ? 'consensus_failed'
+      : 'edge_below_threshold';
+  } else if (Math.abs(edge) > MAX_ACTIONABLE_DIVERGENCE) {
+    // A disagreement this large is a warning about the model, not a signal.
+    action = 'NO_TRADE';
+    noTradeReason = 'divergence_cap';
+  } else if (Math.abs(edge) <= edgeFloor) {
+    action = 'NO_TRADE';
+    noTradeReason =
+      significanceFloor > costFloor
+        ? 'edge_below_significance'
+        : 'edge_below_threshold';
+  } else if (confidence < MIN_CONSENSUS_CONFIDENCE) {
+    action = 'NO_TRADE';
+    noTradeReason = 'consensus_failed';
+  }
+
+  const failed = noTradeReason === 'consensus_failed';
+  const consensusResult: ConsensusResult = {
+    probability: fair,
+    confidence,
+    disagreementIndex,
+    failed,
+  };
+
+  const confirmation = evaluateThesisConfirmation(crossExam);
+  const thesisDisagrees =
+    action !== 'NO_TRADE' &&
+    ((action === 'LONG_YES' && confirmation.winningDirection === 'bear') ||
+      (action === 'LONG_NO' && confirmation.winningDirection === 'bull'));
+  const thesisVetoTriggered =
+    action !== 'NO_TRADE' &&
+    (thesisDisagrees || (!confirmation.passes && profile === 'strict'));
+
+  let thesisConfidenceFactorOut = 1;
+  if (thesisVetoTriggered) {
+    if (profile === 'strict') {
+      action = 'NO_TRADE';
+      noTradeReason = 'thesis_veto';
+    } else {
+      thesisConfidenceFactorOut = THESIS_DISAGREEMENT_CONFIDENCE_FACTOR;
+      consensusResult.confidence = clamp(
+        consensusResult.confidence * thesisConfidenceFactorOut,
+        0,
+        1,
+      );
+    }
+  }
+
+  return {
+    action,
+    consensusResult,
+    edge,
+    noTradeReason: noTradeReason ?? undefined,
+    edgeFloor,
+    significanceFloor,
+    gateProfile: profile,
+    thesisVetoTriggered,
+    thesisConfidenceFactor: thesisConfidenceFactorOut,
+    divergenceGuardTriggered: Math.abs(edge) > MAX_ACTIONABLE_DIVERGENCE,
+  };
+}
+
+/**
  * Run the full consensus engine stage.
  *
- * Combines calculateConsensus and determineAction into a single pipeline
- * that produces the complete ConsensusEngineOutput.
+ * Dispatches to the agent-driven consensus (`mode: 'agent'`) or the original
+ * market-anchored fusion path (`mode: 'anchored'`). Both produce the same
+ * ConsensusEngineOutput contract, so downstream stages are unchanged.
  */
 export function runConsensusEngine(
   fusedSignal: FusedSignal,
@@ -399,6 +597,20 @@ export function runConsensusEngine(
   liquidityRisk: 'low' | 'medium' | 'high',
   options: ConsensusOptions = {},
 ): ConsensusEngineOutput {
+  const mode = options.mode ?? readConsensusMode();
+  if (mode === 'agent' && options.agentDriven) {
+    return runAgentConsensus(
+      fusedSignal,
+      bullThesis,
+      bearThesis,
+      crossExam,
+      marketProbability,
+      liquidityRisk,
+      options.agentDriven,
+      options,
+    );
+  }
+
   const profile = options.profile ?? readGateProfile();
 
   const consensusResult = calculateConsensus(

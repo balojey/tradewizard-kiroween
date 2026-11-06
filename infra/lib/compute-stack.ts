@@ -386,6 +386,10 @@ export class ComputeStack extends cdk.Stack {
         //                disagreement discounts confidence instead of vetoing,
         //                and the fusion pass-through is 1.0
         GATE_PROFILE: process.env.GATE_PROFILE ?? 'actionable',
+        // Which consensus configuration decides the live action:
+        //   anchored - original market-anchored fusion + edge floor (default)
+        //   agent    - confidence-weighted de-biased vote (opt-in/shadow)
+        CONSENSUS_MODE: process.env.CONSENSUS_MODE ?? 'anchored',
         // How many standard errors of ensemble noise an edge must clear before
         // it is treated as signal rather than drift. Two-sided, so 2.0 ~= 5%.
         MIN_EDGE_SIGMA: process.env.MIN_EDGE_SIGMA ?? '2',

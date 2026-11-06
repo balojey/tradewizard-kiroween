@@ -14,6 +14,10 @@
  */
 
 import { writeFile } from 'fs/promises';
+import {
+  selectYesTokenId,
+  yesProbabilityFromOutcomes,
+} from '../../shared/polymarket';
 
 const CLOB_API_URL = 'https://clob.polymarket.com';
 const GAMMA_API_URL = 'https://gamma-api.polymarket.com';
@@ -349,17 +353,13 @@ export async function fetchRelatedMarkets(
       continue;
     }
 
-    // Parse outcome prices (YES price is at index 0)
-    const outcomePricesRaw = (market.outcomePrices as string) || (market.outcome_prices as string) || '[]';
-    let probability = 0.5;
-    try {
-      const parsed = typeof outcomePricesRaw === 'string' ? JSON.parse(outcomePricesRaw) : outcomePricesRaw;
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        probability = parseFloat(parsed[0]) || 0.5;
-      }
-    } catch {
-      probability = 0.5;
-    }
+    // Resolve the YES price by outcome label; array order is not guaranteed.
+    const outcomePricesRaw =
+      (market.outcomePrices as string) || (market.outcome_prices as string) || '[]';
+    const outcomesRaw =
+      (market.outcomes as string) || (market.outcome_outcomes as string) || '[]';
+    const probability =
+      yesProbabilityFromOutcomes(outcomesRaw, outcomePricesRaw) ?? 0.5;
 
     markets.push({
       conditionId: marketConditionId,
@@ -534,8 +534,8 @@ export async function fetchMarketInfo(conditionId: string): Promise<MarketInfo |
 
   try {
     const data = (await clobResult.value.json()) as Record<string, unknown>;
-    const tokens = data?.tokens as Array<{ token_id?: string }> | undefined;
-    const tokenId = tokens && tokens.length > 0 ? (tokens[0].token_id || '') : '';
+    // Never trust the array order: resolve YES by its outcome label.
+    const tokenId = selectYesTokenId(data?.tokens);
     if (!tokenId) return null;
 
     let question = parseOptionalString(data?.question) || '';

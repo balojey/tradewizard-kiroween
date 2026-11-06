@@ -19,6 +19,10 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useAgentAccuracy } from '@/hooks/useAgentAccuracy';
 import useInfiniteScroll from '@/hooks/useInfiniteScroll';
 import { cn } from '@/utils/classNames';
+import {
+  yesPriceFromOutcomes,
+  yesTokenIdFromClobTokenIds,
+} from '@/utils/outcomePrices';
 import { BarChart3, Lightbulb, Microscope, Plus, X } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -176,6 +180,7 @@ interface MarketMeta {
   image: string | null;
   clobTokenIds: string | null;
   outcomePrices: string | null;
+  outcomes: string | null;
 }
 
 function useMarketMeta(conditionId: string) {
@@ -183,13 +188,35 @@ function useMarketMeta(conditionId: string) {
     queryKey: ['market-meta', conditionId],
     queryFn: async () => {
       const response = await fetch(`/api/polymarket/market-by-condition?conditionId=${conditionId}`);
-      if (!response.ok) return { slug: null, image: null, clobTokenIds: null, outcomePrices: null };
+      if (!response.ok) {
+        return {
+          slug: null,
+          image: null,
+          clobTokenIds: null,
+          outcomePrices: null,
+          outcomes: null,
+        };
+      }
       const market = await response.json();
+      // The CLOB market payload carries `tokens` (token_id + outcome + price)
+      // rather than Gamma's parallel arrays. Normalise both shapes.
+      const tokens = Array.isArray(market?.tokens) ? market.tokens : null;
+      const clobTokenIds =
+        market?.clobTokenIds ||
+        (tokens ? JSON.stringify(tokens.map((t: { token_id: string }) => t.token_id)) : null);
+      const outcomes =
+        market?.outcomes ||
+        (tokens ? JSON.stringify(tokens.map((t: { outcome: string }) => t.outcome)) : null);
+      const outcomePrices =
+        market?.outcomePrices ||
+        (tokens ? JSON.stringify(tokens.map((t: { price: number }) => t.price)) : null);
+
       return {
         slug: market?.market_slug || market?.slug || null,
         image: market?.image || market?.icon || null,
-        clobTokenIds: market?.clobTokenIds || null,
-        outcomePrices: market?.outcomePrices || null,
+        clobTokenIds,
+        outcomePrices,
+        outcomes,
       };
     },
     enabled: !!conditionId,
@@ -213,11 +240,15 @@ function AnalysisCard({
 
   // Fetch live token prices for current YES/NO display
   const { data: livePrices } = useQuery<{ yes: number; no: number } | null>({
-    queryKey: ['insight-live-price', marketMeta?.clobTokenIds],
+    queryKey: ['insight-live-price', marketMeta?.clobTokenIds, marketMeta?.outcomes],
     queryFn: async () => {
       if (!marketMeta?.clobTokenIds) return null;
       const tokenIds = JSON.parse(marketMeta.clobTokenIds);
-      if (!tokenIds[0]) return null;
+      const yesTokenId = yesTokenIdFromClobTokenIds(
+        marketMeta.outcomes,
+        marketMeta.clobTokenIds,
+      );
+      if (!yesTokenId) return null;
       const response = await fetch('/api/polymarket/public-prices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,7 +256,7 @@ function AnalysisCard({
       });
       if (!response.ok) return null;
       const priceMap = await response.json();
-      const yesPrice = priceMap[tokenIds[0]]?.midPrice;
+      const yesPrice = priceMap[yesTokenId]?.midPrice;
       if (yesPrice == null) return null;
       return { yes: Math.round(yesPrice * 100), no: Math.round((1 - yesPrice) * 100) };
     },
@@ -236,11 +267,8 @@ function AnalysisCard({
 
   // Current live price (or fallback to outcomePrices from Gamma)
   const liveYesCents = livePrices?.yes ?? (() => {
-    if (!marketMeta?.outcomePrices) return null;
-    try {
-      const prices = JSON.parse(marketMeta.outcomePrices);
-      return prices[0] ? Math.round(parseFloat(prices[0]) * 100) : null;
-    } catch { return null; }
+    const fallback = yesPriceFromOutcomes(marketMeta?.outcomes, marketMeta?.outcomePrices);
+    return fallback === null ? null : Math.round(fallback * 100);
   })();
   const liveNoCents = liveYesCents != null ? 100 - liveYesCents : null;
 
@@ -330,12 +358,12 @@ function AnalysisCard({
         <span>
           Confidence:{' '}
           <span className="font-mono text-fg tabular-nums">
-            {Math.round(analysis.confidence * 100)}%
+            {Math.round((detail?.metadata?.consensusConfidence ?? analysis.confidence) * 100)}%
           </span>
         </span>
         <span className="text-muted/80">{formatTimeAgo(analysis.executedAt)}</span>
         <span className="hidden xs:inline">
-          Agents: <span className="font-mono text-fg tabular-nums">{agentsUsed.length || 14}</span>
+          Agents: <span className="font-mono text-fg tabular-nums">{detail?.metadata?.agentsUsed?.length ?? 14}</span>
         </span>
         {(analysis.wasCachedDelivery || activeSub) && (
           <span className="inline-flex items-center gap-1 text-accent bg-accent/8 px-2 py-0.5 rounded text-[0.6rem] sm:text-[0.65rem]">
@@ -466,7 +494,7 @@ function AnalysisCard({
                   Bull Case
                   {agentSignals.length > 0 && (
                     <span className="font-normal text-muted ml-1">
-                      ({agentSignals.filter(s => s.direction === 'YES').length} agents)
+                      ({agentSignals.filter(s => s.direction === 'YES').length} agents lean YES)
                     </span>
                   )}
                 </h5>
@@ -486,7 +514,7 @@ function AnalysisCard({
                   Bear Case
                   {agentSignals.length > 0 && (
                     <span className="font-normal text-muted ml-1">
-                      ({agentSignals.filter(s => s.direction === 'NO').length} agents)
+                      ({agentSignals.filter(s => s.direction === 'NO').length} agents lean NO)
                     </span>
                   )}
                 </h5>
@@ -503,16 +531,19 @@ function AnalysisCard({
           </div>
           {crossExamination && (
             <div className="text-center mt-3 pt-2 border-t border-border/50 text-[0.65rem] sm:text-[0.7rem] text-muted">
-              Cross-examination: Bull <span className="font-mono font-semibold text-yes">{crossExamination.bullScore}/10</span>
+              Cross-examination: Bull <span className="font-mono font-semibold text-yes">{crossExamination.bullScore.toFixed(1)} / 5</span>
               {' · '}
-              Bear <span className="font-mono font-semibold text-no">{crossExamination.bearScore}/10</span>
+              Bear <span className="font-mono font-semibold text-no">{crossExamination.bearScore.toFixed(1)} / 5</span>
             </div>
           )}
         </Expandable>
       ) : analysis.recommendation === 'NO_TRADE' ? (
-        <Expandable summary="Why No Trade" meta={formatTimeAgo(analysis.executedAt)}>
+        <Expandable
+          summary="Why No Trade"
+          meta={detail?.metadata?.noTradeReason ? formatNoTradeReason(detail.metadata.noTradeReason) : formatTimeAgo(analysis.executedAt)}
+        >
           <p className="text-[0.7rem] sm:text-[0.75rem] text-muted leading-relaxed">
-            High disagreement among agents - insufficient conviction for a recommendation.
+            {explainNoTrade(detail?.metadata?.noTradeReason)}
             {detail?.metadata?.disagreementIndex != null && (
               <span className="font-mono ml-1">
                 (disagreement: {Math.round(detail.metadata.disagreementIndex * 100)}%)
@@ -523,6 +554,35 @@ function AnalysisCard({
       ) : null}
     </article>
   );
+}
+
+/** Human label for the machine-readable NO_TRADE gate. */
+function formatNoTradeReason(reason: string): string {
+  return reason.replace(/_/g, ' ');
+}
+
+/** Explain the actual gate that produced NO_TRADE instead of assuming disagreement. */
+function explainNoTrade(reason?: string): string {
+  switch (reason) {
+    case 'consensus_failed':
+      return 'Agent disagreement was too high, or ensemble confidence was too low, to take a position.';
+    case 'divergence_cap':
+      return 'The model disagreed with the market by more than the credibility limit - usually a sign of model error rather than a tradable mispricing.';
+    case 'edge_below_threshold':
+      return 'The edge was too small to cover the market\u2019s round-trip trading costs.';
+    case 'edge_below_significance':
+      return 'The edge was smaller than the ensemble\u2019s own noise floor, so it cannot be told apart from random drift.';
+    case 'thesis_veto':
+      return 'The thesis that won cross-examination did not support the trade direction.';
+    case 'levels_rejected':
+      return 'The direction was supported, but the proposed entry, target, or stop levels failed deterministic risk validation.';
+    case 'recommendation_failed':
+      return 'The recommendation stage could not produce a usable recommendation.';
+    case 'analysis_failed':
+      return 'The analysis could not be completed, so no trade was recommended.';
+    default:
+      return 'No tradeable edge was found for this market.';
+  }
 }
 
 function formatAgentDisplayName(name: string): string {

@@ -641,6 +641,8 @@ async function handleGetAnalysisDetail(
         payload.bearThesis        = detail.bearThesis        ?? null;
         payload.crossExamination  = detail.crossExamination  ?? null;
         payload.consensus         = detail.consensus         ?? null;
+        payload.consensusMode     = detail.consensusMode     ?? null;
+        payload.anchoredConsensus = detail.anchoredConsensus ?? null;
         payload.riskPerspectivesRaw = detail.riskPerspectives ?? '';
         payload.webResearchSummary = detail.webResearchSummary ?? '';
       }

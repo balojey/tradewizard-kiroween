@@ -19,11 +19,15 @@ import {
 } from './stages/data-preparation';
 import { fetchHistoricalContext, fetchAgentPerformanceWeights, fetchAgentCalibration } from './stages/historical-context';
 import { runWebResearch } from './stages/web-research';
-import { runIntelligenceAgents, ALL_AGENT_NAMES } from './stages/intelligence-agents';
+import { runIntelligenceAgents } from './stages/intelligence-agents';
 import { fuseSignals } from './stages/signal-fusion';
 import { runThesisConstruction } from './stages/thesis-construction';
 import { runCrossExamination } from './stages/cross-examination';
-import { runConsensusEngine, readGateProfile } from './stages/consensus-engine';
+import {
+  runConsensusEngine,
+  readGateProfile,
+  readConsensusMode,
+} from './stages/consensus-engine';
 import { runRiskPhilosophy } from './stages/risk-philosophy';
 import { runRecommendation } from './stages/recommendation';
 import { runShadowConsensus } from './lib/shadow-consensus';
@@ -168,6 +172,8 @@ export function createFallbackRecommendation(
       marketProbability: 0,
       edge: 0,
       confidenceBand: [0, 0],
+      consensusConfidence: 0,
+      noTradeReason: 'analysis_failed',
       totalLlmCalls: metadata?.totalLlmCalls ?? 0,
       executionDurationMs: metadata?.executionDurationMs ?? 0,
       agentsUsed: metadata?.agentsUsed ?? [],
@@ -345,6 +351,8 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
     totalLlmCalls += 1 + webResearch.searchCalls; // Agent + tool calls
 
     // ── Stage 4-5: Parallel Intelligence Agents (14 agents) ──────────────────
+    // Stage 4 is deterministic: every agent is enabled for every market.
+    await publishProgress(payload.userId, payload.requestId, payload.marketId, 4);
     await publishProgress(payload.userId, payload.requestId, payload.marketId, 5);
     const agentContext = {
       marketQuestion: briefing.question || `Market ${payload.marketId}`,
@@ -394,10 +402,35 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
       },
     );
 
+    // The agent-driven consensus is the target live config. Compute it before
+    // the debate so the theses reason about the same fair probability the gate
+    // will use, then reuse it at stage 9 (live or comparison config).
+    const agentConsensus = runShadowConsensus({
+      signals: agentsResult.signals,
+      marketProbability,
+      calibration: agentCalibration,
+      agentPerformance: agentPerformanceWeights,
+      spread: marketInfo?.spread,
+    });
+    const consensusMode = readConsensusMode();
+
+    // Thesis construction treats the fused probability as the reference point.
+    // Give it the live estimate (agent-derived by default) rather than the
+    // anchored reference, so thesis divergence is measured against the number
+    // the consensus engine will actually gate.
+    const thesisFusedSignal =
+      consensusMode === 'agent'
+        ? {
+            ...fusedSignal,
+            weightedFairProbability: agentConsensus.fairProbability,
+            rawFairProbability: agentConsensus.fairProbability,
+          }
+        : fusedSignal;
+
     // ── Stage 7: Thesis Construction ─────────────────────────────────────────
     await publishProgress(payload.userId, payload.requestId, payload.marketId, 7);
     const thesisResult = await runThesisConstruction(
-      fusedSignal,
+      thesisFusedSignal,
       agentsResult.signals,
       briefing.question || `Market ${payload.marketId}`
     );
@@ -415,41 +448,66 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
     // ── Stage 9: Consensus Engine (pure deterministic - no LLM) ──────────────
     await publishProgress(payload.userId, payload.requestId, payload.marketId, 9);
 
-    const consensusOutput = runConsensusEngine(
+    const consensusOptions = {
+      spread: marketInfo?.spread,
+      profile: gateProfile,
+      fairValueStandardError: fusedSignal.fairValueStandardError,
+    };
+
+    // Both configurations are deterministic and cheap; computing both keeps
+    // the live/shadow comparison meaningful after the migration.
+    const anchoredConsensus = runConsensusEngine(
       fusedSignal,
       thesisResult.bullThesis,
       thesisResult.bearThesis,
       crossExamResult.crossExamResult,
       marketProbability,
       liquidityRisk,
-      {
-        spread: marketInfo?.spread,
-        profile: gateProfile,
-        fairValueStandardError: fusedSignal.fairValueStandardError,
-      },
+      { ...consensusOptions, mode: 'anchored' },
+    );
+    const agentConsensusOutput = runConsensusEngine(
+      fusedSignal,
+      thesisResult.bullThesis,
+      thesisResult.bearThesis,
+      crossExamResult.crossExamResult,
+      marketProbability,
+      liquidityRisk,
+      { ...consensusOptions, mode: 'agent', agentDriven: agentConsensus },
     );
 
-    // ── Shadow: agent-driven consensus (measurement only) ─────────────────────
-    // Runs the config we intend to move to without affecting what users see.
-    // The result is stored on _analysisDetail and persisted to analysis_results
-    // so recommendation-scorer can compare both configs against realised moves.
-    // See lib/shadow-consensus.ts for the rationale.
-    const shadowConsensus = runShadowConsensus({
-      signals: agentsResult.signals,
-      marketProbability,
-      calibration: agentCalibration,
-      agentPerformance: agentPerformanceWeights,
-      spread: marketInfo?.spread,
-    });
+    const consensusOutput =
+      consensusMode === 'agent' ? agentConsensusOutput : anchoredConsensus;
+    const comparisonConsensus =
+      consensusMode === 'agent' ? anchoredConsensus : agentConsensusOutput;
+
+    // Record the non-live config for the scorer. In anchored mode the agent
+    // result carries its full calibration metadata; in agent mode the anchored
+    // config is adapted to the same persistence shape.
+    const shadowConsensusRecord =
+      consensusMode === 'agent'
+        ? {
+            action: comparisonConsensus.action,
+            voteScore: 0,
+            edge: comparisonConsensus.edge,
+            fairProbability: comparisonConsensus.consensusResult.probability,
+            costFloor: comparisonConsensus.edgeFloor ?? 0,
+            participatingAgents: [],
+            abstainShare: 0,
+            calibrationSamples: 0,
+            uncalibratedAgents: [],
+            reason: comparisonConsensus.noTradeReason ?? '',
+          }
+        : agentConsensus;
 
     console.log(
-      `[Analysis_Lambda] Gate profile=${gateProfile}, edge floor=` +
-      `${consensusOutput.edgeFloor?.toFixed(4) ?? 'n/a'} | ` +
+      `[Analysis_Lambda] Gate profile=${gateProfile}, mode=${consensusMode}, ` +
       `live=${consensusOutput.action}` +
       `${consensusOutput.noTradeReason ? ` (${consensusOutput.noTradeReason})` : ''} ` +
-      `edge=${consensusOutput.edge.toFixed(3)} | ` +
-      `shadow=${shadowConsensus.action} edge=${shadowConsensus.edge.toFixed(3)} ` +
-      `vote=${shadowConsensus.voteScore.toFixed(3)} (${shadowConsensus.reason})`
+      `edge=${consensusOutput.edge.toFixed(3)} ` +
+      `| other=${comparisonConsensus.action}` +
+      `${comparisonConsensus.noTradeReason ? ` (${comparisonConsensus.noTradeReason})` : ''} ` +
+      `edge=${comparisonConsensus.edge.toFixed(3)} ` +
+      `| agent vote=${agentConsensus.voteScore.toFixed(3)} (${agentConsensus.reason})`
     );
 
     // If consensus failed or NO_TRADE, we still run risk philosophy and recommendation
@@ -459,7 +517,7 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
     await publishProgress(payload.userId, payload.requestId, payload.marketId, 10);
     const riskResult = await runRiskPhilosophy(
       consensusOutput,
-      fusedSignal,
+      thesisFusedSignal,
       briefing.question || `Market ${payload.marketId}`
     );
     totalLlmCalls += 3;
@@ -471,12 +529,15 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
       marketQuestion: briefing.question || `Market ${payload.marketId}`,
       marketProbability,
       consensusOutput,
-      fusedSignal,
+      fusedSignal: thesisFusedSignal,
       bullThesis: thesisResult.bullThesis,
       bearThesis: thesisResult.bearThesis,
       crossExamResult: crossExamResult.crossExamResult,
       riskPhilosophy: riskResult,
-      agentsUsed: [...ALL_AGENT_NAMES],
+      // Provenance: only agents that actually returned a parsed signal. The
+      // fallback NEUTRAL signals for failed agents remain in agentSignals for
+      // transparency, but they did not contribute a view.
+      agentsUsed: agentsResult.successfulAgents,
       totalLlmCalls,
       executionStartTime: startTime,
       volatility: priceVolatility,
@@ -492,20 +553,22 @@ export async function handler(event: unknown): Promise<TradeRecommendation> {
     const recommendation = recommendationResult.recommendation;
     (recommendation as TradeRecommendation & { _analysisDetail?: unknown })._analysisDetail = {
       agentSignals: agentsResult.signals,
-      fusedSignal,
+      fusedSignal: thesisFusedSignal,
       bullThesis: thesisResult.bullThesis,
       bearThesis: thesisResult.bearThesis,
       crossExamination: crossExamResult.crossExamResult,
       consensus: consensusOutput.consensusResult,
+      consensusMode,
+      anchoredConsensus,
       riskPerspectives: riskResult.summary,
       webResearchSummary: webResearch.brief,
-      shadowConsensus,
+      shadowConsensus: shadowConsensusRecord,
     };
 
     // Update metadata with final counts
     recommendation.metadata.totalLlmCalls = totalLlmCalls;
     recommendation.metadata.executionDurationMs = Date.now() - startTime;
-    recommendation.metadata.agentsUsed = [...ALL_AGENT_NAMES];
+    recommendation.metadata.agentsUsed = agentsResult.successfulAgents;
     recommendation.metadata.marketQuestion = briefing.question || `Market ${payload.marketId}`;
 
     console.log(

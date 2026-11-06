@@ -118,13 +118,13 @@ For the Portfolio Manager, additional inputs include the active session, persona
 
 **Gate 2 - Adversarial Debate.** A thesis stage generates competing bull and bear cases from the fused signal. A cross-examination stage runs five tests against each thesis - evidence, causality, timing, liquidity, tail risk - for ten structured tests in total. Each produces survived / weakened / refuted with a numeric score.
 
-**Gate 3 - Consensus Engine (no LLM).** The engine applies the active gate profile: an edge floor derived from the market's spread plus slippage and two standard errors of ensemble noise, thesis confirmation, and a divergence cap. It fails to `NO_TRADE` on disagreement above 30% or confidence below 20%, and persists a machine-readable reason (`consensus_failed`, `divergence_cap`, `edge_below_threshold`, `edge_below_significance`, `thesis_veto`).
+**Gate 3 - Consensus Engine (no LLM).** The engine uses `CONSENSUS_MODE=anchored` by default: an edge floor derived from the market's spread plus slippage, two standard errors of ensemble noise, thesis confirmation, and a divergence cap. `CONSENSUS_MODE=agent` opts into the confidence-weighted, de-biased vote. It fails to `NO_TRADE` on disagreement above 30% or confidence below 20%, and persists a machine-readable reason (`consensus_failed`, `divergence_cap`, `edge_below_threshold`, `edge_below_significance`, `thesis_veto`, plus recommendation-stage `levels_rejected`, `recommendation_failed`, and `analysis_failed`).
 
 The recommendation stage then validates schema and price ordering. If expected value is non-positive, the recommendation is rejected and replaced with `NO_TRADE`. These are not model behaviors we hope for; they are deterministic checks the models cannot override.
 
 ### Shadow consensus
 
-Every analysis also computes an agent-driven shadow consensus next to the live one. Both are graded on the same fixed-horizon price move, and the results are stored for comparison. The shadow decision is never shown to users and never influences the live recommendation. It is the evidence we require before changing a gate.
+Every analysis computes both consensus configurations. The non-live one is stored in the `shadow_*` columns, and both are graded on the same fixed-horizon price move. The shadow decision is never shown to users and never influences the live recommendation. It is the evidence we require before switching modes or changing a gate.
 
 ### Bounded autonomy
 
@@ -137,7 +137,7 @@ The Portfolio Manager's decision agent has a read-only tool layer. It cannot pla
 - Concurrent session limits: 3 for Pro, 10 for Elite
 - Capital conservation: no trade can exceed uninvested session capital
 - Mutual exclusion between Trade Executor and Position Guard
-- Token-ID resolution by outcome string, never by array index
+- Token-ID resolution by outcome string, never by array index, in analysis and execution
 - Kill switch totality: exits all positions, terminates all sessions, and fails closed
 
 ## Challenges we ran into

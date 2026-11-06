@@ -82,13 +82,20 @@ interface TradeRecommendation {
     agentsUsed: string[];
     marketQuestion: string;
     disagreementIndex?: number;
+    /** Ensemble confidence in the call (0-1), distinct from winProbability. */
+    consensusConfidence?: number;
+    /** Real fused-signal alignment from the analysis pipeline (1 = agreement). */
+    signalAlignment?: number;
     thesisVetoTriggered?: boolean;
     noTradeReason?:
       | 'consensus_failed'
       | 'divergence_cap'
       | 'edge_below_threshold'
       | 'edge_below_significance'
-      | 'thesis_veto';
+      | 'thesis_veto'
+      | 'levels_rejected'
+      | 'recommendation_failed'
+      | 'analysis_failed';
   };
   // Full analysis detail attached by the Analysis_Lambda - persisted to
   // agent_memory (per-signal rows) and S3 (full detail JSON) by this Lambda.
@@ -109,6 +116,10 @@ interface TradeRecommendation {
     bearThesis: Record<string, unknown>;
     crossExamination: Record<string, unknown>;
     consensus: Record<string, unknown>;
+    /** Which consensus configuration produced the live recommendation. */
+    consensusMode?: 'agent' | 'anchored';
+    /** Rollback/reference config, kept for the live-vs-other comparison. */
+    anchoredConsensus?: Record<string, unknown>;
     riskPerspectives: string;
     webResearchSummary: string;
     // Shadow (agent-driven) consensus recorded alongside the live decision so
@@ -331,7 +342,11 @@ export async function handler(event: SQSEvent): Promise<void> {
       if (message.isScheduledFire) {
         deliveredUserIds = await chargeAndDeliverToRecurringSubscribers(message.marketId, resultId);
       } else {
-        deliveredUserIds = await recordDeliveriesForRecentSubscribers(message.marketId, resultId);
+        deliveredUserIds = await recordDeliveriesForRecentSubscribers(
+          message.marketId,
+          resultId,
+          message.userId,
+        );
       }
 
       // Clear in-flight marker
@@ -644,18 +659,21 @@ function buildCompletionDetail(
     // Flat fields for delivery handlers (WebSocket, email, push, webhook)
     recommendation: result.action,
     consensusProbability: result.metadata.consensusProbability,
-    confidence: result.winProbability,
+    // `confidence` is the ensemble's confidence in the call. The traded
+    // token's win probability stays on `tradeRecommendation.winProbability`.
+    confidence: result.metadata.consensusConfidence ?? 0,
     edge: result.metadata.edge,
     // Full recommendation object for portfolio trade executor
     tradeRecommendation: {
       action: result.action,
-      confidence: result.winProbability,
+      confidence: result.metadata.consensusConfidence ?? 0,
+      winProbability: result.winProbability,
       consensusProbability: result.metadata.consensusProbability,
       currentPrice: result.metadata.marketProbability,
       edge: result.metadata.edge,
-      signalAlignment: result.metadata.confidenceBand
-        ? 1 - (result.metadata.confidenceBand[1] - result.metadata.confidenceBand[0])
-        : 0.7,
+      // Pass the real ensemble alignment. Deriving this from the confidence
+      // band width was not an agreement measure and misled the portfolio agent.
+      signalAlignment: result.metadata.signalAlignment ?? 0,
       reasoning: result.explanation.summary,
       entryZone: result.entryZone,
       targetZone: result.targetZone,
@@ -755,7 +773,9 @@ async function storeResultInRds(
       s3Key,
       result.metadata.consensusProbability,
       result.action,
-      result.winProbability,
+      // confidence_score is the ensemble confidence, not the token win
+      // probability (which is stored separately in the payload/S3 detail).
+      result.metadata.consensusConfidence ?? result.winProbability,
       result.metadata.edge,
       result.metadata.marketProbability,
       entryPrice,
@@ -877,6 +897,8 @@ async function storeAgentMemory(
           bearThesis: detail.bearThesis,
           crossExamination: detail.crossExamination,
           consensus: detail.consensus,
+          consensusMode: detail.consensusMode,
+          anchoredConsensus: detail.anchoredConsensus,
           riskPerspectives: detail.riskPerspectives,
           webResearchSummary: detail.webResearchSummary,
           shadowConsensus: detail.shadowConsensus,
@@ -941,7 +963,8 @@ async function storeAgentMemory(
  */
 async function recordDeliveriesForRecentSubscribers(
   marketId: string,
-  resultId: string
+  resultId: string,
+  requesterUserId: string,
 ): Promise<string[]> {
   const connectionString = await getConnectionString();
   const pg = await import('pg');
@@ -961,12 +984,19 @@ async function recordDeliveriesForRecentSubscribers(
          FROM market_subscribers ms
          WHERE ms.market_id = $2
            AND ms.unsubscribed_at IS NULL
-           AND ms.subscribed_at > NOW() - INTERVAL '5 minutes'
+           AND (
+             ms.subscribed_at > NOW() - INTERVAL '5 minutes'
+             -- Always include the requester. A slow/retried analysis can take
+             -- longer than the recency window; without this they would receive
+             -- the notification but no delivery row, and be charged twice on
+             -- their next request.
+             OR ms.user_id = $3
+           )
          ORDER BY ms.user_id, ms.subscribed_at DESC
        ) sub
        ON CONFLICT (result_id, user_id, analysis_request_id) DO NOTHING
        RETURNING user_id`,
-      [resultId, marketId]
+      [resultId, marketId, requesterUserId]
     );
 
     const userIds = result.rows.map((row) => row.user_id as string);
@@ -1203,7 +1233,9 @@ async function publishCachedDeliveryEvents(
       const body = await s3Response.Body?.transformToString();
       if (body) {
         const parsed = JSON.parse(body);
-        confidence = parsed.winProbability ?? parsed.confidence ?? 0;
+        // Prefer the ensemble confidence; fall back to the old win-probability
+        // field for cached results written before the contract split.
+        confidence = parsed.metadata?.consensusConfidence ?? parsed.winProbability ?? 0;
         edge = parsed.metadata?.edge ?? 0;
         marketQuestion = parsed.metadata?.marketQuestion || marketQuestion;
 
@@ -1211,13 +1243,12 @@ async function publishCachedDeliveryEvents(
         // in fresh AnalysisCompleted events
         tradeRecommendation = {
           action: parsed.action ?? recommendation,
-          confidence: parsed.winProbability ?? 0,
+          confidence: parsed.metadata?.consensusConfidence ?? parsed.winProbability ?? 0,
+          winProbability: parsed.winProbability ?? 0,
           consensusProbability: parsed.metadata?.consensusProbability ?? consensusProbability,
           currentPrice: parsed.metadata?.marketProbability ?? 0,
           edge: parsed.metadata?.edge ?? 0,
-          signalAlignment: parsed.metadata?.confidenceBand
-            ? 1 - (parsed.metadata.confidenceBand[1] - parsed.metadata.confidenceBand[0])
-            : 0.7,
+          signalAlignment: parsed.metadata?.signalAlignment ?? 0,
           reasoning: parsed.explanation?.summary ?? '',
           entryZone: parsed.entryZone ?? [0, 0],
           targetZone: parsed.targetZone ?? [0, 0],

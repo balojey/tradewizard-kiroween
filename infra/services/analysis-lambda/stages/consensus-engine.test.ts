@@ -4,7 +4,9 @@ import {
   determineAction,
   evaluateThesisConfirmation,
   MAX_ACTIONABLE_DIVERGENCE,
+  runAgentConsensus,
   runConsensusEngine,
+  type AgentDrivenConsensus,
 } from './consensus-engine';
 import type { CrossExamResult, FusedSignal, Thesis } from '../lib/types';
 
@@ -257,5 +259,157 @@ describe('noTradeReason attribution', () => {
 
     expect(result.action).toBe('NO_TRADE');
     expect(result.noTradeReason).toBe('thesis_veto');
+  });
+});
+
+describe('runAgentConsensus', () => {
+  function agent(
+    overrides: Partial<AgentDrivenConsensus> = {},
+  ): AgentDrivenConsensus {
+    return {
+      action: 'LONG_YES',
+      voteScore: 0.6,
+      edge: 0.03,
+      fairProbability: 0.53,
+      costFloor: 0.02,
+      abstainShare: 0.1,
+      reason: 'weighted majority bullish',
+      ...overrides,
+    };
+  }
+
+  it('uses the agent vote for direction and the de-biased edge for magnitude', () => {
+    const result = runAgentConsensus(
+      fused(0.6),
+      thesis('bull', 0.7),
+      thesis('bear', 0.4),
+      { bullScore: 1, bearScore: 1 },
+      0.5,
+      'low',
+      agent(),
+    );
+
+    expect(result.action).toBe('LONG_YES');
+    expect(result.consensusResult.probability).toBeCloseTo(0.53, 4);
+    expect(result.edge).toBeCloseTo(0.03, 4);
+    expect(result.edgeFloor).toBeCloseTo(0.02, 4);
+  });
+
+  it('blocks an implausible agent edge at the divergence cap', () => {
+    const result = runAgentConsensus(
+      fused(0.6),
+      thesis('bull', 0.7),
+      thesis('bear', 0.4),
+      { bullScore: 1, bearScore: 1 },
+      0.5,
+      'low',
+      agent({ edge: 0.2, fairProbability: 0.7 }),
+    );
+
+    expect(result.action).toBe('NO_TRADE');
+    expect(result.noTradeReason).toBe('divergence_cap');
+    expect(result.divergenceGuardTriggered).toBe(true);
+  });
+
+  it('applies the high-liquidity cost multiplier', () => {
+    const result = runAgentConsensus(
+      fused(0.6),
+      thesis('bull', 0.7),
+      thesis('bear', 0.4),
+      { bullScore: 1, bearScore: 1 },
+      0.5,
+      'high',
+      agent({ edge: 0.025, fairProbability: 0.525, costFloor: 0.02 }),
+    );
+
+    expect(result.action).toBe('NO_TRADE');
+    expect(result.noTradeReason).toBe('edge_below_threshold');
+    expect(result.edgeFloor).toBeCloseTo(0.03, 4);
+  });
+
+  it('maps a no-majority agent result to consensus_failed', () => {
+    const result = runAgentConsensus(
+      fused(0.6),
+      thesis('bull', 0.7),
+      thesis('bear', 0.4),
+      { bullScore: 1, bearScore: 1 },
+      0.5,
+      'low',
+      agent({ action: 'NO_TRADE', reason: 'no majority: voteScore 0.12 is inside the quorum' }),
+    );
+
+    expect(result.action).toBe('NO_TRADE');
+    expect(result.noTradeReason).toBe('consensus_failed');
+    expect(result.consensusResult.failed).toBe(true);
+  });
+
+  it('keeps the strict thesis veto in agent mode', () => {
+    const result = runAgentConsensus(
+      fused(0.6),
+      thesis('bull', 0.6),
+      thesis('bear', 0.4),
+      { bullScore: -1, bearScore: 2 },
+      0.5,
+      'low',
+      agent({ edge: 0.06, fairProbability: 0.56 }),
+      { profile: 'strict' },
+    );
+
+    expect(result.action).toBe('NO_TRADE');
+    expect(result.noTradeReason).toBe('thesis_veto');
+  });
+});
+
+describe('runConsensusEngine mode dispatch', () => {
+  it('uses the agent consensus when mode=agent', () => {
+    const result = runConsensusEngine(
+      fused(0.6),
+      thesis('bull', 0.7),
+      thesis('bear', 0.4),
+      { bullScore: 1, bearScore: 1 },
+      0.5,
+      'low',
+      {
+        mode: 'agent',
+        agentDriven: {
+          action: 'LONG_YES',
+          voteScore: 0.6,
+          edge: 0.03,
+          fairProbability: 0.53,
+          costFloor: 0.02,
+          abstainShare: 0.1,
+          reason: 'weighted majority bullish',
+        },
+      },
+    );
+
+    expect(result.action).toBe('LONG_YES');
+    expect(result.consensusResult.probability).toBeCloseTo(0.53, 4);
+  });
+
+  it('ignores the agent input when mode=anchored', () => {
+    const result = runConsensusEngine(
+      fused(0.58),
+      thesis('bull', 0.6),
+      thesis('bear', 0.4),
+      { bullScore: 1, bearScore: 1 },
+      0.5,
+      'low',
+      {
+        mode: 'anchored',
+        agentDriven: {
+          action: 'LONG_NO',
+          voteScore: -0.8,
+          edge: -0.1,
+          fairProbability: 0.4,
+          costFloor: 0.02,
+          abstainShare: 0,
+          reason: 'weighted majority bearish',
+        },
+      },
+    );
+
+    expect(result.action).toBe('LONG_YES');
+    expect(result.consensusResult.probability).toBeCloseTo(0.58, 4);
   });
 });

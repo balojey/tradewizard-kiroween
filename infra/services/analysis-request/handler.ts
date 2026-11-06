@@ -35,7 +35,7 @@ import {
   checkInFlight,
   markInFlight,
 } from '../shared/dynamo';
-import { getConnectionString, getUserIdByCognitoSub, getUserStatus, ensureUser } from '../shared/db';
+import { getConnectionString, getUserStatus, ensureUser } from '../shared/db';
 import { resetFreePlanIfCycleExpired } from '../shared/credits';
 import { getSetting } from '../shared/settings';
 
@@ -990,17 +990,14 @@ async function upsertMarketAnalysisSchedule(
  * the user already got the in-app result via the REST body.
  */
 async function publishCachedAnalysisCompletion(
-  cognitoSub: string,
+  internalUserId: string,
   requestId: string,
   marketId: string,
   latestResult: { resultId: string; recommendation: string; consensusProbability: number; resultPayloadS3Key: string; executedAt: string },
 ): Promise<void> {
   try {
-    const internalUserId = await getUserIdByCognitoSub(cognitoSub);
     if (!internalUserId) {
-      console.warn(
-        `Cannot publish cached AnalysisCompleted: no users.id resolvable for cognito sub ${cognitoSub}`,
-      );
+      console.warn('Cannot publish cached AnalysisCompleted: no internal user ID supplied');
       return;
     }
 
@@ -1053,15 +1050,14 @@ async function publishCachedAnalysisCompletion(
  * Best-effort - the subscription creation itself has already succeeded.
  */
 async function publishRecurringAnalysisCreatedEvent(
-  userId: string,
+  internalUserId: string,
   requestId: string,
   marketId: string,
   intervalSeconds: number,
 ): Promise<void> {
   try {
-    const internalUserId = await getUserIdByCognitoSub(userId);
     if (!internalUserId) {
-      console.warn('Cannot publish recurring-analysis.created: no internal user ID for', userId);
+      console.warn('Cannot publish recurring-analysis.created: no internal user ID supplied');
       return;
     }
 

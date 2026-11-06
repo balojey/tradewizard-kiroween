@@ -18,6 +18,7 @@
  */
 
 import { getConnectionString } from '../shared/db';
+import { yesProbabilityFromOutcomes } from '../shared/polymarket';
 
 const EXPIRY_HOURS = parseInt(process.env.RECOMMENDATION_EXPIRY_HOURS || '168', 10); // 7 days default
 
@@ -49,6 +50,27 @@ interface AgentMemoryRow {
 
 function clampProbability(value: number): number {
   return Math.max(0.001, Math.min(0.999, value));
+}
+
+export type OutcomeVerdict = 'success' | 'failure' | 'pending';
+
+/**
+ * Classify a price observation against a recommendation's TP/SL levels.
+ *
+ * Levels are in traded-token space, so target should always be above stop.
+ * The stop is checked first so a malformed row (target <= stop, e.g. from a
+ * pre-validation run) resolves to failure rather than success. With valid
+ * levels a single snapshot can never satisfy both. Note that this is a
+ * snapshot, not a path: a stop touched between polls is not observable here.
+ */
+export function classifyOutcomeHit(
+  relevantPrice: number,
+  targetPrice: number,
+  stopLossPrice: number,
+): OutcomeVerdict {
+  if (relevantPrice <= stopLossPrice) return 'failure';
+  if (relevantPrice >= targetPrice) return 'success';
+  return 'pending';
 }
 
 // ─── Main Handler ────────────────────────────────────────────────────────────
@@ -128,10 +150,36 @@ export async function handler(): Promise<void> {
 
       // In traded-token space, TP is always ABOVE entry, SL is always BELOW entry.
       // So for both directions: target hit when price rises, stop hit when price drops.
-      const targetHit = relevantPrice >= rec.target_price;
       const stopHit = relevantPrice <= rec.stop_loss_price;
+      const targetHit = relevantPrice >= rec.target_price;
 
-      if (targetHit) {
+      if (stopHit && targetHit) {
+        // Only possible when the stored levels are malformed (target <= stop).
+        // Book the failure rather than the win so bad data cannot inflate the
+        // calibration scores.
+        console.warn(
+          `Recommendation ${rec.id} has overlapping TP ${rec.target_price} and SL ${rec.stop_loss_price} ` +
+          `- recording failure (fail-safe).`,
+        );
+      }
+
+      const verdict = classifyOutcomeHit(
+        relevantPrice,
+        rec.target_price,
+        rec.stop_loss_price,
+      );
+
+      if (verdict === 'failure') {
+        // SL hit (or malformed overlapping levels) - recommendation FAILURE
+        await client.query(
+          `UPDATE analysis_results
+           SET outcome_status = 'failure', outcome_hit_price = $1, outcome_resolved_at = $2
+           WHERE id = $3`,
+          [relevantPrice, now.toISOString(), rec.id]
+        );
+        await scoreAgents(client, rec.id, rec.recommendation, 'failure');
+        failureCount++;
+      } else if (verdict === 'success') {
         // TP hit - recommendation SUCCESS
         await client.query(
           `UPDATE analysis_results
@@ -141,16 +189,6 @@ export async function handler(): Promise<void> {
         );
         await scoreAgents(client, rec.id, rec.recommendation, 'success');
         successCount++;
-      } else if (stopHit) {
-        // SL hit - recommendation FAILURE
-        await client.query(
-          `UPDATE analysis_results
-           SET outcome_status = 'failure', outcome_hit_price = $1, outcome_resolved_at = $2
-           WHERE id = $3`,
-          [relevantPrice, now.toISOString(), rec.id]
-        );
-        await scoreAgents(client, rec.id, rec.recommendation, 'failure');
-        failureCount++;
       }
       // Neither hit - stays pending
     }
@@ -422,17 +460,13 @@ async function fetchCurrentPrices(marketIds: string[]): Promise<Map<string, numb
       if (!Array.isArray(markets) || markets.length === 0) continue;
 
       const market = markets[0];
-      if (market.outcomePrices) {
-        try {
-          const prices = typeof market.outcomePrices === 'string'
-            ? JSON.parse(market.outcomePrices)
-            : market.outcomePrices;
-          if (Array.isArray(prices) && prices.length > 0) {
-            priceMap.set(marketId, parseFloat(prices[0]));
-          }
-        } catch {
-          // Skip malformed price data
-        }
+      // Resolve the YES price by outcome label; array order is not guaranteed.
+      const yesPrice = yesProbabilityFromOutcomes(
+        market.outcomes,
+        market.outcomePrices,
+      );
+      if (yesPrice !== null) {
+        priceMap.set(marketId, yesPrice);
       }
     } catch (error) {
       // Timeout or network error - skip this market

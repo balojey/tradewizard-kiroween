@@ -85,7 +85,7 @@ Between the AI-generated signals and the user, three non-AI stages act as hard v
 
 **Gate 2 - Adversarial Cross-Examination.** An AI stage that generates competing bull and bear theses, then applies five structured tests to each: evidence, causality, timing, liquidity, and tail risk. Each test produces a scored, structured outcome - the debate result is data, not prose.
 
-**Gate 3 - Consensus Engine.** A pure-function stage (no LLM) that computes a weighted consensus probability and a disagreement index. If disagreement exceeds 30%, consensus fails and the recommendation is forced to `NO_TRADE`. Separately, if the final expected value is non-positive, the recommendation is rejected and replaced with `NO_TRADE`.
+**Gate 3 - Consensus Engine.** A pure-function stage (no LLM) that computes a weighted consensus probability and a disagreement index. `CONSENSUS_MODE=anchored` is the default; `agent` opts into the confidence-weighted, de-biased vote. If disagreement exceeds 30%, consensus fails and the recommendation is forced to `NO_TRADE`, with a machine-readable reason. Separately, if the final expected value is non-positive, the recommendation is rejected and replaced with `NO_TRADE`.
 
 After consensus, three risk-philosophy agents (aggressive, conservative, neutral) run in parallel to provide position-sizing perspectives. They do not influence the probability estimate - sizing and belief are kept architecturally separate.
 

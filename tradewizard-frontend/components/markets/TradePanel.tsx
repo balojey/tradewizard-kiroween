@@ -23,6 +23,7 @@ import { classifyTradeError, createSlTpFailedError, type TradeError } from '@/ut
 import { formatCurrency } from '@/utils/formatting';
 import { isValidDecimalInput } from '@/utils/validation';
 import { cn } from '@/utils/classNames';
+import { parseOutcomeArray, yesOutcomeIndex } from '@/utils/outcomePrices';
 import { AlertCircle, ArrowUpRight, Sparkles } from 'lucide-react';
 import { USDC_E_CONTRACT_ADDRESS, USDC_E_DECIMALS } from '@/constants/tokens';
 import { erc20Abi, formatUnits } from 'viem';
@@ -95,28 +96,36 @@ export const TradePanel = forwardRef(function TradePanel(
     staleTime: 30_000,
   });
 
-  // Extract token IDs from market data
+  // Extract token IDs from market data. Resolve YES/NO by outcome label rather
+  // than assuming the CLOB token ids are Yes-first.
   const tokenIds = useMemo(() => {
     if (!marketData?.clobTokenIds) return { yes: '', no: '' };
     try {
-      const ids = JSON.parse(marketData.clobTokenIds);
-      return { yes: ids[0] ?? '', no: ids[1] ?? '' };
+      const ids = parseOutcomeArray(marketData.clobTokenIds);
+      const yesIndex = yesOutcomeIndex(marketData.outcomes);
+      const noIndex = yesIndex === 0 ? 1 : 0;
+      return {
+        yes: String(ids[yesIndex] ?? ids[0] ?? ''),
+        no: String(ids[noIndex] ?? ids[1] ?? ''),
+      };
     } catch {
       return { yes: '', no: '' };
     }
   }, [marketData]);
 
-  // Get current prices for both sides from market data
+  // Get current prices for both sides from market data. Resolve YES/NO by
+  // outcome label rather than assuming the arrays are Yes-first.
   const prices = useMemo(() => {
-    if (!marketData?.outcomePrices) return { yes: 0.5, no: 0.5 };
-    try {
-      const parsed = JSON.parse(marketData.outcomePrices);
-      const yesPrice = parseFloat(parsed[0]) || 0.5;
-      const noPrice = parseFloat(parsed[1]) || (1 - yesPrice);
-      return { yes: yesPrice, no: noPrice };
-    } catch {
-      return { yes: 0.5, no: 0.5 };
-    }
+    const parsed = parseOutcomeArray(marketData?.outcomePrices);
+    if (parsed.length === 0) return { yes: 0.5, no: 0.5 };
+
+    const yesIndex = yesOutcomeIndex(marketData?.outcomes);
+    const noIndex = yesIndex === 0 ? 1 : 0;
+    const yesPrice = parseFloat(String(parsed[yesIndex] ?? parsed[0])) || 0.5;
+    const noRaw = parsed[noIndex] ?? parsed[1];
+    const noPrice = parseFloat(String(noRaw)) || 1 - yesPrice;
+
+    return { yes: yesPrice, no: noPrice };
   }, [marketData]);
 
   // Use the price for the currently selected side
