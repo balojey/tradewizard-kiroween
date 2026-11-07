@@ -24,6 +24,7 @@ import { useSpotlight, type SpotlightItem } from '@/hooks/useSpotlight';
 import { cn } from '@/utils/classNames';
 import { formatTimeAgo, getYesProbability } from '@/utils/marketDisplay';
 import { yesPriceFromOutcomes } from '@/utils/outcomePrices';
+import { outcomeLabel } from '@/utils/recommendationOutcome';
 import { BarChart3 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -637,6 +638,7 @@ function SpotlightItemRow({ item }: { item: SpotlightItem }) {
   const isYes = item.recommendation === 'LONG_YES';
   const isNo = item.recommendation === 'LONG_NO';
   const edgeCents = Math.round(Math.abs(item.edge) * 100);
+  const outcomeText = outcomeLabel(item.outcomeStatus);
   // Show AI fair value in the recommended token's space
   const aiCents = isNo
     ? Math.round((1 - item.consensusProbability) * 100)
@@ -668,11 +670,30 @@ function SpotlightItemRow({ item }: { item: SpotlightItem }) {
       <span className="flex items-center gap-1.5 text-[0.65rem]">
         <span className={cn(
           'font-bold uppercase px-1.5 py-0.5 rounded',
-          isYes ? 'bg-yes/12 text-yes' : 'bg-no/12 text-no'
+          outcomeText
+            ? 'bg-surface-2 text-muted'
+            : isYes
+              ? 'bg-yes/12 text-yes'
+              : 'bg-no/12 text-no'
         )}>
           {isYes ? 'Yes' : 'No'} {aiCents}¢
         </span>
-        <span className="text-ai font-semibold">+{edgeCents}¢ edge</span>
+        {outcomeText ? (
+          <span
+            className={cn(
+              'font-semibold',
+              item.outcomeStatus === 'success'
+                ? 'text-yes'
+                : item.outcomeStatus === 'failure'
+                  ? 'text-no'
+                  : 'text-muted'
+            )}
+          >
+            {outcomeText}
+          </span>
+        ) : (
+          <span className="text-ai font-semibold">+{edgeCents}¢ edge</span>
+        )}
         <span className="text-muted ml-auto">{formatTimeAgo(item.executedAt)}</span>
       </span>
     </Link>

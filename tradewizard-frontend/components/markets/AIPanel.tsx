@@ -9,6 +9,14 @@ import { useAnalysisStatus, type AnalysisStatus } from '@/hooks/useAnalysisStatu
 import { useAnalysisSubscriptions, useCancelAnalysisSubscription } from '@/hooks/useAnalysisSubscriptions';
 import { AnalysisSupportButton } from '@/components/support/AnalysisSupportButton';
 import { cn } from '@/utils/classNames';
+import {
+  deriveOutcomeFromPrice,
+  edgeOutcomeShort,
+  getPickState,
+  isOutcomeResolved,
+  outcomeLabel,
+  resolveOutcomeStatus,
+} from '@/utils/recommendationOutcome';
 import { AlertTriangle, ArrowDown, ArrowUp, Brain, ChevronRight, Sparkles } from 'lucide-react';
 
 interface AIPanelProps {
@@ -32,6 +40,25 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
   const webResearch = analysis?.webResearchSummary?.trim() ?? '';
 
   const action = analysis?.action;
+  // The scorer polls every 5 minutes; derive a visible hit from the live token
+  // price so the pick stops being prioritised as soon as the level is crossed.
+  const currentTokenPrice =
+    liveYesCents != null
+      ? action === 'LONG_NO'
+        ? 1 - liveYesCents / 100
+        : liveYesCents / 100
+      : analysis?.metadata?.marketProbability;
+  const liveOutcome = deriveOutcomeFromPrice(
+    action,
+    analysis?.targetZone,
+    analysis?.stopLoss,
+    currentTokenPrice,
+  );
+  const outcomeStatus = resolveOutcomeStatus(analysis?.outcomeStatus, liveOutcome);
+  const resolved = isOutcomeResolved(outcomeStatus);
+  const pickState = getPickState(outcomeStatus, analysis?.executedAt);
+  const outcomeText = outcomeLabel(outcomeStatus);
+  const edgeOutcome = edgeOutcomeShort(outcomeStatus);
   const edge = analysis?.metadata?.edge ?? 0;
   // Confidence is the ensemble's confidence in the call, not the traded
   // token's win probability. Older results predate consensusConfidence.
@@ -155,8 +182,13 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
     );
   }
 
-  const recColor =
-    action === 'LONG_YES' ? 'text-yes' : action === 'LONG_NO' ? 'text-no' : 'text-fg';
+  const recColor = !pickState.active
+    ? 'text-muted'
+    : action === 'LONG_YES'
+      ? 'text-yes'
+      : action === 'LONG_NO'
+        ? 'text-no'
+        : 'text-fg';
   const edgeColor =
     displayEdge > 0 ? 'text-yes' : displayEdge < 0 ? 'text-no' : 'text-muted';
   const ev = analysis.expectedValue ?? 0;
@@ -196,29 +228,54 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
             >
               {recLabel}
             </div>
+            {outcomeText && action !== 'NO_TRADE' && (
+              <span
+                className={cn(
+                  'mt-1.5 inline-flex rounded-full border px-2 py-0.5 text-[0.6rem] font-medium',
+                  outcomeStatus === 'success' && 'border-yes/25 bg-yes/10 text-yes',
+                  outcomeStatus === 'failure' && 'border-no/25 bg-no/10 text-no',
+                  outcomeStatus === 'expired' && 'border-border bg-surface-2 text-muted'
+                )}
+              >
+                {outcomeText}
+              </span>
+            )}
           </div>
           <div className="text-right">
             <span className="text-[0.62rem] text-muted">Edge</span>
             <div
               className={cn(
-                'font-mono text-2xl font-bold leading-none tabular-nums',
-                edgeColor
+                'font-mono font-bold leading-none tabular-nums',
+                edgeOutcome ? 'text-xs' : 'text-2xl',
+                edgeOutcome
+                  ? outcomeStatus === 'success'
+                    ? 'text-yes'
+                    : outcomeStatus === 'failure'
+                      ? 'text-no'
+                      : 'text-muted'
+                  : edgeColor
               )}
             >
-              {displayEdge > 0 ? '+' : ''}
-              {(displayEdge * 100).toFixed(1)}¢
+              {edgeOutcome ?? (
+                <>
+                  {displayEdge > 0 ? '+' : ''}
+                  {(displayEdge * 100).toFixed(1)}¢
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="mt-3.5">
-          <AIEdgeRail
-            marketCents={marketCents}
-            consensusCents={consensusCents}
-            displayEdge={displayEdge}
-            action={action}
-          />
-        </div>
+        {!resolved && (
+          <div className="mt-3.5">
+            <AIEdgeRail
+              marketCents={marketCents}
+              consensusCents={consensusCents}
+              displayEdge={displayEdge}
+              action={action}
+            />
+          </div>
+        )}
       </div>
 
       <div className="border-b border-border/60 p-4">
@@ -226,6 +283,8 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
           yesCents={tradeYesCents}
           noCents={tradeNoCents}
           action={action}
+          prioritize={pickState.active}
+          note={pickState.note}
           disabled={disabled}
           onQuickBuy={onQuickBuy}
         />
@@ -247,11 +306,25 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
             label="Confidence"
             value={`${Math.round(confidence * 100)}%`}
           />
-          <VerdictMetric
-            label="Expected / share"
-            value={action === 'NO_TRADE' ? '—' : `${ev > 0 ? '+' : ''}${(ev * 100).toFixed(1)}¢`}
-            tone={action === 'NO_TRADE' ? 'muted' : ev > 0 ? 'yes' : ev < 0 ? 'no' : 'muted'}
-          />
+          {resolved ? (
+            <VerdictMetric
+              label="Outcome"
+              value={outcomeText ?? '—'}
+              tone={
+                outcomeStatus === 'success'
+                  ? 'yes'
+                  : outcomeStatus === 'failure'
+                    ? 'no'
+                    : 'muted'
+              }
+            />
+          ) : (
+            <VerdictMetric
+              label="Expected / share"
+              value={action === 'NO_TRADE' ? '—' : `${ev > 0 ? '+' : ''}${(ev * 100).toFixed(1)}¢`}
+              tone={action === 'NO_TRADE' ? 'muted' : ev > 0 ? 'yes' : ev < 0 ? 'no' : 'muted'}
+            />
+          )}
           <VerdictMetric
             label="Liquidity"
             value={analysis.liquidityRisk}
@@ -314,6 +387,7 @@ export function AIPanel({ marketSlug, marketQuestion, yesCents: liveYesCents, on
                 edge={displayEdge}
                 confidenceBand={analysis.metadata.confidenceBand}
                 action={action}
+                resolved={resolved}
               />
             </PanelDisclosure>
           )}
@@ -417,17 +491,23 @@ function TradeActions({
   yesCents,
   noCents,
   action,
+  prioritize = true,
+  note,
   disabled,
   onQuickBuy,
 }: {
   yesCents: number | null;
   noCents: number | null;
   action?: 'LONG_YES' | 'LONG_NO' | 'NO_TRADE';
+  /** False once the target/stop has been hit or the pick is stale. */
+  prioritize?: boolean;
+  /** Explains why the pick is not prioritised. */
+  note?: string | null;
   disabled: boolean;
   onQuickBuy?: (side: 'yes' | 'no') => void;
 }) {
-  const pickedYes = action === 'LONG_YES';
-  const pickedNo = action === 'LONG_NO';
+  const pickedYes = prioritize && action === 'LONG_YES';
+  const pickedNo = prioritize && action === 'LONG_NO';
 
   return (
     <div>
@@ -461,6 +541,10 @@ function TradeActions({
           className={pickedYes ? 'order-2' : 'order-1'}
         />
       </div>
+
+      {note && (
+        <p className="mt-2 text-[0.6rem] leading-relaxed text-muted">{note}</p>
+      )}
     </div>
   );
 }
@@ -1010,12 +1094,14 @@ function ConsensusDetail({
   edge,
   confidenceBand,
   action,
+  resolved = false,
 }: {
   consensusProb: number;
   marketProb: number;
   edge: number;
   confidenceBand?: [number, number];
   action?: 'LONG_YES' | 'LONG_NO' | 'NO_TRADE';
+  resolved?: boolean;
 }) {
   const isNo = action === 'LONG_NO';
   // Display consensus and market in the traded token's perspective
@@ -1033,12 +1119,14 @@ function ConsensusDetail({
         <span className="text-muted">Market Price{tokenLabel}</span>
         <span className="font-mono">{displayMarket}¢</span>
       </div>
-      <div className="flex justify-between text-xs py-1">
-        <span className="text-muted">Edge</span>
-        <span className={cn('font-mono', edge > 0 ? 'text-yes' : 'text-no')}>
-          {edge > 0 ? '+' : ''}{(edge * 100).toFixed(1)}¢
-        </span>
-      </div>
+      {!resolved && (
+        <div className="flex justify-between text-xs py-1">
+          <span className="text-muted">Edge</span>
+          <span className={cn('font-mono', edge > 0 ? 'text-yes' : 'text-no')}>
+            {edge > 0 ? '+' : ''}{(edge * 100).toFixed(1)}¢
+          </span>
+        </div>
+      )}
       {confidenceBand && (
         <div className="flex justify-between text-xs py-1">
           <span className="text-muted">Confidence Band{tokenLabel}</span>

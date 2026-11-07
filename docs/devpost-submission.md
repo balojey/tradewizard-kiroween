@@ -34,11 +34,11 @@ A user requests analysis on any Polymarket market. Behind the request runs an 11
 6. **Signal fusion** (deterministic) - market-anchored log-odds aggregation with per-agent calibration, Brier-derived weights, evidence-scaled pass-through, and a standard-error noise floor
 7. **Thesis construction** - competing bull and bear theses
 8. **Cross-examination** - five adversarial tests against each thesis
-9. **Consensus engine** (deterministic) - applies the gate profile and refuses the trade when the evidence is not strong enough
+9. **Consensus engine** (deterministic) - applies the active consensus mode (`anchored` by default, `agent` opt-in) and gate profile, and refuses the trade when the evidence is not strong enough
 10. **Risk philosophy agents** - aggressive, conservative, and neutral sizing perspectives
 11. **Recommendation generation** - `LONG_YES`, `LONG_NO`, or `NO_TRADE` with entry zone, target zone, stop-loss, expected value, win probability, and reasoning
 
-Results are delivered through WebSocket, email, push, and webhook, respecting quiet hours and per-channel preferences. Every recommendation is scored after it hits take-profit or stop-loss, and every agent has an accuracy leaderboard that feeds back into signal weighting.
+Results are delivered through WebSocket, email, push, and webhook, respecting quiet hours and per-channel preferences. Every recommendation is scored after it hits take-profit or stop-loss, and every agent has an accuracy leaderboard that feeds back into signal weighting. Outcomes are explicit in the product - pending, target hit, stop hit, expired, or no trade - and pending picks are highlighted only for 60 minutes because entry, target, and stop are priced at execution time.
 
 ### The autonomous Portfolio Manager (Pro and Elite)
 
@@ -128,6 +128,7 @@ The intelligence layer emits a `TradeRecommendation`:
 - entry zone and target zone
 - mandatory stop-loss
 - expected value and win probability
+- explicit outcome state: pending, target hit, stop hit, expired, or no trade
 - multi-paragraph explanation with catalysts, failure scenarios, and uncertainty notes
 - per-agent signals, bull and bear theses, cross-examination scores, and the three risk-philosophy perspectives
 

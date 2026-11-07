@@ -20,6 +20,14 @@ import { useAgentAccuracy } from '@/hooks/useAgentAccuracy';
 import useInfiniteScroll from '@/hooks/useInfiniteScroll';
 import { cn } from '@/utils/classNames';
 import {
+  deriveOutcomeFromPrice,
+  edgeOutcomeLabel,
+  getPickState,
+  isOutcomeResolved,
+  outcomeLabel,
+  resolveOutcomeStatus,
+} from '@/utils/recommendationOutcome';
+import {
   yesPriceFromOutcomes,
   yesTokenIdFromClobTokenIds,
 } from '@/utils/outcomePrices';
@@ -230,8 +238,6 @@ function AnalysisCard({
 }: {
   analysis: AnalysisResultSummary;
 }) {
-  const recLabel = getRecommendationLabel(analysis.recommendation);
-  const recTone = getRecommendationTone(analysis.recommendation);
 
   // Resolve condition_id → slug + image via CLOB API for proper routing and display
   const { data: marketMeta } = useMarketMeta(analysis.marketId);
@@ -295,6 +301,32 @@ function AnalysisCard({
   // For LONG_NO, the trader's edge is the inverse (NO is underpriced → positive edge).
   const displayEdge = isNo ? -edge : edge;
   const displayEdgeCents = Math.round(Math.abs(edge) * 100);
+  const currentTokenPrice =
+    liveYesCents != null
+      ? isNo
+        ? 1 - liveYesCents / 100
+        : liveYesCents / 100
+      : isNo
+        ? 1 - marketProb
+        : marketProb;
+  const liveOutcome = deriveOutcomeFromPrice(
+    analysis.recommendation,
+    detail?.targetZone,
+    detail?.stopLoss,
+    currentTokenPrice,
+  );
+  const outcomeStatus = resolveOutcomeStatus(
+    detail?.outcomeStatus ?? analysis.outcomeStatus,
+    liveOutcome,
+  );
+  const resolved = isOutcomeResolved(outcomeStatus);
+  const edgeOutcome = edgeOutcomeLabel(outcomeStatus);
+  const outcomeText = outcomeLabel(outcomeStatus);
+  const pickState = getPickState(outcomeStatus, analysis.executedAt);
+  const recLabel = getRecommendationLabel(analysis.recommendation);
+  const recTone = pickState.active
+    ? getRecommendationTone(analysis.recommendation)
+    : ('neutral' as const);
 
   // For the edge visualization bar, show values in the traded token's space
   const barAiCents = isNo ? Math.round((1 - consensusProb) * 100) : aiCents;
@@ -347,14 +379,51 @@ function AnalysisCard({
           </span>
         )}
         <span>
-          Edge:{' '}
-          <span className={cn(
-            'font-mono tabular-nums',
-            displayEdge > 0 ? 'text-yes' : displayEdge < 0 ? 'text-no' : 'text-muted'
-          )}>
-            {displayEdge > 0 ? '+' : displayEdge < 0 ? '-' : '~'}{displayEdgeCents}¢
-          </span>
+          {edgeOutcome ? (
+            <span
+              className={cn(
+                'font-mono tabular-nums',
+                outcomeStatus === 'success'
+                  ? 'text-yes'
+                  : outcomeStatus === 'failure'
+                    ? 'text-no'
+                    : 'text-muted'
+              )}
+            >
+              {edgeOutcome}
+            </span>
+          ) : (
+            <>
+              Edge:{' '}
+              <span className={cn(
+                'font-mono tabular-nums',
+                displayEdge > 0 ? 'text-yes' : displayEdge < 0 ? 'text-no' : 'text-muted'
+              )}>
+                {displayEdge > 0 ? '+' : displayEdge < 0 ? '-' : '~'}{displayEdgeCents}¢
+              </span>
+            </>
+          )}
         </span>
+        {outcomeText && analysis.recommendation !== 'NO_TRADE' && (
+          <span
+            className={cn(
+              'rounded-full border px-2 py-0.5 text-[0.6rem] font-medium',
+              outcomeStatus === 'success' && 'border-yes/25 bg-yes/10 text-yes',
+              outcomeStatus === 'failure' && 'border-no/25 bg-no/10 text-no',
+              outcomeStatus === 'expired' && 'border-border bg-surface-2 text-muted'
+            )}
+          >
+            {outcomeText}
+          </span>
+        )}
+        {pickState.reason === 'stale' && (
+          <span
+            className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[0.6rem] font-medium text-muted"
+            title={pickState.note ?? undefined}
+          >
+            Cached
+          </span>
+        )}
         <span>
           Confidence:{' '}
           <span className="font-mono text-fg tabular-nums">
@@ -373,7 +442,8 @@ function AnalysisCard({
         )}
       </div>
 
-      {/* Edge visualization */}
+      {/* Edge visualization (hidden once the target/stop has been hit) */}
+      {!resolved && (
       <div className="mb-4">
         <div className="relative h-6 sm:h-8 bg-surface-2 rounded-lg overflow-hidden">
           {/* Edge fill - the zone between market and AI */}
@@ -440,6 +510,7 @@ function AnalysisCard({
           <span className="absolute right-0 text-[0.55rem] sm:text-[0.6rem] text-muted">100%</span>
         </div>
       </div>
+      )}
 
       {/* 14-agent consensus row - real data */}
       <div className="flex items-center gap-1.5 mb-1.5 text-[0.6rem] text-muted">
