@@ -30,6 +30,14 @@ import {
   yesTokenIdFromClobTokenIds,
 } from '@/utils/outcomePrices';
 import {
+  deriveOutcomeFromPrice,
+  edgeOutcomeLabel,
+  getPickState,
+  isOutcomeResolved,
+  outcomeLabel,
+  resolveOutcomeStatus,
+} from '@/utils/recommendationOutcome';
+import {
   AlertTriangle,
   ArrowDownRight,
   ArrowLeft,
@@ -229,6 +237,18 @@ function MarketMasthead({
   const consensus = analysis?.metadata?.consensusProbability;
   const rawEdge = analysis?.metadata?.edge ?? 0;
   const displayEdge = action === 'LONG_NO' ? -rawEdge : rawEdge;
+  const currentTokenPrice =
+    action === 'LONG_NO' ? 1 - yesCents / 100 : yesCents / 100;
+  const liveOutcome = deriveOutcomeFromPrice(
+    action,
+    analysis?.targetZone,
+    analysis?.stopLoss,
+    currentTokenPrice,
+  );
+  const outcomeStatus = resolveOutcomeStatus(analysis?.outcomeStatus, liveOutcome);
+  const pickState = getPickState(outcomeStatus, analysis?.executedAt);
+  const pickStatusLabel =
+    !pickState.active && action !== 'NO_TRADE' ? pickState.label : null;
   const aiCents =
     consensus != null && consensus > 0 ? Math.round(consensus * 100) : null;
 
@@ -309,18 +329,26 @@ function MarketMasthead({
                 <span
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.65rem] font-medium',
-                    action === 'LONG_YES' && 'border-yes/25 bg-yes/[0.06] text-yes',
-                    action === 'LONG_NO' && 'border-no/25 bg-no/[0.06] text-no',
-                    action === 'NO_TRADE' && 'border-border bg-surface-2 text-muted'
+                    pickStatusLabel
+                      ? 'border-border bg-surface-2 text-muted'
+                      : action === 'LONG_YES'
+                        ? 'border-yes/25 bg-yes/[0.06] text-yes'
+                        : action === 'LONG_NO'
+                          ? 'border-no/25 bg-no/[0.06] text-no'
+                          : 'border-border bg-surface-2 text-muted'
                   )}
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-ai" aria-hidden="true" />
-                  AI read {recLabel.toLowerCase()}
-                  {displayEdge !== 0 && (
-                    <span className="font-mono opacity-80">
-                      {displayEdge > 0 ? '+' : ''}
-                      {(displayEdge * 100).toFixed(1)}¢
-                    </span>
+                  Last AI read {recLabel.toLowerCase()}
+                  {pickStatusLabel ? (
+                    <span className="font-mono opacity-80">{pickStatusLabel}</span>
+                  ) : (
+                    displayEdge !== 0 && (
+                      <span className="font-mono opacity-80">
+                        {displayEdge > 0 ? '+' : ''}
+                        {(displayEdge * 100).toFixed(1)}¢
+                      </span>
+                    )
                   )}
                 </span>
               )}
@@ -344,7 +372,11 @@ function MarketMasthead({
       </div>
 
       <div className="mt-7 max-w-3xl">
-        <ProbabilityRail yesCents={yesCents} aiCents={aiCents} isClosed={isClosed} />
+        <ProbabilityRail
+          yesCents={yesCents}
+          aiCents={pickStatusLabel ? null : aiCents}
+          isClosed={isClosed}
+        />
       </div>
 
       {facts.length > 0 && (
@@ -1503,6 +1535,9 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
   const bullThesis = data.bullThesis ?? (data as any).bull_thesis;
   const bearThesis = data.bearThesis ?? (data as any).bear_thesis;
   const riskPerspectives = data.riskPerspectivesRaw ?? data.riskPerspectives;
+  const resolved = isOutcomeResolved(data.outcomeStatus);
+  const outcomeText = outcomeLabel(data.outcomeStatus);
+  const edgeOutcome = edgeOutcomeLabel(data.outcomeStatus);
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-4 bg-surface-2/30">
@@ -1513,7 +1548,7 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
 
       {/* Quick stats */}
       <div className="flex flex-wrap gap-4 text-xs">
-        {data.action !== 'NO_TRADE' && data.expectedValue !== undefined && (
+        {!resolved && data.action !== 'NO_TRADE' && data.expectedValue !== undefined && (
           <div>
             <span className="text-muted">EV / share: </span>
             <span className={cn('font-mono font-medium', data.expectedValue >= 0 ? 'text-yes' : 'text-no')}>
@@ -1521,10 +1556,43 @@ function AnalysisHistoryDetail({ analysisId }: { analysisId: string }) {
             </span>
           </div>
         )}
-        {data.action !== 'NO_TRADE' && data.winProbability > 0 && (
+        {!resolved && data.action !== 'NO_TRADE' && data.winProbability > 0 && (
           <div>
             <span className="text-muted">Win Prob: </span>
             <span className="font-mono font-medium">{Math.round(data.winProbability * 100)}%</span>
+          </div>
+        )}
+        {outcomeText && (
+          <div>
+            <span className="text-muted">Outcome: </span>
+            <span
+              className={cn(
+                'font-mono font-medium',
+                data.outcomeStatus === 'success'
+                  ? 'text-yes'
+                  : data.outcomeStatus === 'failure'
+                    ? 'text-no'
+                    : 'text-muted'
+              )}
+            >
+              {outcomeText}
+            </span>
+          </div>
+        )}
+        {edgeOutcome && (
+          <div>
+            <span
+              className={cn(
+                'font-mono font-medium',
+                data.outcomeStatus === 'success'
+                  ? 'text-yes'
+                  : data.outcomeStatus === 'failure'
+                    ? 'text-no'
+                    : 'text-muted'
+              )}
+            >
+              {edgeOutcome}
+            </span>
           </div>
         )}
         {data.entryZone && (
@@ -2118,6 +2186,7 @@ function CallRow({
   // Backend edge is consensus - market in YES space. A NO trade's edge is the
   // inverse, matching the AI panel and insights page.
   const displayEdge = rec.recommendation === 'LONG_NO' ? -rec.edge : rec.edge;
+  const edgeOutcome = edgeOutcomeLabel(rec.outcomeStatus);
 
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-2.5">
@@ -2134,12 +2203,28 @@ function CallRow({
               : cents(rec.outcomeHitPrice)}
         </div>
         <div className="truncate text-[0.58rem] text-muted">
-          Target {cents(rec.targetPrice)} · Stop {cents(rec.stopLossPrice)} ·
-          Edge{' '}
-          <span className={displayEdge > 0 ? 'text-yes' : displayEdge < 0 ? 'text-no' : ''}>
-            {displayEdge > 0 ? '+' : ''}
-            {Math.round(displayEdge * 100)}¢
-          </span>{' '}
+          Target {cents(rec.targetPrice)} · Stop {cents(rec.stopLossPrice)} ·{' '}
+          {edgeOutcome ? (
+            <span
+              className={
+                rec.outcomeStatus === 'success'
+                  ? 'text-yes'
+                  : rec.outcomeStatus === 'failure'
+                    ? 'text-no'
+                    : 'text-muted'
+              }
+            >
+              {edgeOutcome}
+            </span>
+          ) : (
+            <>
+              Edge{' '}
+              <span className={displayEdge > 0 ? 'text-yes' : displayEdge < 0 ? 'text-no' : ''}>
+                {displayEdge > 0 ? '+' : ''}
+                {Math.round(displayEdge * 100)}¢
+              </span>
+            </>
+          )}{' '}
           ·{' '}
           {new Date(rec.executedAt).toLocaleDateString(undefined, {
             month: 'short',

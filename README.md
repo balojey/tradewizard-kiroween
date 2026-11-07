@@ -130,6 +130,8 @@ Every `NO_TRADE` persists a machine-readable reason (`consensus_failed`, `diverg
 ### Results Viewer
 - Paginated history with infinite scroll
 - Full detail view: agent signals, bull/bear thesis, cross-examination, position sizing
+- Explicit outcome state: pending, target hit, stop hit, expired, or no trade
+- Pending picks are highlighted only for 60 minutes; entry, target, and stop are priced at execution time, so an older call is a cached read rather than a live pick
 - Visual distinction between cached and fresh analyses
 - Real-time prepend from WebSocket
 

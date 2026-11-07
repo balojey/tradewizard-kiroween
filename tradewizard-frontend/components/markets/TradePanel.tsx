@@ -24,6 +24,11 @@ import { formatCurrency } from '@/utils/formatting';
 import { isValidDecimalInput } from '@/utils/validation';
 import { cn } from '@/utils/classNames';
 import { parseOutcomeArray, yesOutcomeIndex } from '@/utils/outcomePrices';
+import {
+  deriveOutcomeFromPrice,
+  getPickState,
+  resolveOutcomeStatus,
+} from '@/utils/recommendationOutcome';
 import { AlertCircle, ArrowUpRight, Sparkles } from 'lucide-react';
 import { USDC_E_CONTRACT_ADDRESS, USDC_E_DECIMALS } from '@/constants/tokens';
 import { erc20Abi, formatUnits } from 'viem';
@@ -152,10 +157,29 @@ export const TradePanel = forwardRef(function TradePanel(
   const marketId = marketData?.conditionId || marketData?.id || null;
   const { data: analysis } = useMarketAnalysis(marketId);
 
-  // AI Trade: available when analysis has a directional recommendation (regardless of selected side)
+  // Once the target/stop is hit or the analysis is older than 1h, the pick is
+  // no longer live. Derive from the live price because the scorer can lag.
+  const liveOutcome = useMemo(() => {
+    if (!analysis) return null;
+    const currentTokenPrice =
+      analysis.action === 'LONG_NO' ? prices.no : prices.yes;
+    return deriveOutcomeFromPrice(
+      analysis.action,
+      analysis.targetZone,
+      analysis.stopLoss,
+      currentTokenPrice,
+    );
+  }, [analysis, prices]);
+  const outcomeStatus = resolveOutcomeStatus(analysis?.outcomeStatus, liveOutcome);
+  const pickState = analysis
+    ? getPickState(outcomeStatus, analysis.executedAt)
+    : null;
+
+  // AI Trade: available when analysis has a live, fresh directional pick.
   const aiAvailable = useMemo(() => {
     if (!analysis) return null;
     if (analysis.action === 'NO_TRADE') return null;
+    if (!pickState?.active) return null;
     if (!analysis.entryZone || !analysis.targetZone || !analysis.stopLoss) return null;
     return {
       action: analysis.action,
@@ -163,7 +187,7 @@ export const TradePanel = forwardRef(function TradePanel(
       targetZone: analysis.targetZone,
       stopLoss: analysis.stopLoss,
     };
-  }, [analysis]);
+  }, [analysis, pickState]);
 
   const [aiTradeEnabled, setAiTradeEnabled] = useState(true);
   const [aiTakeProfit, setAiTakeProfit] = useState('');
@@ -577,6 +601,13 @@ export const TradePanel = forwardRef(function TradePanel(
           </p>
         )}
       </div>
+
+      {tradeAction === 'buy' && analysis && pickState && !pickState.active && pickState.note && (
+        <p className="text-[0.7rem] text-muted flex items-start gap-1.5">
+          <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+          {pickState.note}
+        </p>
+      )}
 
       {/* AI Trade Toggle - shown only when buying on the recommended side */}
       {tradeAction === 'buy' && aiAvailable && (

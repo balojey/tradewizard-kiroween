@@ -14,6 +14,12 @@ export interface SpotlightItem {
   edge: number;
   marketProbability: number;
   executedAt: string;
+  /** pending | success (TP) | failure (SL) | expired */
+  outcomeStatus?: 'pending' | 'success' | 'failure' | 'expired' | 'no_trade';
+  outcomeHitPrice?: number | null;
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLossPrice?: number | null;
 }
 
 interface SpotlightResponse {

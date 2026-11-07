@@ -11,6 +11,12 @@ import {
 } from '@/hooks/useAnalysisProgress';
 import { cn } from '@/utils/classNames';
 import {
+  deriveOutcomeFromPrice,
+  getPickState,
+  resolveOutcomeStatus,
+} from '@/utils/recommendationOutcome';
+import { useMarketTradePerformance } from '@/hooks/useMarketTradePerformance';
+import {
   formatMarketEndDate,
   formatMarketVolume,
   formatTimeAgo,
@@ -118,6 +124,37 @@ export function MarketCard({
   const hasAnalysis = !!analysis;
   const isYes = analysis?.recommendation === 'LONG_YES';
   const isNo = analysis?.recommendation === 'LONG_NO';
+
+  // The summary can lag the ledger (or predate the history API fields). Look
+  // up this exact analysis in the same market-performance data used by the
+  // "AI vs market" section, then fall back to a live-price check.
+  const needsOutcomeLookup =
+    !!analysis && (!analysis.outcomeStatus || analysis.outcomeStatus === 'pending');
+  const { data: performance } = useMarketTradePerformance(
+    needsOutcomeLookup ? analysis.marketId : null,
+  );
+  const performanceMatch = performance?.recommendations.find(
+    (rec) => rec.analysisId === analysis?.analysisId,
+  );
+  const storedOutcomeStatus =
+    performanceMatch?.outcomeStatus ?? analysis?.outcomeStatus;
+  const storedTargetPrice = performanceMatch?.targetPrice ?? analysis?.targetPrice;
+  const storedStopLossPrice =
+    performanceMatch?.stopLossPrice ?? analysis?.stopLossPrice;
+
+  const currentTokenPrice = isNo ? noCents / 100 : yesCents / 100;
+  const liveOutcome = deriveOutcomeFromPrice(
+    analysis?.recommendation,
+    storedTargetPrice != null ? [storedTargetPrice, storedTargetPrice] : undefined,
+    storedStopLossPrice ?? undefined,
+    currentTokenPrice,
+  );
+  const outcomeStatus = resolveOutcomeStatus(storedOutcomeStatus, liveOutcome);
+  const pickState = getPickState(outcomeStatus, analysis?.executedAt);
+  const pickLabel = pickState.active ? null : pickState.label;
+  // A hit target/stop ends the pick, and an older cached read is no longer a
+  // live pick: stop prioritising that token's button after the 1-hour window.
+  const prioritize = hasAnalysis && pickState.active;
   const aiCents = hasAnalysis
     ? isNo
       ? Math.round((1 - analysis.consensusProbability) * 100)
@@ -201,15 +238,32 @@ export function MarketCard({
             className={cn(
               'rounded px-2 py-0.5 text-[0.6875rem] font-bold uppercase tracking-wide',
               compact && 'text-[0.625rem]',
-              isYes && 'bg-yes/12 text-yes',
-              isNo && 'bg-no/12 text-no',
-              !isYes && !isNo && 'bg-surface-2 text-muted'
+              !prioritize
+                ? 'bg-surface-2 text-muted'
+                : isYes
+                  ? 'bg-yes/12 text-yes'
+                  : isNo
+                    ? 'bg-no/12 text-no'
+                    : 'bg-surface-2 text-muted'
             )}
           >
             {recLabel}
           </span>
-          <span className={cn('font-mono text-[0.6875rem] text-ai tabular-nums', compact && 'text-[0.625rem]')}>
-            +{edgeCents}¢ edge · {aiCents}% AI
+          <span
+            className={cn(
+              'font-mono text-[0.6875rem] tabular-nums',
+              compact && 'text-[0.625rem]',
+              pickLabel
+                ? outcomeStatus === 'success'
+                  ? 'text-yes'
+                  : outcomeStatus === 'failure'
+                    ? 'text-no'
+                    : 'text-muted'
+                : 'text-ai'
+            )}
+            title={pickState.note ?? undefined}
+          >
+            {pickLabel ?? `+${edgeCents}¢ edge`} · {aiCents}¢ AI
           </span>
         </div>
         <p
@@ -233,12 +287,12 @@ export function MarketCard({
             compact ? 'py-[0.4rem] text-[0.6875rem]' : 'py-2.5 text-[0.8rem]',
             isClosed
               ? 'cursor-not-allowed bg-surface-2 text-muted opacity-50'
-              : isYes
+              : isYes && prioritize
                 ? 'bg-yes text-white shadow-[0_2px_8px_oklch(72%_0.16_155_/_0.3)]'
                 : 'bg-yes/12 text-yes hover:bg-yes/20'
           )}
         >
-          {isYes && <Sparkles className="mr-1 inline h-3 w-3" aria-hidden="true" />}
+          {isYes && prioritize && <Sparkles className="mr-1 inline h-3 w-3" aria-hidden="true" />}
           Buy Yes {yesCents}¢
         </button>
         <button
@@ -250,12 +304,12 @@ export function MarketCard({
             compact ? 'py-[0.4rem] text-[0.6875rem]' : 'py-2.5 text-[0.8rem]',
             isClosed
               ? 'cursor-not-allowed bg-surface-2 text-muted opacity-50'
-              : isNo
+              : isNo && prioritize
                 ? 'bg-no text-white shadow-[0_2px_8px_oklch(65%_0.18_25_/_0.3)]'
                 : 'bg-no/12 text-no hover:bg-no/20'
           )}
         >
-          {isNo && <Sparkles className="mr-1 inline h-3 w-3" aria-hidden="true" />}
+          {isNo && prioritize && <Sparkles className="mr-1 inline h-3 w-3" aria-hidden="true" />}
           Buy No {noCents}¢
         </button>
         <button

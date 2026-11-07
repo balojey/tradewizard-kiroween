@@ -1,10 +1,11 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useMarketTradePerformance } from '@/hooks/useMarketTradePerformance';
 
 export interface MarketAnalysisResult {
   analysisId: string;
@@ -16,6 +17,12 @@ export interface MarketAnalysisResult {
   expectedValue: number;
   winProbability: number;
   liquidityRisk: 'low' | 'medium' | 'high';
+  /** Whether the recommendation's target/stop has been hit. */
+  outcomeStatus?: 'pending' | 'success' | 'failure' | 'expired' | 'no_trade';
+  outcomeHitPrice?: number | null;
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLossPrice?: number | null;
   explanation: {
     summary: string;
     coreThesis: string;
@@ -88,7 +95,7 @@ export function useMarketAnalysis(marketId: string | null) {
     }
   }, [lastMessage, marketId, queryClient]);
 
-  return useQuery<MarketAnalysisResult | null>({
+  const analysisQuery = useQuery<MarketAnalysisResult | null>({
     queryKey: ['market-analysis', marketId],
     queryFn: async () => {
       if (!marketId) return null;
@@ -103,6 +110,11 @@ export function useMarketAnalysis(marketId: string | null) {
             /** Ensemble confidence in the call (0-1). */
             confidence: number;
             executedAt: string;
+            outcomeStatus?: 'pending' | 'success' | 'failure' | 'expired' | 'no_trade';
+            outcomeHitPrice?: number | null;
+            entryPrice?: number | null;
+            targetPrice?: number | null;
+            stopLossPrice?: number | null;
           }>;
           nextCursor: string | null;
           totalCount: number;
@@ -132,6 +144,11 @@ export function useMarketAnalysis(marketId: string | null) {
             // Do not substitute consensus P(YES); it is a different number.
             winProbability: 0,
             liquidityRisk: 'medium' as const,
+            outcomeStatus: latest.outcomeStatus ?? 'pending',
+            outcomeHitPrice: latest.outcomeHitPrice ?? null,
+            entryPrice: latest.entryPrice ?? null,
+            targetPrice: latest.targetPrice ?? null,
+            stopLossPrice: latest.stopLossPrice ?? null,
             explanation: {
               summary: '',
               coreThesis: '',
@@ -161,4 +178,31 @@ export function useMarketAnalysis(marketId: string | null) {
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
   });
+
+  // The market-performance ledger is the authoritative outcome source used by
+  // the "AI vs Market" section. Merge its status into the analysis so the
+  // verdict, header, and trade panel all agree with the ledger instead of
+  // relying on a live-price guess.
+  const performanceQuery = useMarketTradePerformance(marketId);
+
+  const data = useMemo(() => {
+    const base = analysisQuery.data;
+    if (!base) return base;
+
+    const match = performanceQuery.data?.recommendations.find(
+      (rec) => rec.analysisId === base.analysisId,
+    );
+    if (!match) return base;
+
+    return {
+      ...base,
+      outcomeStatus: match.outcomeStatus,
+      outcomeHitPrice: match.outcomeHitPrice ?? base.outcomeHitPrice,
+      entryPrice: match.entryPrice ?? base.entryPrice,
+      targetPrice: match.targetPrice ?? base.targetPrice,
+      stopLossPrice: match.stopLossPrice ?? base.stopLossPrice,
+    };
+  }, [analysisQuery.data, performanceQuery.data]);
+
+  return { ...analysisQuery, data };
 }

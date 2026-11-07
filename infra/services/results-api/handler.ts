@@ -49,6 +49,12 @@ interface AnalysisHistoryItem {
   confidence: number;
   executedAt: string;
   wasCachedDelivery: boolean;
+  /** pending | success (TP) | failure (SL) | expired | no_trade */
+  outcomeStatus: string;
+  outcomeHitPrice: number | null;
+  entryPrice: number | null;
+  targetPrice: number | null;
+  stopLossPrice: number | null;
 }
 
 interface PaginatedResponse {
@@ -133,7 +139,12 @@ async function handleGetSpotlight(
          res.confidence_score,
          res.edge,
          res.market_probability_at_execution,
-         res.executed_at
+         res.executed_at,
+         res.outcome_status,
+         res.outcome_hit_price,
+         res.entry_price,
+         res.target_price,
+         res.stop_loss_price
        FROM analysis_results res
        LEFT JOIN markets m ON m.condition_id = res.market_id
        WHERE res.executed_at > NOW() - INTERVAL '24 hours'
@@ -154,6 +165,11 @@ async function handleGetSpotlight(
       edge: string | null;
       market_probability_at_execution: string | null;
       executed_at: Date;
+      outcome_status: string | null;
+      outcome_hit_price: string | null;
+      entry_price: string | null;
+      target_price: string | null;
+      stop_loss_price: string | null;
     }
 
     // Sort by absolute edge descending and apply the limit after dedup
@@ -168,6 +184,12 @@ async function handleGetSpotlight(
         edge: parseFloat(String(row.edge)) || 0,
         marketProbability: parseFloat(String(row.market_probability_at_execution)) || 0,
         executedAt: row.executed_at.toISOString(),
+        outcomeStatus: row.outcome_status || 'pending',
+        outcomeHitPrice: row.outcome_hit_price != null ? parseFloat(row.outcome_hit_price) : null,
+        entryPrice: row.entry_price != null ? parseFloat(row.entry_price) : null,
+        targetPrice: row.target_price != null ? parseFloat(row.target_price) : null,
+        stopLossPrice:
+          row.stop_loss_price != null ? parseFloat(row.stop_loss_price) : null,
       }))
       .sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge) || b.confidence - a.confidence)
       .slice(0, limit);
@@ -475,6 +497,11 @@ async function handleGetHistory(
           res.consensus_probability,
           res.confidence_score,
           res.executed_at,
+          res.outcome_status,
+          res.outcome_hit_price,
+          res.entry_price,
+          res.target_price,
+          res.stop_loss_price,
           ad.was_cached_delivery,
           ad.delivered_at
         FROM analysis_deliveries ad
@@ -499,6 +526,11 @@ async function handleGetHistory(
           res.consensus_probability,
           res.confidence_score,
           res.executed_at,
+          res.outcome_status,
+          res.outcome_hit_price,
+          res.entry_price,
+          res.target_price,
+          res.stop_loss_price,
           ad.was_cached_delivery,
           ad.delivered_at
         FROM analysis_deliveries ad
@@ -533,6 +565,13 @@ async function handleGetHistory(
       confidence: parseFloat(String(row.confidence_score)) || 0,
       executedAt: (row.executed_at as Date).toISOString(),
       wasCachedDelivery: row.was_cached_delivery as boolean,
+      outcomeStatus: (row.outcome_status as string) || 'pending',
+      outcomeHitPrice:
+        row.outcome_hit_price != null ? parseFloat(String(row.outcome_hit_price)) : null,
+      entryPrice: row.entry_price != null ? parseFloat(String(row.entry_price)) : null,
+      targetPrice: row.target_price != null ? parseFloat(String(row.target_price)) : null,
+      stopLossPrice:
+        row.stop_loss_price != null ? parseFloat(String(row.stop_loss_price)) : null,
     }));
 
     // Generate next cursor from the last item's delivered_at
@@ -589,7 +628,12 @@ async function handleGetAnalysisDetail(
 
     // Verify ownership: check that this user has a delivery for this result
     const ownershipResult = await client.query(
-      `SELECT res.result_payload_s3_key
+      `SELECT res.result_payload_s3_key,
+              res.outcome_status,
+              res.outcome_hit_price,
+              res.entry_price,
+              res.target_price,
+              res.stop_loss_price
        FROM analysis_deliveries ad
        JOIN analysis_results res ON res.id = ad.result_id
        WHERE ad.user_id = $1 AND ad.result_id = $2
@@ -602,7 +646,15 @@ async function handleGetAnalysisDetail(
       return respond(404, { error: 'Analysis not found' });
     }
 
-    const s3Key = ownershipResult.rows[0].result_payload_s3_key as string;
+    const outcomeRow = ownershipResult.rows[0] as {
+      result_payload_s3_key: string;
+      outcome_status: string | null;
+      outcome_hit_price: string | null;
+      entry_price: string | null;
+      target_price: string | null;
+      stop_loss_price: string | null;
+    };
+    const s3Key = outcomeRow.result_payload_s3_key;
 
     // Fetch public trade recommendation from S3
     const s3Response = await s3Client.send(
@@ -619,6 +671,21 @@ async function handleGetAnalysisDetail(
 
     const payloadString = await s3Response.Body.transformToString('utf-8');
     const payload = JSON.parse(payloadString);
+
+    // Outcome state lives in RDS and changes after the S3 snapshot was written.
+    payload.outcomeStatus = outcomeRow.outcome_status || 'pending';
+    payload.outcomeHitPrice =
+      outcomeRow.outcome_hit_price != null
+        ? parseFloat(outcomeRow.outcome_hit_price)
+        : null;
+    payload.entryPrice =
+      outcomeRow.entry_price != null ? parseFloat(outcomeRow.entry_price) : null;
+    payload.targetPrice =
+      outcomeRow.target_price != null ? parseFloat(outcomeRow.target_price) : null;
+    payload.stopLossPrice =
+      outcomeRow.stop_loss_price != null
+        ? parseFloat(outcomeRow.stop_loss_price)
+        : null;
 
     // Fetch full analysis detail (agent signals, theses, consensus, risk)
     // from the detail/ prefix. Best-effort - if missing, return the public

@@ -1,9 +1,18 @@
 'use client';
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { useMarketTradePerformance } from '@/hooks/useMarketTradePerformance';
 
 // --- Types ---
+
+export type OutcomeStatus =
+  | 'pending'
+  | 'success'
+  | 'failure'
+  | 'expired'
+  | 'no_trade';
 
 export interface AnalysisResultSummary {
   analysisId: string;
@@ -14,6 +23,12 @@ export interface AnalysisResultSummary {
   confidence: number;
   executedAt: string;
   wasCachedDelivery: boolean;
+  /** Whether the recommendation's target/stop has been hit. */
+  outcomeStatus?: OutcomeStatus;
+  outcomeHitPrice?: number | null;
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLossPrice?: number | null;
 }
 
 export interface AgentSignal {
@@ -62,6 +77,12 @@ export interface AnalysisResultDetail {
   expectedValue: number;
   winProbability: number;
   liquidityRisk: 'low' | 'medium' | 'high';
+  /** Whether the recommendation's target/stop has been hit. */
+  outcomeStatus?: OutcomeStatus;
+  outcomeHitPrice?: number | null;
+  entryPrice?: number | null;
+  targetPrice?: number | null;
+  stopLossPrice?: number | null;
   explanation: {
     summary: string;
     coreThesis: string;
@@ -134,11 +155,37 @@ export function useAnalysisHistoryPaginated() {
 }
 
 export function useAnalysisDetail(analysisId: string | null) {
-  return useQuery<AnalysisResultDetail>({
+  const detailQuery = useQuery<AnalysisResultDetail>({
     queryKey: ['analysis-detail', analysisId],
     queryFn: () => apiClient.get<AnalysisResultDetail>(`/analysis/${analysisId}`),
     enabled: !!analysisId,
     staleTime: 5 * 60_000, // 5 minutes - results don't change
     retry: 2,
   });
+
+  // Use the same authoritative outcome ledger as the market details page.
+  const performanceQuery = useMarketTradePerformance(
+    detailQuery.data?.marketId ?? null,
+  );
+
+  const data = useMemo(() => {
+    const base = detailQuery.data;
+    if (!base) return base;
+
+    const match = performanceQuery.data?.recommendations.find(
+      (rec) => rec.analysisId === analysisId,
+    );
+    if (!match) return base;
+
+    return {
+      ...base,
+      outcomeStatus: match.outcomeStatus,
+      outcomeHitPrice: match.outcomeHitPrice ?? base.outcomeHitPrice,
+      entryPrice: match.entryPrice ?? base.entryPrice,
+      targetPrice: match.targetPrice ?? base.targetPrice,
+      stopLossPrice: match.stopLossPrice ?? base.stopLossPrice,
+    };
+  }, [detailQuery.data, performanceQuery.data, analysisId]);
+
+  return { ...detailQuery, data };
 }
