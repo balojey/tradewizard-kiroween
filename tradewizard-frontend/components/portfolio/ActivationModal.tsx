@@ -8,7 +8,6 @@ import {
   XCircle,
   AlertTriangle,
   Zap,
-  Shield,
   TrendingUp,
   ExternalLink,
 } from 'lucide-react';
@@ -19,6 +18,7 @@ import {
 import { useSubscription } from '@/hooks/useSubscription';
 import { usePersonaSettings } from '@/hooks/usePersonaSettings';
 import { usePortfolioSessions } from '@/hooks/usePortfolioSessions';
+import { PERSONAS, getPersonaDef } from '@/constants/personas';
 import usePolygonBalances from '@/hooks/usePolygonBalances';
 import { useWallet } from '@/providers/WalletContext';
 
@@ -48,12 +48,6 @@ const RISK_LEVEL_COLORS: Record<string, string> = {
   aggressive: 'text-red-600 dark:text-red-400',
 };
 
-const RISK_LEVEL_BG: Record<string, string> = {
-  conservative: 'bg-green-50 dark:bg-green-900/20',
-  moderate: 'bg-yellow-50 dark:bg-yellow-900/20',
-  aggressive: 'bg-red-50 dark:bg-red-900/20',
-};
-
 // --- Main Component ---
 
 export default function ActivationModal({
@@ -70,12 +64,13 @@ export default function ActivationModal({
   const { data: personaSettings, isLoading: isPersonaLoading } = usePersonaSettings();
   const { data: sessionsData } = usePortfolioSessions();
   const { usdcBalance, isLoading: isBalanceLoading } = usePolygonBalances(eoaAddress);
-  const { canActivate, reason: preflightReason, isLoading: isPreflightLoading } =
+  const { canActivate, reason: preflightReason, isLoading: isPreflightLoading, lastPersonaId } =
     usePortfolioPreflightCheck(isOpen ? marketId : null);
   const activationMutation = usePortfolioActivation();
 
   // Local state
   const [investmentAmount, setInvestmentAmount] = useState('');
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const [modalState, setModalState] = useState<ModalState>('form');
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -95,12 +90,25 @@ export default function ActivationModal({
   const amountTooLow = !isNaN(parsedAmount) && parsedAmount > 0 && parsedAmount < MIN_INVESTMENT;
   const amountTooHigh = !isNaN(parsedAmount) && parsedAmount > usdcBalance;
 
+  // Persona is chosen per market: explicit pick → last used on this market →
+  // account default. The server applies the same precedence when omitted.
+  const validLastPersonaId =
+    lastPersonaId && getPersonaDef(lastPersonaId) ? lastPersonaId : null;
+  const effectivePersonaId =
+    selectedPersonaId ?? validLastPersonaId ?? personaSettings?.personaId ?? 'scalper';
+  const personaSource = selectedPersonaId
+    ? 'Selected for this market'
+    : validLastPersonaId
+      ? 'Last used on this market'
+      : 'Account default';
+
   const canSubmit = canActivate && isAmountValid && modalState === 'form';
 
   // Reset state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       setInvestmentAmount('');
+      setSelectedPersonaId(null);
       setModalState('form');
       setCreatedSessionId(null);
       setApiError(null);
@@ -133,6 +141,7 @@ export default function ActivationModal({
       const result = await activationMutation.mutateAsync({
         marketId,
         investmentAmount: parsedAmount,
+        personaId: effectivePersonaId,
       });
 
       setCreatedSessionId(result.sessionId);
@@ -164,7 +173,7 @@ export default function ActivationModal({
         setApiError('An unexpected error occurred. Please try again.');
       }
     }
-  }, [canSubmit, marketId, parsedAmount, activationMutation, sessionLimit, plan]);
+  }, [canSubmit, marketId, parsedAmount, effectivePersonaId, activationMutation, sessionLimit, plan]);
 
   if (!isOpen) return null;
 
@@ -233,11 +242,13 @@ export default function ActivationModal({
                   sessionLimit={sessionLimit}
                 />
 
-                {/* Persona Info */}
-                <PersonaInfo
+                {/* Persona for this market */}
+                <PersonaSelector
                   isLoading={isPersonaLoading}
-                  personaName={personaSettings?.persona?.name}
-                  riskLevel={personaSettings?.persona?.riskLevel}
+                  value={effectivePersonaId}
+                  source={personaSource}
+                  disabled={modalState === 'submitting'}
+                  onChange={setSelectedPersonaId}
                 />
 
                 {/* Session Count */}
@@ -367,49 +378,94 @@ function PreflightChecks({
   );
 }
 
-function PersonaInfo({
+function PersonaSelector({
   isLoading,
-  personaName,
-  riskLevel,
+  value,
+  source,
+  disabled,
+  onChange,
 }: {
   isLoading: boolean;
-  personaName?: string;
-  riskLevel?: 'conservative' | 'moderate' | 'aggressive';
+  value: string;
+  source: string;
+  disabled?: boolean;
+  onChange: (personaId: string) => void;
 }) {
   if (isLoading) {
     return (
       <div className="rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-800">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-          <span className="text-sm text-gray-500 dark:text-gray-400">Loading persona...</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">Loading personas...</span>
         </div>
       </div>
     );
   }
 
-  if (!personaName || !riskLevel) return null;
-
-  const colorClass = RISK_LEVEL_COLORS[riskLevel] ?? 'text-gray-600';
-  const bgClass = RISK_LEVEL_BG[riskLevel] ?? 'bg-gray-50 dark:bg-gray-800';
+  const selected = getPersonaDef(value);
 
   return (
-    <div className={`rounded-lg px-4 py-3 ${bgClass}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-          <span className="text-sm text-gray-600 dark:text-gray-400">Active Persona</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-900 dark:text-white">
-            {personaName}
-          </span>
-          <span
-            className={`text-xs font-medium capitalize px-2 py-0.5 rounded-full ${colorClass} bg-white/50 dark:bg-black/20`}
-          >
-            {riskLevel}
-          </span>
-        </div>
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Persona for this market</p>
+        <span className="text-[0.68rem] text-gray-400 dark:text-gray-500">{source}</span>
       </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Persona for this market"
+        className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"
+      >
+        {PERSONAS.map((persona) => {
+          const isSelected = persona.id === value;
+          return (
+            <button
+              key={persona.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              disabled={disabled}
+              onClick={() => onChange(persona.id)}
+              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                isSelected
+                  ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/30'
+                  : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <persona.icon
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span
+                  className={`truncate text-xs font-medium ${
+                    isSelected
+                      ? 'text-blue-700 dark:text-blue-300'
+                      : 'text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {persona.name}
+                </span>
+              </span>
+              <span
+                className={`shrink-0 text-[0.6rem] capitalize ${
+                  RISK_LEVEL_COLORS[persona.riskLevel] ?? 'text-gray-500'
+                }`}
+              >
+                {persona.riskLevel}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {selected && (
+        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          {selected.philosophy}
+        </p>
+      )}
     </div>
   );
 }

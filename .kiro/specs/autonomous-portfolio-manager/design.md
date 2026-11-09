@@ -10,7 +10,7 @@ The system integrates with the existing 11-stage analysis workflow as its intell
 - **EventBridge Scheduler over polling loops**: Each active session gets a persona-specific EventBridge schedule for position monitoring, keeping costs near-zero when idle.
 - **Lambda-based execution**: All portfolio manager logic runs in Lambda functions triggered by schedules or events - no long-running containers.
 - **Piggybacks on user's recurring analysis**: The portfolio manager does NOT trigger its own analysis runs. It requires the user to have an active recurring analysis subscription on the market and consumes those results as they arrive via EventBridge events. This keeps analysis costs transparent and user-controlled.
-- **Single persona per user**: Simplifies the decision engine - one set of rules governs all of a user's activations.
+- **Persona per market, chosen at activation**: Each session already snapshots its persona, so the decision engine has no cross-session coupling either way. Picking per market lets sizing and monitoring cadence track the opportunity (an illiquid long-dated market and a fast-moving one should not share a position-guard interval), while account settings hold the default for markets with no earlier session.
 - **Session-scoped capital**: Each activation has its own Investment_Amount, preventing cross-market capital conflicts.
 
 ## Architecture
@@ -137,7 +137,7 @@ The portfolio manager plugs into the existing system at these integration points
 ### REST API Endpoints
 
 ```
-POST   /portfolio/sessions                    # Activate portfolio manager
+POST   /portfolio/sessions                    # Activate portfolio manager (optional personaId)
 GET    /portfolio/sessions                    # List user's sessions
 GET    /portfolio/sessions/{sessionId}        # Session detail
 PUT    /portfolio/sessions/{sessionId}/pause  # Pause session
@@ -147,8 +147,8 @@ PUT    /portfolio/sessions/{sessionId}/investment  # Update investment amount
 GET    /portfolio/sessions/{sessionId}/trades # Trade history (paginated)
 GET    /portfolio/sessions/{sessionId}/decisions # Decision log (paginated)
 GET    /portfolio/stats                       # Aggregate portfolio stats
-PUT    /portfolio/settings/persona            # Update persona selection
-GET    /portfolio/settings/persona            # Get current persona config
+PUT    /portfolio/settings/persona            # Update default persona / per-persona params
+GET    /portfolio/settings/persona            # Get default persona config
 POST   /portfolio/kill-switch                 # Trigger global kill switch
 DELETE /portfolio/kill-switch                 # Reset kill switch
 ```
@@ -305,7 +305,7 @@ sequenceDiagram
     Activation->>RDS: Check active recurring analysis exists for market
     Activation->>Chain: Verify wallet balance >= investmentAmount
     Activation->>RDS: Check market not resolved
-    Activation->>RDS: Get user's active persona
+    Activation->>RDS: Resolve persona (request → last used here → account default)
     Activation->>RDS: INSERT portfolio_manager_sessions
     Activation->>EB: Create position guard schedule (persona interval)
     Activation-->>User: 201 {sessionId, status: 'active'}
@@ -592,8 +592,8 @@ Attributes: { lockedBy: string, lockedAt: ISO string, ttl: number (60s) }
 
 Add to existing `users` table or a new `user_settings` table:
 ```sql
-ALTER TABLE users ADD COLUMN portfolio_persona_id TEXT NOT NULL DEFAULT 'scalper';
-ALTER TABLE users ADD COLUMN portfolio_persona_params JSONB;  -- Elite customization
+ALTER TABLE users ADD COLUMN portfolio_persona_id TEXT NOT NULL DEFAULT 'scalper';  -- account default
+ALTER TABLE users ADD COLUMN portfolio_persona_params JSONB;  -- Elite customization, keyed by persona id
 ```
 
 

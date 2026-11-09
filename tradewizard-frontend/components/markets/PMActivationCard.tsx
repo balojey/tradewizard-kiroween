@@ -11,6 +11,7 @@ import {
 import { useWallet } from '@/providers/WalletContext';
 import usePolygonBalances from '@/hooks/usePolygonBalances';
 import { usePersonaSettings } from '@/hooks/usePersonaSettings';
+import { PERSONAS, getPersonaDef } from '@/constants/personas';
 import {
   Bot,
   CheckCircle2,
@@ -85,13 +86,14 @@ export function PMActivationCard({ slug, conditionId }: PMActivationCardProps) {
   const { eoaAddress } = useWallet();
   const { usdcBalance, isLoading: isBalanceLoading } = usePolygonBalances(eoaAddress);
   const { data: personaSettings, isLoading: isPersonaLoading } = usePersonaSettings();
-  const { canActivate, reason: preflightReason, isLoading: isPreflightLoading } =
+  const { canActivate, reason: preflightReason, isLoading: isPreflightLoading, lastPersonaId } =
     usePortfolioPreflightCheck(marketId);
   const activation = usePortfolioActivation();
 
   // Local state
   const [investmentAmount, setInvestmentAmount] = useState('');
   const [profitTarget, setProfitTarget] = useState('');
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Derived
@@ -104,6 +106,18 @@ export function PMActivationCard({ slug, conditionId }: PMActivationCardProps) {
 
   const canSubmit =
     canActivate && isAmountValid && !activation.isPending && !activation.isSuccess;
+
+  // Persona: explicit pick → last used on this market → account default.
+  const validLastPersonaId =
+    lastPersonaId && getPersonaDef(lastPersonaId) ? lastPersonaId : null;
+  const effectivePersonaId =
+    selectedPersonaId ?? validLastPersonaId ?? personaSettings?.personaId ?? 'scalper';
+  const personaDef = getPersonaDef(effectivePersonaId);
+  const personaSource = selectedPersonaId
+    ? 'Selected for this market'
+    : validLastPersonaId
+      ? 'Last used on this market'
+      : 'Account default';
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -131,9 +145,11 @@ export function PMActivationCard({ slug, conditionId }: PMActivationCardProps) {
         marketId: string;
         investmentAmount: number;
         profitTargetPct?: number;
+        personaId?: string;
       } = {
         marketId,
         investmentAmount: parsedAmount,
+        personaId: effectivePersonaId,
       };
 
       const target = parseFloat(profitTarget);
@@ -143,18 +159,21 @@ export function PMActivationCard({ slug, conditionId }: PMActivationCardProps) {
 
       activation.mutate(payload);
     },
-    [investmentAmount, parsedAmount, profitTarget, marketId, usdcBalance, activation]
+    [investmentAmount, parsedAmount, profitTarget, marketId, effectivePersonaId, usdcBalance, activation]
   );
 
   const personaName =
+    personaDef?.name ??
     personaSettings?.persona?.name ??
     personaSettings?.description?.name ??
     'your persona';
   const personaRisk =
+    personaDef?.riskLevel ??
     personaSettings?.persona?.riskLevel ??
     personaSettings?.description?.riskLevel ??
     null;
   const personaTagline =
+    personaDef?.philosophy ??
     personaSettings?.description?.tagline ??
     personaSettings?.description?.entryPhilosophy ??
     'Follows your selected entry, sizing, monitoring, and exit rules on this market.';
@@ -239,9 +258,23 @@ export function PMActivationCard({ slug, conditionId }: PMActivationCardProps) {
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-[0.65rem] leading-relaxed text-muted">
+              <p className="mt-1 line-clamp-3 text-[0.65rem] leading-relaxed text-muted">
                 {personaTagline}
               </p>
+              <select
+                aria-label="Persona for this market"
+                value={effectivePersonaId}
+                onChange={(e) => setSelectedPersonaId(e.target.value)}
+                disabled={activation.isPending || activation.isSuccess}
+                className="mt-2 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-[0.7rem] font-medium text-fg outline-none transition-colors focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {PERSONAS.map((persona) => (
+                  <option key={persona.id} value={persona.id}>
+                    {persona.name} · {persona.riskLevel}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[0.55rem] text-muted">{personaSource}</p>
             </div>
           )}
 

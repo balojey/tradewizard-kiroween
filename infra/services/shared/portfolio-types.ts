@@ -272,6 +272,17 @@ export const KillSwitchStateSchema = z.object({
 export type KillSwitchState = z.infer<typeof KillSwitchStateSchema>;
 
 // ============================================================================
+// PERSONA CUSTOMIZATION (Elite)
+// ============================================================================
+
+export const PersonaCustomParamsSchema = z.object({
+  exitSensitivity: z.number().int().min(1).max(5).optional(),
+  monitoringFrequencyMinutes: z.number().int().min(5).max(60).optional(),
+  positionSizingMultiplier: z.number().min(0.5).max(2.0).optional(),
+});
+export type PersonaCustomParams = z.infer<typeof PersonaCustomParamsSchema>;
+
+// ============================================================================
 // API REQUEST / RESPONSE SCHEMAS
 // ============================================================================
 
@@ -279,6 +290,13 @@ export const ActivateSessionRequestSchema = z.object({
   marketId: z.string().min(1),
   investmentAmount: z.number().min(5),
   profitTargetPct: z.number().min(1).max(10000).optional(), // e.g., 100 = 2x (100% return on investment)
+  /**
+   * Persona for this market's session. Omitted → the persona last used on this
+   * market, then the account default (`users.portfolio_persona_id`).
+   */
+  personaId: z.string().min(1).optional(),
+  /** Elite-only overrides applied on top of the selected persona. */
+  customParams: PersonaCustomParamsSchema.optional(),
 });
 export type ActivateSessionRequest = z.infer<typeof ActivateSessionRequestSchema>;
 
@@ -298,13 +316,7 @@ export type UpdateInvestmentRequest = z.infer<typeof UpdateInvestmentRequestSche
 
 export const UpdatePersonaRequestSchema = z.object({
   personaId: z.string().min(1),
-  customParams: z
-    .object({
-      exitSensitivity: z.number().int().min(1).max(5).optional(),
-      monitoringFrequencyMinutes: z.number().int().min(5).max(60).optional(),
-      positionSizingMultiplier: z.number().min(0.5).max(2.0).optional(),
-    })
-    .optional(),
+  customParams: PersonaCustomParamsSchema.optional(),
 });
 export type UpdatePersonaRequest = z.infer<typeof UpdatePersonaRequestSchema>;
 
@@ -413,17 +425,6 @@ export type PortfolioWebSocketEvent =
   | PositionExitedEvent
   | RiskAlertEvent
   | KillSwitchTriggeredEvent;
-
-// ============================================================================
-// PERSONA CUSTOMIZATION (Elite)
-// ============================================================================
-
-export const PersonaCustomParamsSchema = z.object({
-  exitSensitivity: z.number().int().min(1).max(5).optional(),
-  monitoringFrequencyMinutes: z.number().int().min(5).max(60).optional(),
-  positionSizingMultiplier: z.number().min(0.5).max(2.0).optional(),
-});
-export type PersonaCustomParams = z.infer<typeof PersonaCustomParamsSchema>;
 
 // ============================================================================
 // CONSTANTS

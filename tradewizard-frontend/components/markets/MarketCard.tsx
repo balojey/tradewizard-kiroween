@@ -263,6 +263,7 @@ export function MarketCard({
             )}
             title={pickState.note ?? undefined}
           >
+            {pickState.reason === 'cached' ? 'Cached · ' : null}
             {pickLabel ?? `+${edgeCents}¢ edge`} · {aiCents}¢ AI
           </span>
         </div>

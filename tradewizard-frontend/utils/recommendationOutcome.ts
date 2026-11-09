@@ -16,22 +16,38 @@ export type RecommendationOutcome =
   | 'expired'
   | 'no_trade';
 
-/** Matches the analysis freshness/cooldown window used across the product. */
-export const PICK_FRESHNESS_MINUTES = 60;
+/** Above this age a pick is no longer prioritised at all. */
+export const PICK_VALID_MINUTES = 24 * 60;
 
-/**
- * A pending recommendation should only be visually prioritised while it is
- * fresh. Entry/TP/SL are priced against the market at execution time, so an
- * older call is a cached read, not a live pick.
- */
+/** Above this age the pick is still prioritised, but labelled cached. */
+export const PICK_FRESH_MINUTES = 60;
+
+function ageMinutes(
+  executedAt: string | null | undefined,
+  now: number,
+): number | null {
+  if (!executedAt) return null;
+  const executedMs = new Date(executedAt).getTime();
+  if (!Number.isFinite(executedMs)) return null;
+  return (now - executedMs) / 60_000;
+}
+
+/** Fresh enough to present as a live pick. */
 export function isPickFresh(
   executedAt?: string | null,
   now: number = Date.now(),
 ): boolean {
-  if (!executedAt) return false;
-  const executedMs = new Date(executedAt).getTime();
-  if (!Number.isFinite(executedMs)) return false;
-  return now - executedMs < PICK_FRESHNESS_MINUTES * 60_000;
+  const age = ageMinutes(executedAt, now);
+  return age !== null && age < PICK_FRESH_MINUTES;
+}
+
+/** Still inside the 24h priority window (fresh or cached). */
+export function isPickValid(
+  executedAt?: string | null,
+  now: number = Date.now(),
+): boolean {
+  const age = ageMinutes(executedAt, now);
+  return age !== null && age < PICK_VALID_MINUTES;
 }
 
 /** True once the recommendation is no longer a live idea. */
@@ -137,6 +153,7 @@ export function resolveOutcomeStatus(
 
 export type PickStateReason =
   | 'active'
+  | 'cached'
   | 'stale'
   | 'target_hit'
   | 'stop_hit'
@@ -192,12 +209,20 @@ export function getPickState(
         note: 'No trade was recommended for this analysis.',
       };
     default:
-      if (!isPickFresh(executedAt, now)) {
+      if (!isPickValid(executedAt, now)) {
         return {
           active: false,
           reason: 'stale',
           label: 'Cached',
-          note: 'This analysis is older than 1 hour — refresh for a live pick.',
+          note: 'This analysis is older than 24 hours — refresh for a live pick.',
+        };
+      }
+      if (!isPickFresh(executedAt, now)) {
+        return {
+          active: true,
+          reason: 'cached',
+          label: 'Cached pick',
+          note: 'Cached analysis — still within the 24-hour pick window. Target and stop remain active.',
         };
       }
       return {

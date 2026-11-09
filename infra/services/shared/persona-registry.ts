@@ -455,6 +455,77 @@ export function applyCustomParams(
   return modified;
 }
 
+// ─── Elite customization storage ─────────────────────────────────────────────
+
+/**
+ * Elite customization is stored **per persona** so that tuning one strategy
+ * never leaks into another when the persona changes.
+ *
+ * Current shape: `{ "sniper": { ... }, "scalper": { ... } }`.
+ *
+ * Rows written before per-market personas hold a single flat param object
+ * (`{ exitSensitivity: 4 }`). Those are read as applying to whichever persona
+ * the user had selected, which is the pre-existing behaviour.
+ */
+export type PersonaParamsStore = Record<string, PersonaCustomParams>;
+
+const FLAT_PARAM_KEYS = [
+  'exitSensitivity',
+  'monitoringFrequencyMinutes',
+  'positionSizingMultiplier',
+] as const;
+
+function parseStoredParams(stored: unknown): unknown {
+  if (typeof stored !== 'string') return stored;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return undefined;
+  }
+}
+
+function isFlatParams(value: unknown): value is PersonaCustomParams {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return FLAT_PARAM_KEYS.some((key) => key in (value as Record<string, unknown>));
+}
+
+/**
+ * Read the Elite custom params for one persona out of the stored value.
+ * Returns undefined when that persona has no customization.
+ */
+export function readPersonaParamsFor(
+  personaId: string,
+  stored: unknown,
+): PersonaCustomParams | undefined {
+  const value = parseStoredParams(stored);
+  if (!value || typeof value !== 'object') return undefined;
+
+  if (isFlatParams(value)) return value;
+
+  const params = (value as PersonaParamsStore)[personaId];
+  return params && typeof params === 'object' ? params : undefined;
+}
+
+/**
+ * Return a new store with `params` set for `personaId`, preserving every other
+ * persona's customization. Legacy flat rows are folded into the given persona.
+ */
+export function writePersonaParamsFor(
+  stored: unknown,
+  personaId: string,
+  params: PersonaCustomParams,
+): PersonaParamsStore {
+  const value = parseStoredParams(stored);
+  const base: PersonaParamsStore =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? isFlatParams(value)
+        ? { [personaId]: value }
+        : (value as PersonaParamsStore)
+      : {};
+
+  return { ...base, [personaId]: params };
+}
+
 /**
  * Validate that custom params are within allowed ranges.
  * Returns an array of error messages (empty if valid).

@@ -248,7 +248,13 @@ function MarketMasthead({
   const outcomeStatus = resolveOutcomeStatus(analysis?.outcomeStatus, liveOutcome);
   const pickState = getPickState(outcomeStatus, analysis?.executedAt);
   const pickStatusLabel =
-    !pickState.active && action !== 'NO_TRADE' ? pickState.label : null;
+    action === 'NO_TRADE'
+      ? null
+      : !pickState.active
+        ? pickState.label
+        : pickState.reason === 'cached'
+          ? 'Cached pick'
+          : null;
   const aiCents =
     consensus != null && consensus > 0 ? Math.round(consensus * 100) : null;
 
@@ -329,7 +335,7 @@ function MarketMasthead({
                 <span
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.65rem] font-medium',
-                    pickStatusLabel
+                    !pickState.active
                       ? 'border-border bg-surface-2 text-muted'
                       : action === 'LONG_YES'
                         ? 'border-yes/25 bg-yes/[0.06] text-yes'
@@ -374,7 +380,7 @@ function MarketMasthead({
       <div className="mt-7 max-w-3xl">
         <ProbabilityRail
           yesCents={yesCents}
-          aiCents={pickStatusLabel ? null : aiCents}
+          aiCents={!pickState.active ? null : aiCents}
           isClosed={isClosed}
         />
       </div>

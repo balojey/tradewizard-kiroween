@@ -476,9 +476,9 @@ export default function SettingsPage() {
                     <Target className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div>
-                    <h2 className="text-sm font-semibold text-fg">Trading persona</h2>
+                    <h2 className="text-sm font-semibold text-fg">Default persona</h2>
                     <p className="text-[0.6rem] text-muted">
-                      Governs how Autopilot trades
+                      Used when a market has no persona yet
                     </p>
                   </div>
                 </div>
@@ -502,13 +502,13 @@ export default function SettingsPage() {
                       </div>
                       <p className="mt-1 text-[0.65rem] leading-relaxed text-muted">
                         {personaData.description?.tagline ??
-                          'Your selected entry, sizing, monitoring, and exit rules.'}
+                          'Your default entry, sizing, monitoring, and exit rules.'}
                       </p>
                       <Link
                         href="/account/persona"
                         className="mt-3 inline-flex items-center gap-1 text-[0.65rem] font-medium text-accent transition-colors hover:text-fg"
                       >
-                        Change persona
+                        Change default
                         <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                       </Link>
                     </>
@@ -516,7 +516,7 @@ export default function SettingsPage() {
                     <EmptyState
                       icon={Target}
                       title="No persona selected"
-                      description="Pick a strategy to govern how Autopilot trades for you."
+                      description="Pick a default strategy for markets without one."
                       className="py-4"
                       action={
                         <Link

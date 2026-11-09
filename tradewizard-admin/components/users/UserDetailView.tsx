@@ -363,7 +363,7 @@ function OverviewTab({ userId }: { userId: string }) {
         <KeyValue label="Wallet">
           <CopyableId value={user.walletAddress} label="wallet" chars={8} />
         </KeyValue>
-        <KeyValue label="Persona">{user.portfolioPersonaId ?? "—"}</KeyValue>
+        <KeyValue label="Default persona">{user.portfolioPersonaId ?? "—"}</KeyValue>
       </Panel>
 
       <Panel title="Lifecycle">
@@ -375,7 +375,7 @@ function OverviewTab({ userId }: { userId: string }) {
         {user.portfolioPersonaParams && (
           <KeyValue label="Persona overrides">
             <span className="mono text-[11px]">
-              {Object.keys(user.portfolioPersonaParams).length} keys
+              {Object.keys(user.portfolioPersonaParams).join(", ") || "—"}
             </span>
           </KeyValue>
         )}

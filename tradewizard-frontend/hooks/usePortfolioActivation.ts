@@ -15,6 +15,11 @@ export interface ActivatePortfolioRequest {
   marketId: string;
   investmentAmount: number;
   profitTargetPct?: number;
+  /**
+   * Persona for this market. Omit to let the server use the persona last used
+   * on this market, then the account default.
+   */
+  personaId?: string;
 }
 
 /**
@@ -33,6 +38,9 @@ export interface ActivatePortfolioResponse {
 export interface PreflightCheckResult {
   canActivate: boolean;
   reason?: string;
+  isLoading: boolean;
+  /** Persona last used on this market, or null if it has never been activated. */
+  lastPersonaId: string | null;
 }
 
 /** Session limits per subscription plan */
@@ -82,21 +90,26 @@ export function usePortfolioPreflightCheck(marketId: string | null) {
   // Check if recurring analysis exists for this market
   const { data: recurringAnalysis, isLoading: isRecurringLoading } = useQuery<{
     exists: boolean;
+    lastPersonaId?: string | null;
   }>({
     queryKey: ['recurring-analysis-check', marketId],
     queryFn: () =>
-      apiClient.get<{ exists: boolean }>('/portfolio/preflight/recurring-analysis', {
-        marketId: marketId!,
-      }),
+      apiClient.get<{ exists: boolean; lastPersonaId?: string | null }>(
+        '/portfolio/preflight/recurring-analysis',
+        {
+          marketId: marketId!,
+        }
+      ),
     enabled: !!marketId,
     staleTime: 30_000,
     retry: 1,
   });
 
+  const lastPersonaId = recurringAnalysis?.lastPersonaId ?? null;
   const isLoading = isSubscriptionLoading || isSessionsLoading || isRecurringLoading;
 
   if (isLoading || !marketId) {
-    return { canActivate: false, reason: undefined, isLoading };
+    return { canActivate: false, reason: undefined, isLoading, lastPersonaId };
   }
 
   // Check 1: Subscription tier (Requirement 1.2)
@@ -106,6 +119,7 @@ export function usePortfolioPreflightCheck(marketId: string | null) {
       canActivate: false,
       reason: 'Portfolio Manager requires a Pro or Elite subscription.',
       isLoading: false,
+      lastPersonaId,
     };
   }
 
@@ -120,6 +134,7 @@ export function usePortfolioPreflightCheck(marketId: string | null) {
       canActivate: false,
       reason: `You have reached the maximum of ${sessionLimit} active sessions for your ${plan} plan.`,
       isLoading: false,
+      lastPersonaId,
     };
   }
 
@@ -130,8 +145,9 @@ export function usePortfolioPreflightCheck(marketId: string | null) {
       reason:
         'An active recurring analysis subscription is required on this market. Please set up recurring analysis first.',
       isLoading: false,
+      lastPersonaId,
     };
   }
 
-  return { canActivate: true, reason: undefined, isLoading: false };
+  return { canActivate: true, reason: undefined, isLoading: false, lastPersonaId };
 }

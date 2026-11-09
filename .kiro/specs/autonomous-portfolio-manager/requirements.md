@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Autonomous Portfolio Manager is a system of AI-powered trading agents that users can activate per market to autonomously execute, monitor, and manage prediction market positions on Polymarket. Each user selects a single trading persona (configured in their account settings) that defines the Portfolio Manager's risk appetite, position sizing strategy, entry/exit logic, and monitoring behavior across all their activations. Portfolio managers consume the existing TradeWizard analysis pipeline (14-agent debate protocol) as their intelligence source and translate recommendations into executed trades with ongoing position management.
+The Autonomous Portfolio Manager is a system of AI-powered trading agents that users can activate per market to autonomously execute, monitor, and manage prediction market positions on Polymarket. A session's trading persona is chosen per market at activation, defining the Portfolio Manager's risk appetite, position sizing strategy, entry/exit logic, and monitoring behavior for that market. The account settings hold a default persona used for markets the user has not activated before. Portfolio managers consume the existing TradeWizard analysis pipeline (14-agent debate protocol) as their intelligence source and translate recommendations into executed trades with ongoing position management.
 
 The Portfolio Manager operates continuously on a market as long as it has capital available. It enters positions when analysis shows opportunity, monitors and exits when conditions change, and re-enters if a subsequent analysis reveals new opportunity - even after having previously exited. A session only truly ends when the user manually stops it, the market resolves, or the investment capital is fully depleted. The manager has full order flexibility: it can place limit orders, market orders, and simultaneous buy/sell orders (e.g., buy at one price and immediately list to sell at a higher price for profit-taking).
 
@@ -11,7 +11,8 @@ This feature is included with Pro ($49/mo) and Elite ($149/mo) plan subscription
 ## Glossary
 
 - **Portfolio_Manager**: An autonomous agent activated per market that executes trades, monitors positions, and manages exits on behalf of the user
-- **Persona**: A trading strategy profile selected once by the user in account settings, defining the Portfolio_Manager's behavior across all market activations
+- **Persona**: A trading strategy profile. Each market activation selects one; the session snapshots it and keeps it for its lifetime
+- **Default_Persona**: The account-level persona used when a market has no earlier session, configurable in account settings
 - **Activation**: The act of deploying a Portfolio_Manager to a specific market with a specified investment amount
 - **Position_Guard**: A monitoring sub-agent that continuously watches an active position for exit signals, stale market conditions, and market regime changes
 - **Investment_Amount**: The USDC.e amount the user allocates to a specific market activation, updatable on the fly provided the wallet balance supports it
@@ -44,7 +45,7 @@ This feature is included with Pro ($49/mo) and Elite ($149/mo) plan subscription
 
 ### Requirement 2: Portfolio Manager Personas
 
-**User Story:** As a trader, I want to choose a trading persona that defines how my portfolio manager behaves across all markets, so that autonomous trading matches my risk appetite and trading philosophy.
+**User Story:** As a trader, I want to choose which trading persona runs on each market, so that autonomous trading matches the opportunity in front of me instead of forcing one risk appetite everywhere.
 
 #### Acceptance Criteria
 
@@ -62,18 +63,21 @@ This feature is included with Pro ($49/mo) and Elite ($149/mo) plan subscription
 
 ### Requirement 3: Persona Selection and Configuration
 
-**User Story:** As a trader, I want to select my portfolio manager persona once in my account settings, so that all my market activations use a consistent trading strategy without per-market configuration.
+**User Story:** As a trader, I want to set a default persona in account settings, so that new markets start from my usual strategy while I can still pick a different persona per market at activation.
 
 #### Acceptance Criteria
 
-1. THE Settings_Page SHALL provide a Persona selection interface where the user chooses one active Persona from the available six options
-2. WHEN a user selects a new Persona, THE Settings_Service SHALL apply the new Persona to all future activations without affecting currently active Sessions (active Sessions continue with the Persona they were started with)
-3. THE Settings_Service SHALL store the user's selected Persona in the user profile and default to "The Scalper" for users who have not made a selection
-4. WHERE the user holds an Elite subscription, THE Settings_Service SHALL allow modification of Persona parameters including exit sensitivity (integer scale from 1 to 5, where 1 is most conservative and 5 is most aggressive), monitoring frequency (integer range: 5-60 minutes in 5-minute increments), and position sizing aggressiveness (range: 0.5x-2.0x of default in 0.1x increments)
-5. WHERE the user holds a Pro subscription, THE Settings_Service SHALL provide Personas with default parameters only, without customization capability
-6. WHEN customized parameters are saved, THE Settings_Service SHALL validate that all values fall within the defined ranges (exit sensitivity: 1-5, monitoring frequency: 5-60 minutes, position sizing: 0.5x-2.0x) and reject out-of-range values with an error message indicating the parameter name and its allowed range
-7. WHEN a Persona selection or parameter customization is successfully saved, THE Settings_Service SHALL confirm the save to the user and display the active Persona configuration
-8. IF an Elite user's subscription downgrades to Pro, THEN THE Settings_Service SHALL revert all customized Persona parameters to their default values and retain the user's selected Persona
+1. THE Settings_Page SHALL provide a Default_Persona selection interface where the user chooses one of the available six options
+2. THE Activation_Page SHALL let the user pick the Persona for the market being activated, without changing the Default_Persona
+3. WHEN the activation request omits a Persona, THE Activation_Service SHALL resolve it in order: the Persona most recently used on that market, then the Default_Persona
+4. WHEN a user selects a new Default_Persona, THE Settings_Service SHALL apply it to future activations on markets with no earlier session, without affecting currently active Sessions (active Sessions continue with the Persona they were started with)
+5. THE Settings_Service SHALL store the Default_Persona in the user profile and default to "The Scalper" for users who have not made a selection
+6. WHERE the user holds an Elite subscription, THE Settings_Service SHALL allow modification of Persona parameters including exit sensitivity (integer scale from 1 to 5, where 1 is most conservative and 5 is most aggressive), monitoring frequency (integer range: 5-60 minutes in 5-minute increments), and position sizing aggressiveness (range: 0.5x-2.0x of default in 0.1x increments)
+7. WHERE the user holds an Elite subscription, customization SHALL be stored per Persona, so tuning one Persona never changes another
+8. WHERE the user holds a Pro subscription, THE Settings_Service SHALL provide Personas with default parameters only, without customization capability
+9. WHEN customized parameters are saved, THE Settings_Service SHALL validate that all values fall within the defined ranges (exit sensitivity: 1-5, monitoring frequency: 5-60 minutes, position sizing: 0.5x-2.0x) and reject out-of-range values with an error message indicating the parameter name and its allowed range
+10. WHEN a Persona selection or parameter customization is successfully saved, THE Settings_Service SHALL confirm the save to the user and display the affected Persona configuration
+11. IF an Elite user's subscription downgrades to Pro, THEN THE Settings_Service SHALL revert all customized Persona parameters to their default values and retain the user's selected Default_Persona
 
 ### Requirement 4: Trade Execution
 

@@ -9,109 +9,13 @@ import { TierGate } from '@/components/ui/TierGate';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { usePersonaSettings, useUpdatePersonaSelection, type PersonaCustomParams } from '@/hooks/usePersonaSettings';
 import { useUpdatePersonaParams, PERSONA_PARAM_RANGES } from '@/hooks/usePersonaParams';
+import { PERSONAS, RISK_BADGE_TONE } from '@/constants/personas';
 import { cn } from '@/utils/classNames';
 import {
   Check,
-  Crosshair,
-  Crown,
-  Radar,
-  RefreshCw,
   SlidersHorizontal,
   Target,
-  Waves,
-  Zap,
-  type LucideIcon,
 } from 'lucide-react';
-
-interface PersonaDef {
-  id: string;
-  icon: LucideIcon;
-  name: string;
-  riskLevel: 'aggressive' | 'moderate' | 'conservative';
-  philosophy: string;
-  stats: {
-    frequency: string;
-    positionSize: string;
-    holdDuration: string;
-  };
-  iconBg: string;
-  iconTone: string;
-}
-
-const PERSONAS: PersonaDef[] = [
-  {
-    id: 'sniper',
-    icon: Crosshair,
-    name: 'The Sniper',
-    riskLevel: 'aggressive',
-    philosophy:
-      'Patient assassin. Only strikes on high-conviction setups with edge >10%. Rare trades, large positions, decisive exits.',
-    stats: { frequency: '1–2/week', positionSize: '40–60%', holdDuration: 'Days–weeks' },
-    iconBg: 'bg-no/10',
-    iconTone: 'text-no',
-  },
-  {
-    id: 'scalper',
-    icon: Zap,
-    name: 'The Scalper',
-    riskLevel: 'moderate',
-    philosophy:
-      'Speed demon. Exploits small edges rapidly with tight stops. High frequency, small positions, quick in-and-out.',
-    stats: { frequency: 'Daily', positionSize: '10–25%', holdDuration: 'Hours–1 day' },
-    iconBg: 'bg-warning/10',
-    iconTone: 'text-warning',
-  },
-  {
-    id: 'contrarian',
-    icon: RefreshCw,
-    name: 'The Contrarian',
-    riskLevel: 'aggressive',
-    philosophy:
-      'Rebel thinker. Fades crowd consensus when agents detect overreaction. Bets against the herd with conviction.',
-    stats: { frequency: '2–4/week', positionSize: '30–50%', holdDuration: 'Days' },
-    iconBg: 'bg-ai/10',
-    iconTone: 'text-ai',
-  },
-  {
-    id: 'catalyst-hunter',
-    icon: Radar,
-    name: 'The Catalyst Hunter',
-    riskLevel: 'moderate',
-    philosophy:
-      'Event detective. Positions before scheduled catalysts (debates, rulings, data releases). Time-sensitive, focused entries.',
-    stats: { frequency: 'Event-driven', positionSize: '20–40%', holdDuration: 'Hours–days' },
-    iconBg: 'bg-accent/10',
-    iconTone: 'text-accent',
-  },
-  {
-    id: 'hedge-architect',
-    icon: Crown,
-    name: 'The Hedge Architect',
-    riskLevel: 'conservative',
-    philosophy:
-      'Chess master. Builds multi-position spreads to reduce directional risk. Methodical, balanced, capital-preserving.',
-    stats: { frequency: '2–3/week', positionSize: '15–30%', holdDuration: 'Days–weeks' },
-    iconBg: 'bg-yes/10',
-    iconTone: 'text-yes',
-  },
-  {
-    id: 'momentum-rider',
-    icon: Waves,
-    name: 'The Momentum Rider',
-    riskLevel: 'aggressive',
-    philosophy:
-      'Wave surfer. Follows strong trends with pyramiding. Adds to winners, cuts losers fast, rides until momentum breaks.',
-    stats: { frequency: '3–5/week', positionSize: '25–50%', holdDuration: 'Days' },
-    iconBg: 'bg-warning/10',
-    iconTone: 'text-warning',
-  },
-];
-
-const RISK_BADGE_TONE: Record<PersonaDef['riskLevel'], 'no' | 'warning' | 'yes'> = {
-  aggressive: 'no',
-  moderate: 'warning',
-  conservative: 'yes',
-};
 
 export default function PersonaSelectionPage() {
   const { data: personaSettings, isLoading: personaLoading } = usePersonaSettings();
@@ -164,7 +68,8 @@ export default function PersonaSelectionPage() {
                 )}
               </div>
               <p className="mt-2 text-sm text-muted">
-                One strategy governs every new Autopilot session.
+                Default strategy for new Autopilot sessions. Each market can run
+                its own persona at activation.
               </p>
             </div>
 
@@ -183,7 +88,7 @@ export default function PersonaSelectionPage() {
                 disabled={!currentPersonaId || currentPersonaId === personaSettings?.personaId}
                 className="shrink-0"
               >
-                Save persona
+                Save default
               </Button>
             </div>
           </div>
@@ -195,7 +100,7 @@ export default function PersonaSelectionPage() {
               <div>
                 <h2 className="text-sm font-semibold text-fg">Choose a strategy</h2>
                 <p className="text-[0.6rem] text-muted">
-                  Existing sessions keep their original persona.
+                  Sessions already running keep the persona they started with.
                 </p>
               </div>
               <span className="font-mono text-[0.6rem] text-muted">
@@ -301,8 +206,8 @@ export default function PersonaSelectionPage() {
                   <Target className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <div>
-                  <h2 className="text-sm font-semibold text-fg">Active strategy</h2>
-                  <p className="text-[0.6rem] text-muted">Applied to new sessions</p>
+                  <h2 className="text-sm font-semibold text-fg">Default strategy</h2>
+                  <p className="text-[0.6rem] text-muted">Used for new markets</p>
                 </div>
               </div>
 
@@ -335,8 +240,8 @@ export default function PersonaSelectionPage() {
                       ))}
                     </div>
                     <p className="mt-3 border-t border-border/60 pt-3 text-[0.58rem] leading-relaxed text-muted">
-                      Changes apply to new Autopilot sessions. Existing sessions
-                      keep the persona they started with.
+                      Used for markets you have not traded yet. A market where
+                      you have run Autopilot before keeps its own persona.
                     </p>
                   </>
                 ) : (
@@ -353,7 +258,15 @@ export default function PersonaSelectionPage() {
 
             <div className="order-3 lg:order-none">
               <TierGate plan="elite" feature="Persona Customization">
-                <PersonaFineTune customParams={personaSettings?.customParams} />
+                <PersonaFineTune
+                  key={personaSettings?.personaId ?? 'none'}
+                  personaId={personaSettings?.personaId ?? null}
+                  personaName={
+                    PERSONAS.find((p) => p.id === personaSettings?.personaId)?.name ??
+                    null
+                  }
+                  customParams={personaSettings?.customParams}
+                />
               </TierGate>
             </div>
           </aside>
@@ -364,8 +277,12 @@ export default function PersonaSelectionPage() {
 }
 
 function PersonaFineTune({
+  personaId,
+  personaName,
   customParams,
 }: {
+  personaId: string | null;
+  personaName: string | null;
   customParams?: PersonaCustomParams | null;
 }) {
   const { mutate: updateParams } = useUpdatePersonaParams();
@@ -381,11 +298,21 @@ function PersonaFineTune({
       : 10
   );
 
-  const handleParamChange = (
-    param: 'exitSensitivity' | 'monitoringFrequencyMinutes' | 'positionSizingMultiplier',
-    value: number
-  ) => {
-    updateParams({ [param]: value });
+  // Persist the full param set so moving one slider never wipes the others.
+  const persist = (next: {
+    exitSensitivity: number;
+    monitoringFreq: number;
+    sizingAggression: number;
+  }) => {
+    if (!personaId) return;
+    updateParams({
+      personaId,
+      customParams: {
+        exitSensitivity: next.exitSensitivity,
+        monitoringFrequencyMinutes: next.monitoringFreq,
+        positionSizingMultiplier: next.sizingAggression / 10,
+      },
+    });
   };
 
   return (
@@ -401,7 +328,9 @@ function PersonaFineTune({
               Elite
             </span>
           </div>
-          <p className="text-[0.6rem] text-muted">Tune the persona&apos;s behavior</p>
+          <p className="text-[0.6rem] text-muted">
+            Tune {personaName ?? 'this persona'}&apos;s behavior
+          </p>
         </div>
       </div>
 
@@ -420,7 +349,7 @@ function PersonaFineTune({
             value={exitSensitivity}
             onChange={(value) => {
               setExitSensitivity(value);
-              handleParamChange('exitSensitivity', value);
+              persist({ exitSensitivity: value, monitoringFreq, sizingAggression });
             }}
             format={(value) => `${value}/5`}
           />
@@ -441,7 +370,7 @@ function PersonaFineTune({
             value={monitoringFreq}
             onChange={(value) => {
               setMonitoringFreq(value);
-              handleParamChange('monitoringFrequencyMinutes', value);
+              persist({ exitSensitivity, monitoringFreq: value, sizingAggression });
             }}
             format={(value) => `${value}m`}
           />
@@ -464,7 +393,7 @@ function PersonaFineTune({
             value={sizingAggression}
             onChange={(value) => {
               setSizingAggression(value);
-              handleParamChange('positionSizingMultiplier', value / 10);
+              persist({ exitSensitivity, monitoringFreq, sizingAggression: value });
             }}
             format={(value) => `${(value / 10).toFixed(1)}x`}
           />

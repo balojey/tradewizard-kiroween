@@ -9,7 +9,8 @@
  * 5. Active recurring analysis subscription exists for the market
  * 6. Wallet balance >= investmentAmount
  * 7. Market is not resolved
- * 8. User's persona config (with Elite customization if applicable)
+ * 8. Persona for this market (request → last used on this market → account default),
+ *    with Elite customization if applicable
  *
  * On success: inserts session record, snapshots persona config,
  * creates EventBridge Scheduler rule for position guard monitoring.
@@ -32,10 +33,14 @@ import {
 } from '../shared/portfolio-types';
 import { SESSION_QUERIES, UTILITY_QUERIES } from '../shared/portfolio-db';
 import {
-  getPersonaOrThrow,
+  DEFAULT_PERSONA_ID,
+  PERSONA_IDS,
   applyCustomParams,
+  getPersonaOrThrow,
+  isValidPersonaId,
+  readPersonaParamsFor,
 } from '../shared/persona-registry';
-import type { Persona, PersonaCustomParams } from '../shared/portfolio-types';
+import type { Persona } from '../shared/portfolio-types';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -98,7 +103,16 @@ export async function handler(event: ApiGatewayEvent): Promise<ApiResponse> {
       return errorResponse(400, `Validation failed: ${issues}`);
     }
 
-    const { marketId, investmentAmount, profitTargetPct } = validation.data;
+    const { marketId, investmentAmount, profitTargetPct, personaId, customParams } =
+      validation.data;
+
+    // Persona is chosen per market. Reject unknown IDs before touching any state.
+    if (personaId !== undefined && !isValidPersonaId(personaId)) {
+      return errorResponse(
+        400,
+        `Invalid persona ID: "${personaId}". Valid options: ${PERSONA_IDS.join(', ')}`
+      );
+    }
 
     // Extract userId from Cognito authorizer
     const cognitoSub = event.requestContext.authorizer.claims.sub;
@@ -254,18 +268,50 @@ export async function handler(event: ApiGatewayEvent): Promise<ApiResponse> {
         );
       }
 
-      // Step 8: Get user's persona config (with Elite customization if applicable)
-      const personaId: string = user.portfolio_persona_id || 'scalper';
-      let personaConfig: Persona = getPersonaOrThrow(personaId);
+      // Step 8: Resolve the persona for this market.
+      // Persona is a per-market decision: an explicit request value wins, then
+      // the persona last used on this market, then the account default.
+      const lastSessionResult = await client.query(
+        `SELECT persona_id
+         FROM portfolio_manager_sessions
+         WHERE user_id = $1 AND market_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId, marketId]
+      );
 
-      // Apply Elite customization if user has custom params
-      if (plan === 'elite' && user.portfolio_persona_params) {
-        const customParams: PersonaCustomParams =
-          typeof user.portfolio_persona_params === 'string'
-            ? JSON.parse(user.portfolio_persona_params)
-            : user.portfolio_persona_params;
+      let resolvedPersonaId: string = user.portfolio_persona_id || DEFAULT_PERSONA_ID;
+      if (personaId) {
+        resolvedPersonaId = personaId;
+      } else {
+        const lastPersonaId = lastSessionResult.rows[0]?.persona_id;
+        if (lastPersonaId && isValidPersonaId(lastPersonaId)) {
+          resolvedPersonaId = lastPersonaId;
+        }
+      }
+      // A persona id removed from the registry must not brick activation.
+      if (!isValidPersonaId(resolvedPersonaId)) {
+        resolvedPersonaId = DEFAULT_PERSONA_ID;
+      }
 
-        personaConfig = applyCustomParams(personaConfig, customParams);
+      let personaConfig: Persona = getPersonaOrThrow(resolvedPersonaId);
+
+      // Elite customization: request overrides, else the stored params for this
+      // persona (never another persona's tuning).
+      if (customParams && plan !== 'elite') {
+        return errorResponse(
+          403,
+          'Persona customization is only available for Elite subscribers. Upgrade to Elite to customize persona parameters.'
+        );
+      }
+
+      if (plan === 'elite') {
+        const effectiveParams =
+          customParams ??
+          readPersonaParamsFor(resolvedPersonaId, user.portfolio_persona_params);
+        if (effectiveParams) {
+          personaConfig = applyCustomParams(personaConfig, effectiveParams);
+        }
       }
 
       // Step 9: Insert session record with persona snapshot and optional profit target
@@ -273,7 +319,7 @@ export async function handler(event: ApiGatewayEvent): Promise<ApiResponse> {
         userId,
         marketId,
         recurringAnalysisId,
-        personaId,
+        resolvedPersonaId,
         JSON.stringify(personaConfig),
         investmentAmount,
         investmentAmount, // amount_available = investmentAmount initially

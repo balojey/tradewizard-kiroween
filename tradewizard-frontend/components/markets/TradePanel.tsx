@@ -602,7 +602,7 @@ export const TradePanel = forwardRef(function TradePanel(
         )}
       </div>
 
-      {tradeAction === 'buy' && analysis && pickState && !pickState.active && pickState.note && (
+      {tradeAction === 'buy' && analysis && pickState?.note && (
         <p className="text-[0.7rem] text-muted flex items-start gap-1.5">
           <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
           {pickState.note}

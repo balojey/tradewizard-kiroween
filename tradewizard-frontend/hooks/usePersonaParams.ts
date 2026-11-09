@@ -89,18 +89,26 @@ export function validatePersonaParams(
 /**
  * Mutation hook to update Elite persona customization parameters with validation.
  *
+ * Params are stored per persona, so the caller must say which persona is being
+ * tuned — otherwise switching personas would inherit another strategy's tuning.
+ *
  * Validates parameters client-side before sending to the API.
  * Throws an error with validation details if params are out of range.
  *
  * Requirements: 3.4, 3.6, 3.7
  */
+export interface UpdatePersonaParamsRequest {
+  personaId: string;
+  customParams: PersonaCustomParams;
+}
+
 export function useUpdatePersonaParams() {
   const queryClient = useQueryClient();
 
-  return useMutation<PersonaSettingsResponse, Error, PersonaCustomParams>({
-    mutationFn: async (params) => {
+  return useMutation<PersonaSettingsResponse, Error, UpdatePersonaParamsRequest>({
+    mutationFn: async ({ personaId, customParams }) => {
       // Client-side validation before API call
-      const errors = validatePersonaParams(params);
+      const errors = validatePersonaParams(customParams);
       if (errors.length > 0) {
         const messages = errors
           .map((e) => `${e.param}: ${e.message}`)
@@ -110,7 +118,7 @@ export function useUpdatePersonaParams() {
 
       return apiClient.put<PersonaSettingsResponse>(
         '/portfolio/settings/persona',
-        { customParams: params }
+        { personaId, customParams }
       );
     },
     onSuccess: () => {

@@ -416,12 +416,12 @@ function AnalysisCard({
             {outcomeText}
           </span>
         )}
-        {pickState.reason === 'stale' && (
+        {(pickState.reason === 'cached' || pickState.reason === 'stale') && (
           <span
             className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[0.6rem] font-medium text-muted"
             title={pickState.note ?? undefined}
           >
-            Cached
+            {pickState.label}
           </span>
         )}
         <span>

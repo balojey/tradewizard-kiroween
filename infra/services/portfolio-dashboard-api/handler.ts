@@ -53,6 +53,8 @@ import {
   isValidPersonaId,
   applyCustomParams,
   validateCustomParams,
+  readPersonaParamsFor,
+  writePersonaParamsFor,
   PERSONA_DESCRIPTIONS,
   DEFAULT_PERSONA_ID,
 } from '../shared/persona-registry';
@@ -619,7 +621,10 @@ async function handleStopSession(
   };
 }
 
-// ─── GET /portfolio/settings/persona - Get current persona config ────────────
+// ─── GET /portfolio/settings/persona - Get account default persona config ────
+//
+// This is the *default* persona applied to new markets. Each market's session
+// can run a different persona, chosen at activation.
 
 async function handleGetPersonaSettings(
   user: Record<string, unknown>
@@ -643,16 +648,17 @@ async function handleGetPersonaSettings(
     canCustomize: plan === 'elite',
   };
 
-  // Include custom params if Elite user has them
-  if (plan === 'elite' && user.portfolio_persona_params) {
-    const customParams =
-      typeof user.portfolio_persona_params === 'string'
-        ? JSON.parse(user.portfolio_persona_params as string)
-        : user.portfolio_persona_params;
-    response.customParams = customParams;
-
-    // Show the effective persona config with customization applied
-    response.effectivePersona = applyCustomParams(persona, customParams);
+  // Include custom params for the default persona (Elite only)
+  if (plan === 'elite') {
+    const customParams = readPersonaParamsFor(
+      personaId,
+      user.portfolio_persona_params
+    );
+    if (customParams) {
+      response.customParams = customParams;
+      // Show the effective persona config with customization applied
+      response.effectivePersona = applyCustomParams(persona, customParams);
+    }
   }
 
   return {
@@ -714,11 +720,17 @@ async function handleUpdatePersonaSettings(
     }
   }
 
-  // Update user's persona selection
+  // Update the account default selection. Elite customization is stored per
+  // persona so that tuning one strategy never leaks into another.
   if (customParams && plan === 'elite') {
+    const store = writePersonaParamsFor(
+      user.portfolio_persona_params,
+      personaId,
+      customParams
+    );
     await client.query(
       `UPDATE users SET portfolio_persona_id = $1, portfolio_persona_params = $2 WHERE id = $3`,
-      [personaId, JSON.stringify(customParams), userId]
+      [personaId, JSON.stringify(store), userId]
     );
   } else {
     await client.query(
@@ -727,12 +739,16 @@ async function handleUpdatePersonaSettings(
     );
   }
 
-  // Build response with the new effective config
+  // Build response with the persona's stored customization (if any)
   const persona = getPersonaOrThrow(personaId);
-  const effectivePersona =
-    customParams && plan === 'elite'
-      ? applyCustomParams(persona, customParams)
-      : persona;
+  const storedParams =
+    plan === 'elite'
+      ? customParams ??
+        readPersonaParamsFor(personaId, user.portfolio_persona_params)
+      : undefined;
+  const effectivePersona = storedParams
+    ? applyCustomParams(persona, storedParams)
+    : persona;
 
   const description = PERSONA_DESCRIPTIONS.find((d) => d.id === personaId);
 
@@ -740,11 +756,12 @@ async function handleUpdatePersonaSettings(
     statusCode: 200,
     headers: CORS_HEADERS,
     body: JSON.stringify({
-      message: 'Persona updated successfully. Changes apply to future activations only.',
+      message:
+        'Default persona updated. Each market can still run its own persona at activation.',
       personaId,
       persona: effectivePersona,
       description: description || null,
-      customParams: customParams || null,
+      customParams: storedParams || null,
     }),
   };
 }
@@ -877,10 +894,23 @@ async function handlePreflightRecurringAnalysis(
     [userId, marketId]
   );
 
+  // Persona is sticky per market: surface the last one used so the UI can
+  // pre-select it. Falls back to the account default client-side.
+  const lastSession = await client.query(
+    `SELECT persona_id FROM portfolio_manager_sessions
+     WHERE user_id = $1 AND market_id = $2
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, marketId]
+  );
+
   return {
     statusCode: 200,
     headers: CORS_HEADERS,
-    body: JSON.stringify({ exists: result.rows.length > 0 }),
+    body: JSON.stringify({
+      exists: result.rows.length > 0,
+      lastPersonaId: lastSession.rows[0]?.persona_id ?? null,
+    }),
   };
 }
 
