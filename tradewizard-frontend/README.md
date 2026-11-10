@@ -312,7 +312,7 @@ await approveAllowance.mutateAsync({}); // Approve USDC.e allowance for auto-ren
 | `/portfolio-manager` | Portfolio Manager dashboard (sessions, trades, P&L, kill switch) |
 | `/account` | Account settings + notification preferences |
 | `/account/subscription` | Plan management, credit packs, billing |
-| `/account/persona` | Trading persona selection and customization |
+| `/account/persona` | Default trading persona and per-persona customization |
 
 ## Subscription Plans
 

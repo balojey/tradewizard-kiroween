@@ -1,43 +1,38 @@
 # Implementation Plan
 
-- [x] 1. Copy the working tree into the submission repository without build artifacts
-  - Exclude `.git`, `node_modules`, `.next`, `dist`, `cdk.out`, env files, and CDK outputs.
-  - Preserve `.kiro`, `docs`, `remotion`, and all source.
-- [x] 2. Make the repository eligible
-  - Add an MIT `LICENSE` at the root.
-  - Confirm `.kiro` is not in `.gitignore`.
-  - Confirm no secrets or generated artifacts are staged.
-- [x] 3. Add Kiro hook evidence
-  - Add `.kiro/hooks/infra-typecheck.json`.
-  - Add `.kiro/hooks/frontend-typecheck.json`.
-  - Add `.kiro/hooks/admin-typecheck.json`.
-  - Add `.kiro/hooks/analysis-gate-guard.json`.
-  - Add `.kiro/hooks/spec-task-followthrough.json`.
-- [x] 4. Add submission steering
-  - Add `.kiro/steering/kiroween.md` with category, eligibility, writing, and demo rules.
-- [x] 5. Rewrite the root README
-  - Add Kiroween category framing and the Frankenstein narrative.
-  - Add a "Built with Kiro" section with file-level references.
-  - Preserve architecture, pipeline, gates, setup, and commands.
-  - Change the license section to MIT.
-- [x] 6. Write the submission documentation
-  - Add `docs/kiroween-submission.md` as the Devpost text description.
-  - Add `docs/kiro-usage.md` as the judge-facing Kiro write-up.
-  - Add `docs/devpost-form.md` as the fill-in form pack.
-  - Rewrite `docs/devpost-submission.md` for Kiroween.
-  - Rewrite `docs/devpost-vo-script.md` to under three minutes.
-  - Rewrite `docs/youtube-description.md`.
-- [x] 7. Update contributor and package docs
-  - Update local agent operating notes (gitignored; not part of the public submission).
-  - Add submission links to `infra/README.md`, `tradewizard-frontend/README.md`, and `tradewizard-admin/README.md`.
-  - Add a Kiroween note to `docs/tradewizard-overview.md`.
-- [x] 8. Verify
-  - Parse all new JSON files.
-  - Check that every relative documentation link resolves.
-  - Confirm the demo script reads under three minutes.
-  - Confirm no `.env` or secret files exist in the tree.
-- [x] 9. Add management portal specs
-  - Add `.kiro/specs/admin-portal-foundation/` with requirements, design, and tasks.
-  - Add `.kiro/specs/admin-portal-operations/` with requirements, design, and tasks.
-  - Link both specs from the README and the Kiro usage write-up.
-  - Update the spec counts and the portal session documentation.
+- [x] 1. Re-center the submission on the Operations Portal
+  - Name the portal as the submitted project.
+  - Keep the platform as context only.
+  - Remove the old beta site from the public narrative.
+- [x] 2. Rebuild the canonical Devpost entry
+  - Follow the Devpost section order.
+  - Add the portal features, AWS service map, and Kiro evidence.
+  - Make all links absolute.
+  - Remove Nebius.
+  - Verify under 5,000 words.
+- [x] 3. Rebuild the internal write-up
+  - Update `docs/kiroween-submission.md` for the portal.
+  - Keep the category rationale and links.
+- [x] 4. Rebuild the Kiro evidence
+  - Focus `docs/kiro-usage.md` on the two portal specs, steering, hooks, MCP, and testing.
+  - Keep the honest-scope section.
+- [x] 5. Rebuild the demo
+  - Rewrite the shot list and voiceover around the portal.
+  - Keep the platform as context.
+  - Verify under three minutes.
+- [x] 6. Rebuild the YouTube metadata
+  - Portal title, chapters, links, and built-with list.
+- [x] 7. Rebuild the form pack
+  - Portal project name, pitch, live URL, local run, test credentials, checklist.
+- [x] 8. Rebuild the README
+  - Portal-first: what it is, why Frankenstein, features, architecture, AWS, setup, commands.
+  - Keep a short platform-context section.
+- [x] 9. Update the submission steering and spec
+  - Portal name, category, honest-claims rules, demo rules.
+- [x] 10. Verify
+  - Add `fast-check` property tests for the authorization invariants.
+  - No Nebius in `docs/devpost-submission.md`.
+  - All links in the canonical entry are absolute.
+  - Word count under 5,000.
+  - Video under three minutes.
+  - No old beta link in the public docs.

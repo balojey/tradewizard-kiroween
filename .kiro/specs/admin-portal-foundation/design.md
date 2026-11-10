@@ -24,7 +24,7 @@ admin-api  (API Gateway REST + Cognito REQUEST authorizer)
   │  admin-authorizer: verify ID token, groups → role, MFA gate
   │  requireRole(event, minimum) at the top of every route
   ▼
-shared modules ── Aurora PostgreSQL (business data, audit, settings)
+shared modules ── Amazon RDS for PostgreSQL (business data, audit, settings)
                 ── S3 (analysis payloads, presigned)
                 ── DynamoDB (kill switch, rate limits)
                 ── CloudWatch (health, alarms)
@@ -153,9 +153,9 @@ The production database is a small single-AZ instance. The portal must not becom
 | Surface | Data source | Notes |
 |---------|-------------|-------|
 | Overview | `admin_metrics_daily`, CloudWatch | 24h / 7d / 30d trends |
-| Users | Aurora `users`, credits, sessions, payments, notes | Search + bounded detail queries |
-| Analyses | Aurora `analysis_results`, S3 | No-trade reasons, live vs shadow, payload viewer |
-| Portfolio | Aurora sessions/trades/decisions, DynamoDB kill switch | Cross-user exposure |
+| Users | RDS PostgreSQL `users`, credits, sessions, payments, notes | Search + bounded detail queries |
+| Analyses | RDS PostgreSQL `analysis_results`, S3 | No-trade reasons, live vs shadow, payload viewer |
+| Portfolio | RDS PostgreSQL sessions/trades/decisions, DynamoDB kill switch | Cross-user exposure |
 | Billing | payments, subscriptions, renewals | Read-only ledger |
 | Agents | `agent_performance`, calibration, model cost | Leaderboard and cost |
 | Ops | CloudWatch, SQS, RDS, alarms | No log reimplementation |

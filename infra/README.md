@@ -1,13 +1,13 @@
 # TradeWizard V2 Infrastructure
 
-> Part of the [TradeWizard Kiroween 2026 submission](../README.md) (Frankenstein category). The Kiro specs, steering, and hooks that shaped this backend live in [`.kiro/`](../.kiro/), and the build write-up is in [docs/kiro-usage.md](../docs/kiro-usage.md).
+> Hosts the admin API, authorizer, and portal Lambdas for the [TradeWizard Operations Portal](../README.md), the Kiroween 2026 submission. The Kiro specs, steering, and hooks live in [`.kiro/`](../.kiro/), and the build write-up is in [docs/kiro-usage.md](../docs/kiro-usage.md).
 
 AWS CDK infrastructure for TradeWizard V2 platform. Cost-optimized for pre-revenue stage.
 
 ## Architecture
 
 - **Network**: Minimal VPC with public subnets only (no NAT Gateway)
-- **Database**: Aurora PostgreSQL Serverless v2 (public endpoint, SSL enforced, auto-scales)
+- **Database**: Amazon RDS for PostgreSQL (public endpoint, SSL enforced, single-AZ)
 - **Cache/Dedup**: DynamoDB with TTL (replaces ElastiCache Redis)
 - **Auth**: Amazon Cognito (passwordless Magic Link support)
 - **API**: API Gateway REST + WebSocket with Cognito authorizer
@@ -24,16 +24,16 @@ This infrastructure is designed for **minimal cost at low volume** while maintai
 
 | What we removed | Savings | Replacement |
 |----------------|---------|-------------|
-| NAT Gateway(s) | $35-70/mo | Aurora in public subnet with SSL + strict SG |
+| NAT Gateway(s) | $35-70/mo | RDS PostgreSQL in public subnet with SSL + strict SG |
 | ElastiCache Redis | $12-48/mo | DynamoDB with TTL (pay-per-request) |
 | Private/Isolated subnets | $0 (simplicity) | Lambda runs outside VPC |
 
 ### Scale-Up Path (when revenue justifies it)
 
-1. Move Aurora to private subnet → add NAT Gateway
-2. Increase Aurora max ACU capacity
-3. Add ElastiCache Redis for sub-ms dedup lookups
-4. Add second NAT Gateway for HA
+1. Move RDS PostgreSQL to a private subnet → add NAT Gateway
+2. Increase the RDS instance class and storage
+3. Add Multi-AZ and a read replica
+4. Add ElastiCache Redis for sub-ms dedup lookups
 
 All changes are config-level - no architecture redesign needed.
 
@@ -41,22 +41,24 @@ All changes are config-level - no architecture redesign needed.
 
 | Environment | Purpose | Database | DynamoDB | NAT | Deletion Protection |
 |-------------|---------|----------|----------|-----|---------------------|
-| `development` | Dev/testing | Aurora Serverless v2 (0.5-4 ACU) | Pay-per-request | None | Off |
-| `production` | Live traffic | Aurora Serverless v2 (1-16 ACU) + reader | Pay-per-request | None | On |
+| `development` | Dev/testing | RDS PostgreSQL 18.3, `db.t4g.micro`, 20–50 GB, single-AZ | Pay-per-request | None | Off |
+| `production` | Live traffic | RDS PostgreSQL 18.3, `db.t4g.micro`, 20–50 GB, single-AZ, 7-day backups | Pay-per-request | None | On |
 
 ## Cost Estimates
 
-### Development (~$30-45/mo)
-- Aurora Serverless v2 (0.5 ACU min): ~$30-43/mo
-- DynamoDB: ~$0-1/mo (pay-per-request, minimal traffic)
-- S3 + SQS + Cognito + API GW: ~$0-2/mo
-- **Total: ~$30-45/mo**
+Fixed infrastructure only; Bedrock/Nebius inference is usage-based and separate.
 
-### Production (~$45-70/mo)
-- Aurora Serverless v2 (1 ACU min + reader): ~$43-60/mo
+### Development (~$15-25/mo)
+- RDS PostgreSQL `db.t4g.micro` + 20 GB storage: ~$13-20/mo
+- DynamoDB: ~$0-1/mo (pay-per-request, minimal traffic)
+- S3 + SQS + Cognito + API Gateway: ~$0-2/mo
+- **Total: ~$15-25/mo**
+
+### Production (~$20-35/mo)
+- RDS PostgreSQL `db.t4g.micro` + 20–50 GB storage + backups: ~$16-28/mo
 - DynamoDB: ~$1-2/mo
-- S3 + SQS + Cognito + API GW + SNS + Resend: ~$2-5/mo
-- **Total: ~$45-70/mo**
+- S3 + SQS + Cognito + API Gateway + SNS + Resend: ~$2-5/mo
+- **Total: ~$20-35/mo**
 
 Bedrock costs are usage-based (~$0.06-$0.13 per analysis execution) on top of infrastructure. If `AI_PROVIDER=nebius`, those inference costs shift to Nebius Token Factory's per-token pricing.
 
@@ -92,7 +94,7 @@ npm install
 
 The `./deploy.sh up` command automates the entire setup:
 1. Creates wallet & API secrets in Secrets Manager (Platform Wallet key, Magic SDK key)
-2. Deploys all CDK stacks (including Aurora Serverless v2 + Amplify Hosting)
+2. Deploys all CDK stacks (including Amazon RDS for PostgreSQL + Amplify Hosting)
 3. Populates Polymarket CLOB credentials and the Resend API key
 4. Runs database migrations (all `sql/*.sql` files in order)
 5. Initiates SES email identity verification (retained fallback)
@@ -252,7 +254,7 @@ npm run diff:prod                # Show pending prod changes
 
 ```
 TradeWizard-{Dev|Prod}-Network       → Minimal VPC, public subnets, security groups
-TradeWizard-{Dev|Prod}-Database      → Aurora PostgreSQL Serverless v2, DynamoDB tables (dedup, connections, rate limits)
+TradeWizard-{Dev|Prod}-Database      → Amazon RDS for PostgreSQL, DynamoDB tables (dedup, connections, rate limits)
 TradeWizard-{Dev|Prod}-Auth          → Cognito user pool, app clients (frontend + backend), custom auth triggers
 TradeWizard-{Dev|Prod}-Storage       → S3 buckets (analysis results, agent traces)
 TradeWizard-{Dev|Prod}-Queue         → SQS FIFO queue, DLQ, EventBridge event bus
@@ -306,8 +308,8 @@ The compute stack deploys 26 Lambda functions (25 in the compute stack + 1 Cogni
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `DB_SECRET_ARN` | CDK (Secrets Manager) | Aurora credentials secret ARN |
-| `DB_HOST` | CDK (Aurora endpoint) | PostgreSQL hostname |
+| `DB_SECRET_ARN` | CDK (Secrets Manager) | RDS credentials secret ARN |
+| `DB_HOST` | CDK (RDS PostgreSQL endpoint) | PostgreSQL hostname |
 | `PLATFORM_WALLET_ADDRESS` | `config.ts` / env | TradeWizard receiving wallet for USDC.e payments |
 | `USDC_CONTRACT_ADDRESS` | `config.ts` / env | USDC.e contract on Polygon (`0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`) |
 | `POLYGON_RPC_URL` | `config.ts` / env | Polygon JSON-RPC endpoint |
@@ -320,8 +322,8 @@ The compute stack deploys 26 Lambda functions (25 in the compute stack + 1 Cogni
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `DB_SECRET_ARN` | CDK (Secrets Manager) | Aurora credentials secret ARN |
-| `DB_HOST` | CDK (Aurora endpoint) | PostgreSQL hostname |
+| `DB_SECRET_ARN` | CDK (Secrets Manager) | RDS credentials secret ARN |
+| `DB_HOST` | CDK (RDS PostgreSQL endpoint) | PostgreSQL hostname |
 | `PLATFORM_WALLET_ADDRESS` | `config.ts` / env | TradeWizard receiving wallet |
 | `USDC_CONTRACT_ADDRESS` | `config.ts` / env | USDC.e contract on Polygon |
 | `POLYGON_RPC_URL` | `config.ts` / env | Polygon JSON-RPC endpoint |
@@ -410,16 +412,16 @@ The compute stack deploys 26 Lambda functions (25 in the compute stack + 1 Cogni
 
 ## Database
 
-### Aurora PostgreSQL Serverless v2
+### Amazon RDS for PostgreSQL
 
-- **Cluster**: Aurora Serverless v2 (auto-scales ACUs based on load)
+- **Instance**: RDS for PostgreSQL 18.3, `db.t4g.micro`, single-AZ
 - **Database name**: `tradewizard`
 - **Username**: `tradewizard`
 - **Password**: Auto-generated, stored in Secrets Manager (`tw-{env}-db-credentials`)
 - **SSL**: Enforced (`rds.force_ssl = 1`)
-- **Public access**: Yes (secured by security group + SSL)
-- **Dev capacity**: 0.5–4 ACUs (scales down when idle)
-- **Prod capacity**: 1–16 ACUs + read replica
+- **Public access**: Yes (secured by security group + SSL); Lambda runs outside the VPC
+- **Storage**: 20 GB, auto-expanding to 50 GB, encrypted at rest
+- **Backups**: 7 days in production, 1 day in development
 
 ### Schema
 
@@ -445,7 +447,8 @@ The full schema is in `sql/001-initial-schema.sql`. Key tables:
 | `portfolio_manager_decisions` | Decision log (analysis-to-action with reasoning) |
 
 Portfolio manager schema is in `sql/003-portfolio-manager.sql` and adds:
-- `portfolio_persona_id` and `portfolio_persona_params` columns to `users` table
+- `portfolio_persona_id` (account default persona) and `portfolio_persona_params` (Elite customization, keyed by persona id) columns to `users` table
+- Per-session `persona_id` + `persona_config` snapshot, so each market can run a different persona
 - Partial unique index ensuring one active session per user per market
 - Indexes for efficient session/trade/decision queries
 
@@ -515,7 +518,7 @@ The platform stores users with two distinct identifiers:
 
 The translation happens at the boundary where a Cognito sub first enters the system:
 
-- API Gateway routes use Cognito JWT auth; handlers call `getUserIdByCognitoSub(claims.sub)` from `services/shared/db.ts` to resolve the internal id before any Aurora / SNS / EventBridge work.
+- API Gateway routes use Cognito JWT auth; handlers call `getUserIdByCognitoSub(claims.sub)` from `services/shared/db.ts` to resolve the internal id before any RDS PostgreSQL / SNS / EventBridge work.
 - The `ws-connect` Lambda translates `payload.sub` → `users.id` and stores the internal id in the connections table.
 - The `analysis-orchestrator` Lambda translates the requesting user's sub → `users.id` and emits one EventBridge event per delivered subscriber (each with the canonical `users.id`), so SNS fan-out reaches the right user.
 
@@ -529,10 +532,10 @@ This means delivery handlers can do `WHERE notification_preferences.user_id = $1
 
 ```
 POST /analysis (API GW, Cognito-auth)
-  → analysis-request (Aurora credit check, DDB dedup, SQS dispatch)
+  → analysis-request (RDS PostgreSQL credit check, DDB dedup, SQS dispatch)
   → SQS analysisQueue (FIFO, MessageGroupId = marketId)
   → analysis-orchestrator (Lambda invoke → Analysis_Lambda Strands SDK workflow)
-  → S3 + Aurora analysis_results
+  → S3 + RDS PostgreSQL analysis_results
   → EventBridge AnalysisCompleted (one event per delivered subscriber)
        ├→ SNS analysisCompleteTopic
        │    ├→ analysis-delivery (WebSocket push)
@@ -625,7 +628,7 @@ Frontend → relayClient.execute(SafeTx: USDC.e.transfer(PlatformWallet, amount)
   → On-chain transfer confirmed → txHash returned
   → Frontend POSTs txHash to /subscriptions or /credits/purchase
   → Lambda (subscription-api) verifies on-chain transfer
-  → On verification success: updates Aurora (plan + credits)
+  → On verification success: updates RDS PostgreSQL (plan + credits)
 ```
 
 ### Secrets (AWS Secrets Manager)
@@ -768,7 +771,7 @@ The `./deploy.sh up` command runs 6 steps sequentially:
 | 1 | `wallet-secrets` | Creates Platform Wallet private key and Magic SDK secret key in AWS Secrets Manager. Prompts for values if secrets don't already exist. The Platform Wallet key enables the Renewal Lambda to call `transferFrom` on the USDC.e contract for automatic subscription renewals. |
 | 2 | `cdk` | Runs `cdk synth` then `cdk deploy --all`. Deploys all CloudFormation stacks (Network, Database, Auth, Storage, Queue, Notification, Compute, Monitoring) and creates the empty `tw-{env}-clob-credentials`, `tw-{env}-resend-api-key`, and `tw-{env}-nebius-api-key` secret resources. This is the longest step (~3-5 min first time, ~1-2 min on updates). |
 | 3 | `api-credentials` | Populates the `tw-{env}-clob-credentials` secret from `CLOB_API_KEY`, `CLOB_API_SECRET`, `CLOB_API_PASSPHRASE`, the `tw-{env}-resend-api-key` secret from `RESEND_API_KEY`, and the `tw-{env}-nebius-api-key` secret from `NEBIUS_API_KEY` when present. Logs a manual `aws secretsmanager put-secret-value` command if env vars are missing. The Portfolio Manager Lambdas refuse to trade until CLOB is populated, email delivery fails until the Resend key is populated (when `EMAIL_PROVIDER=resend`), and `AI_PROVIDER=nebius` fails until its key/models are configured. |
-| 4 | `db` | Runs all PostgreSQL schema migrations (`sql/*.sql` files in order: 001, 002, etc.) against the Aurora cluster. Uses `psql` if available, otherwise falls back to Node.js `pg` client. Safe to re-run (uses IF NOT EXISTS / IF EXISTS guards). |
+| 4 | `db` | Runs all PostgreSQL schema migrations (`sql/*.sql` files in order: 001, 002, etc.) against the RDS PostgreSQL instance. Uses `psql` if available, otherwise falls back to Node.js `pg` client. Safe to re-run (uses IF NOT EXISTS / IF EXISTS guards). |
 | 5 | `ses` | Initiates SES email identity verification for the retained fallback sender. In development, also verifies the sender email for SES sandbox mode. |
 | 6 | `amplify` | Triggers an Amplify frontend build so CDK-provisioned environment variables take effect. |
 
@@ -839,7 +842,7 @@ Both Lambdas are bundled and deployed as CDK NodejsFunction resources. The `anal
 
 ## Security Notes
 
-- **Aurora PostgreSQL** is publicly accessible but protected by:
+- **Amazon RDS for PostgreSQL** is publicly accessible but protected by:
   - SSL/TLS enforced at the database level (`rds.force_ssl = 1`)
   - Strong auto-generated password in Secrets Manager (32 chars, no punctuation)
   - Security group (can be tightened to specific IPs)
@@ -849,7 +852,7 @@ Both Lambdas are bundled and deployed as CDK NodejsFunction resources. The `anal
 - **On-chain verification** ensures all payments are validated against the blockchain before activation
 - **Bedrock IAM roles** follow least-privilege principle
 - **Secrets** are never hardcoded - all sensitive values in Secrets Manager
-- **Lambda** functions run outside VPC (no VPC attachment needed since Aurora is public)
+- **Lambda** functions run outside VPC (no VPC attachment needed since RDS PostgreSQL is public)
 
 ---
 
@@ -863,7 +866,7 @@ npx cdk bootstrap -c env=development
 
 ### Database migration fails with "connection refused"
 
-Check that your IP is allowed by the Aurora security group. By default, the security group allows all inbound on port 5432 (for Lambda access). If you've tightened it, add your IP.
+Check that your IP is allowed by the RDS PostgreSQL security group. By default, the security group allows all inbound on port 5432 (for Lambda access). If you've tightened it, add your IP.
 
 ### Payment verification fails
 

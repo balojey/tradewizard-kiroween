@@ -16,7 +16,7 @@
 | Authentication | Amazon Cognito | User sign-up/sign-in (Custom Auth / Magic Link), JWT tokens |
 | API Layer | Amazon API Gateway | REST + WebSocket for real-time delivery |
 | Compute | AWS Lambda (Node.js 20) | All request handling, orchestration, delivery |
-| Database | Amazon Aurora PostgreSQL Serverless v2 | Users, subscriptions, credits, results, agent memory |
+| Database | Amazon RDS for PostgreSQL | Users, subscriptions, credits, results, agent memory |
 | Cache/Dedup | Amazon DynamoDB | Deduplication cache (TTL), WebSocket connections, rate limiting |
 | Queue | Amazon SQS (FIFO) | Analysis request queue with DLQ |
 | Scheduling | Amazon EventBridge Scheduler | Recurring analysis triggers |
@@ -57,10 +57,10 @@
   - ~20-25 LLM calls per analysis (14 agents + thesis + cross-exam + 3 risk + recommendation)
 
 ### Cost-Optimized Architecture
-- No NAT Gateway (public Aurora endpoint with SSL enforcement)
+- No NAT Gateway (public RDS PostgreSQL endpoint with SSL enforcement)
 - No ElastiCache (DynamoDB with TTL for dedup cache)
-- Aurora Serverless v2 (scales to 0.5 ACU when idle, auto-scales under load)
-- ~$15-20/mo baseline infrastructure cost
+- Amazon RDS for PostgreSQL (single-AZ `db.t4g.micro`, encrypted, 20–50 GB)
+- ~$15-25/mo baseline fixed infrastructure cost; inference is usage-based
 - Scale-up path: Add NAT, Multi-AZ, ElastiCache when revenue justifies
 
 ## Backend (infra/services/) - V2 Lambda Services
@@ -82,7 +82,7 @@
   - **Provider switch**: `AI_PROVIDER=bedrock` (default) or `nebius`. Logical agent assignments are unchanged and resolve through `services/shared/ai-provider.ts`; Nebius maps capabilities to `NEBIUS_MODEL_*`. Tool-using agents must never map to the `non_tool` capability. Validate model IDs and tool calling with `scripts/validate-nebius.ts`.
 
 ### Database & Storage
-- Amazon Aurora PostgreSQL Serverless v2 for all persistence
+- Amazon RDS for PostgreSQL for all persistence
 - DynamoDB for cache/dedup, WebSocket connections, rate limiting
 - Agent memory stored in database for closed-loop learning
 
@@ -276,7 +276,7 @@ npm run lint             # Check linting
 - **1-hour minimum interval** between analyses on the same market (hard minimum)
 - DynamoDB dedup cache with 1-hour TTL (replaces Redis/ElastiCache)
 - Implementation: `infra/services/shared/dynamo.ts` (cache), `infra/services/analysis-request/handler.ts` (flow logic)
-- Per-user delivery tracking via `analysis_deliveries` table in Aurora PostgreSQL
+- Per-user delivery tracking via `analysis_deliveries` table in Amazon RDS for PostgreSQL
 - Users only pay when they receive an analysis they haven't seen before
 - Recurring schedules coalesce to shortest active interval per market
 

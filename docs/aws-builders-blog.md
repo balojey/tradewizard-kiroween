@@ -1,8 +1,8 @@
-# Building a Multi-Agent Trading Intelligence System on AWS with Strands Agents SDK, Amazon Bedrock, Aurora PostgreSQL, and DynamoDB
+# Building a Multi-Agent Trading Intelligence System on AWS with Strands Agents SDK, Amazon Bedrock, Amazon RDS for PostgreSQL, and DynamoDB
 
 > Technical deep-dive for the [TradeWizard Kiroween 2026 submission](kiroween-submission.md) (Frankenstein category). This post focuses on the AWS layer; the full build story and Kiro usage are in [kiro-usage.md](kiro-usage.md).
 
-**How we orchestrate 14 specialized AI agents across 7 foundation models in a single Lambda function - with Aurora Serverless v2 as the durable brain (agent memory, performance scoring, closed-loop learning) and DynamoDB as the speed layer (dedup cache, WebSocket connections, rate limiting, distributed locks).**
+**How we orchestrate 14 specialized AI agents across 7 foundation models in a single Lambda function - with Amazon RDS for PostgreSQL as the durable brain (agent memory, performance scoring, closed-loop learning) and DynamoDB as the speed layer (dedup cache, WebSocket connections, rate limiting, distributed locks).**
 
 ---
 
@@ -27,10 +27,10 @@ Both use Amazon Bedrock as the model provider, with multi-model routing across 7
 
 ```
 User Request → API Gateway → Lambda (analysis-request)
-  → Credit check (Aurora) → Dedup check (DynamoDB)
+  → Credit check (RDS PostgreSQL) → Dedup check (DynamoDB)
   → SQS FIFO → Lambda (orchestrator)
     → Lambda invoke (Analysis_Lambda - 11 stages)
-    → Store result (Aurora + S3)
+    → Store result (RDS PostgreSQL + S3)
     → SNS fan-out → Delivery Lambdas (WebSocket, Email, Push, Webhook)
 ```
 
@@ -40,7 +40,7 @@ User Request → API Gateway → Lambda (analysis-request)
 |---------|------|
 | AWS Lambda (Node.js 20) | All compute - request handling, orchestration, agents, delivery |
 | Amazon Bedrock | LLM inference for 7 models via Strands SDK BedrockModel |
-| Aurora PostgreSQL Serverless v2 | Users, subscriptions, results, agent memory, performance tracking |
+| Amazon RDS for PostgreSQL | Users, subscriptions, results, agent memory, performance tracking |
 | Amazon DynamoDB | Dedup cache (1h TTL), WebSocket connections, rate limiting |
 | Amazon SQS (FIFO) | Analysis queue with DLQ and 3-retry backoff |
 | Amazon EventBridge | Recurring analysis scheduling, event routing |
@@ -51,7 +51,7 @@ User Request → API Gateway → Lambda (analysis-request)
 | AWS CDK (TypeScript) | Infrastructure as code for everything |
 | AWS Amplify Hosting | Next.js 16 frontend with SSR |
 
-Baseline infrastructure cost: ~$15–20/month at idle. Aurora scales to 0.5 ACU when idle, no NAT Gateway (public endpoint with SSL enforcement), no ElastiCache (DynamoDB with TTL instead). The architecture was shaped by a cost-first build philosophy and is submitted to Kiroween 2026 as one layer of a larger Frankenstein build - multi-agent inference, deterministic gates, on-chain billing, and a Next.js terminal, stitched together with Kiro specs, steering, and hooks. Every service earns its place or gets removed.
+Baseline infrastructure cost: ~$15–25/month at idle. RDS PostgreSQL runs on a single-AZ `db.t4g.micro` with 20–50 GB encrypted storage, no NAT Gateway (public endpoint with SSL enforcement), no ElastiCache (DynamoDB with TTL instead). The architecture was shaped by a cost-first build philosophy and is submitted to Kiroween 2026 as one layer of a larger Frankenstein build - multi-agent inference, deterministic gates, on-chain billing, and a Next.js terminal, stitched together with Kiro specs, steering, and hooks. Every service earns its place or gets removed.
 
 ---
 
@@ -198,11 +198,11 @@ The consensus engine computes a final probability weighted by debate scores and 
 
 ---
 
-## Aurora PostgreSQL Serverless v2: The Durable Brain
+## Amazon RDS for PostgreSQL: The Durable Brain
 
-Aurora is where everything that needs to survive a Lambda cold start lives. We use it as the single source of truth for the entire intelligence lifecycle - from agent memory through recommendation scoring to Portfolio Manager state.
+RDS PostgreSQL is where everything that needs to survive a Lambda cold start lives. We use it as the single source of truth for the entire intelligence lifecycle - from agent memory through recommendation scoring to Portfolio Manager state.
 
-### What Aurora Stores
+### What RDS PostgreSQL Stores
 
 | Table | Purpose | Access Pattern |
 |-------|---------|---------------|
@@ -216,9 +216,9 @@ Aurora is where everything that needs to survive a Lambda cold start lives. We u
 | `portfolio_manager_trades` | Full trade history (entry, exit, P&L, SL/TP levels) | Write on trade events, read by dashboard |
 | `portfolio_manager_decisions` | Complete decision audit log (every entry/skip/exit with reasoning) | Append-only writes, read by dashboard |
 
-### Why Aurora Serverless v2
+### Why Amazon RDS for PostgreSQL
 
-- **Scales to 0.5 ACU at idle.** We pay ~$45/month for the cluster when traffic is low. Under load, it auto-scales without intervention.
+- **One small fixed instance.** A single-AZ `db.t4g.micro` with 20–50 GB encrypted storage is the dominant fixed cost (~$13–20/month). There is no cluster minimum and no read replica to pay for at this stage.
 - **PostgreSQL feature set.** We use CTEs, window functions, `ON CONFLICT DO UPDATE` (upserts) for atomic agent scoring, and `INTERVAL` arithmetic for freshness checks - none of which DynamoDB offers.
 - **Relational joins.** The scoring Lambda joins `agent_memory` with `analysis_results` to compute per-market and global accuracy. The weight calculation query is a single SQL statement, not an application-level scatter-gather.
 - **Transaction safety.** Credit deductions, delivery tracking, and subscriber management require ACID guarantees. A user must never be charged twice or receive a result without being charged.
@@ -238,11 +238,11 @@ LIMIT $3  -- ANALYSIS_HISTORY_DEPTH (default 5, max 20)
 
 We deliberately avoided cross-agent history because it caused anchoring - agents converging on each other's prior outputs instead of reasoning independently. Per-agent isolation makes the disagreement index a genuine signal of market uncertainty rather than a measure of how much agents copy each other.
 
-### No NAT Gateway: Public Aurora Endpoint
+### No NAT Gateway: Public RDS PostgreSQL Endpoint
 
-We run Aurora on a public endpoint with SSL enforcement (`sslmode=no-verify` at the client, but transport is encrypted). This eliminates the $45/month NAT Gateway cost that would otherwise be required for Lambda functions in a private subnet to reach the internet. At our scale, the NAT is more expensive than the database itself. Security is maintained through:
+We run RDS PostgreSQL on a public endpoint with SSL enforcement (`sslmode=no-verify` at the client, but transport is encrypted). This eliminates the $45/month NAT Gateway cost that would otherwise be required for Lambda functions in a private subnet to reach the internet. At our scale, the NAT is more expensive than the database itself. Security is maintained through:
 - Security group allowing inbound only from Lambda's security group
-- SSL/TLS in transit (enforced at the cluster level)
+- SSL/TLS in transit (enforced at the instance level)
 - Credentials stored in AWS Secrets Manager
 - `statement_timeout` on all queries to prevent runaway connections
 
@@ -274,32 +274,32 @@ Our initial architecture had ElastiCache (Redis) for the dedup cache and rate li
 
 The trade-off: DynamoDB latency is 5–10ms vs. Redis's sub-millisecond. For our access patterns (dedup check on every analysis request, rate limit check on every API call), 5ms is fine. We're not building a real-time trading engine at the dedup layer - we're preventing redundant Bedrock invocations.
 
-### The Dedup Flow (DynamoDB + Aurora working together)
+### The Dedup Flow (DynamoDB + RDS PostgreSQL working together)
 
 ```
 Request arrives for market X
   │
   ├─ DynamoDB GET: dedup#<marketId>
   │   ├─ EXISTS (TTL not expired) → fresh result available
-  │   │   └─ Aurora: SELECT FROM analysis_deliveries WHERE user_id = $1 AND result_id = $2
+  │   │   └─ RDS PostgreSQL: SELECT FROM analysis_deliveries WHERE user_id = $1 AND result_id = $2
   │   │       ├─ NOT DELIVERED → deliver, charge 1 credit, INSERT delivery record
   │   │       └─ ALREADY DELIVERED → "next analysis available in X minutes"
   │   │
   │   └─ NOT EXISTS → check inflight
   │       ├─ DynamoDB GET: inflight#<marketId>
-  │       │   ├─ EXISTS → subscribe user to pending result (Aurora: INSERT subscriber)
+  │       │   ├─ EXISTS → subscribe user to pending result (RDS PostgreSQL: INSERT subscriber)
   │       │   └─ NOT EXISTS → dispatch new analysis
   │       │       ├─ DynamoDB PUT: inflight#<marketId> (TTL 10min)
   │       │       └─ SQS: send to analysis queue
   │       │
   │       └─ On analysis complete:
-  │           ├─ Aurora: INSERT analysis_results
+  │           ├─ RDS PostgreSQL: INSERT analysis_results
   │           ├─ DynamoDB PUT: dedup#<marketId> (TTL 1hr)
   │           ├─ DynamoDB DELETE: inflight#<marketId>
   │           └─ SNS: fan-out to delivery Lambdas
 ```
 
-DynamoDB provides the millisecond-latency gate (should we even look at Aurora?). Aurora provides the durable, relational state (who has received what, who owes a credit). The split keeps each service in its natural operating range.
+DynamoDB provides the millisecond-latency gate (should we even look at RDS PostgreSQL?). RDS PostgreSQL provides the durable, relational state (who has received what, who owes a credit). The split keeps each service in its natural operating range.
 
 ### WebSocket Connections (DynamoDB)
 
@@ -361,24 +361,24 @@ The pattern:
    - Fresh result exists + user hasn't received it → deliver immediately, charge 1 credit.
    - Analysis in-flight → subscribe user to pending result.
    - Nothing fresh → dispatch new execution via SQS.
-3. **Per-user delivery tracking** in Aurora's `analysis_deliveries` table ensures users never pay twice for the same result.
+3. **Per-user delivery tracking** in RDS PostgreSQL's `analysis_deliveries` table ensures users never pay twice for the same result.
 4. **Recurring schedules coalesce** - multiple users' intervals on the same market collapse to the shortest active cadence.
 
 The cost scales with *markets analyzed*, not with *users requesting*. That's the unit economics that makes the platform viable.
 
 ---
 
-## Closed-Loop Learning: Agents That Get Better (Aurora as the Learning Fabric)
+## Closed-Loop Learning: Agents That Get Better (RDS PostgreSQL as the Learning Fabric)
 
-The closed-loop scoring system is entirely Aurora-native. Every recommendation enters a `pending` state in the `analysis_results` table. A Recommendation Scorer Lambda runs every 5 minutes:
+The closed-loop scoring system is entirely RDS PostgreSQL-native. Every recommendation enters a `pending` state in the `analysis_results` table. A Recommendation Scorer Lambda runs every 5 minutes:
 
 - Fetches current market prices from Polymarket's Gamma API.
-- Queries Aurora: `SELECT FROM analysis_results WHERE outcome_status = 'pending' AND recommendation IN ('LONG_YES', 'LONG_NO') LIMIT 200`
+- Queries RDS PostgreSQL: `SELECT FROM analysis_results WHERE outcome_status = 'pending' AND recommendation IN ('LONG_YES', 'LONG_NO') LIMIT 200`
 - If price hits the recommendation's **take-profit** → `UPDATE analysis_results SET outcome_status = 'success'`
 - If price hits the **stop-loss** → `UPDATE analysis_results SET outcome_status = 'failure'`
 - If neither within 7 days → `UPDATE analysis_results SET outcome_status = 'expired'`
 
-On success or failure, every contributing agent is scored via an atomic upsert in Aurora:
+On success or failure, every contributing agent is scored via an atomic upsert in RDS PostgreSQL:
 
 ```typescript
 // Aligned agent + success = correct++
@@ -427,7 +427,7 @@ The kill switch fails closed - if any internal check errors during emergency exi
 
 **DynamoDB for dedup instead of ElastiCache - but we'd plan the key schema earlier.** We initially planned Redis, then switched to DynamoDB after realizing the cost difference was $15/month for a service we'd have to manage vs. pennies for one we wouldn't. The switch was easy because our access patterns (key-value with TTL) are DynamoDB's sweet spot. But we designed the partition key schema ad-hoc and had to refactor once when we added the distributed lock pattern. Planning the single-table design upfront would have saved a migration.
 
-**Aurora Serverless v2's cold start matters less than we feared.** We spent time optimizing connection pooling expecting cold-start latency to be painful. In practice, the cluster stays warm with the Recommendation Scorer hitting it every 5 minutes, and the 0.5 ACU minimum means it never truly sleeps. The real lesson: keep at least one periodic workload touching the cluster and cold starts become irrelevant.
+**Amazon RDS for PostgreSQL's cold start matters less than we feared.** We spent time optimizing connection pooling expecting cold-start latency to be painful. In practice, the instance stays warm with the Recommendation Scorer hitting it every 5 minutes. The real lesson: keep at least one periodic workload touching the database and cold starts become irrelevant.
 
 ---
 
@@ -435,11 +435,11 @@ The kill switch fails closed - if any internal check errors during emergency exi
 
 - 14 agents running in parallel across 7 Bedrock models in a single Lambda invocation
 - ~20–25 LLM calls per analysis, completing within Lambda's timeout
-- $15–20/month baseline infrastructure (Aurora Serverless v2 at 0.5 ACU + DynamoDB on-demand + Lambda)
+- $15–25/month baseline infrastructure (RDS PostgreSQL `db.t4g.micro` + DynamoDB on-demand + Lambda)
 - DynamoDB dedup cache reduces Bedrock cost by orders of magnitude at scale (10,000 requests → 1 invocation)
-- Aurora stores the complete learning fabric: agent memory, performance scoring, delivery accounting, trade audit trails
+- RDS PostgreSQL stores the complete learning fabric: agent memory, performance scoring, delivery accounting, trade audit trails
 - DynamoDB handles all millisecond-latency gates: dedup, rate limits, WebSocket connections, distributed locks, kill switch state
-- Closed-loop scoring in Aurora adjusts agent weights without manual intervention
+- Closed-loop scoring in RDS PostgreSQL adjusts agent weights without manual intervention
 - The system refuses to recommend when disagreement exceeds 30% - by design, not by accident
 - Zero ElastiCache, zero NAT Gateway, zero always-on compute - every dollar of infrastructure earns its keep
 
@@ -453,4 +453,4 @@ The kill switch fails closed - if any internal check errors during emergency exi
 
 ---
 
-*Built with AWS Lambda, Amazon Bedrock, Aurora PostgreSQL Serverless v2, DynamoDB, SQS, SNS, EventBridge, API Gateway, Cognito, SES, S3, CloudWatch, Amplify Hosting, and the Strands Agents SDK.*
+*Built with AWS Lambda, Amazon Bedrock, Amazon RDS for PostgreSQL, DynamoDB, SQS, SNS, EventBridge, API Gateway, Cognito, SES, S3, CloudWatch, Amplify Hosting, and the Strands Agents SDK.*

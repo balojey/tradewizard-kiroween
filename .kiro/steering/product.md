@@ -37,7 +37,7 @@ Three parallel agents provide position sizing guidance without influencing proba
 The workflow orchestrates analysis through sequential and parallel stages in a self-hosted AWS Lambda function using the Strands Agents SDK (TypeScript):
 
 1. **Data Preparation**: Fetch price history from Polymarket CLOB API, write CSV to /tmp; fetch related sibling markets from Gamma API, calculate aggregate metrics, write JSON to /tmp
-2. **Historical Context Retrieval**: Load past N agent signals from Aurora PostgreSQL `agent_memory` table for this market (configurable via `ANALYSIS_HISTORY_DEPTH`, default 5). Each agent receives only its own historical signals for consistency and drift detection.
+2. **Historical Context Retrieval**: Load past N agent signals from Amazon RDS for PostgreSQL `agent_memory` table for this market (configurable via `ANALYSIS_HISTORY_DEPTH`, default 5). Each agent receives only its own historical signals for consistency and drift detection.
 3. **Web Research**: Autonomous Strands Agent with search/scrape tools gathers real-time web context (60s timeout, max 10 searches + 5 scrapes)
 4. **Agent Selection**: All 14 intelligence agents are activated for every market (no conditional filtering)
 5. **Parallel Intelligence Agents**: All 14 agents execute in parallel via Promise.all (120s per-agent timeout), each producing an AgentSignal (direction, confidence, fairProbability, keyDrivers, riskFactors)
@@ -186,9 +186,9 @@ All channels respect:
 - **Autonomy**: Agents use NewsData.io and Serper search/scrape tools for autonomous web research - direct API integration without browser dependency
 - **Multi-Model Routing**: Agents distributed across 7 Bedrock models by capability and RPM budget (Nova Micro, Nova Lite, Nemotron 3 Super, GPT-OSS 120B, Kimi K2 for tool-capable stages; Llama 3.3 70B for non-tool stages; Nova 2 Lite as fallback)
 - **Observability**: CloudWatch metrics, alarms, and per-analysis cost tracking
-- **Memory**: Historical agent signals stored in Aurora PostgreSQL for closed-loop learning
+- **Memory**: Historical agent signals stored in Amazon RDS for PostgreSQL for closed-loop learning
 - **Resilience**: Graceful degradation - partial failures don't crash the pipeline; consensus can fail (refuses to recommend under high uncertainty)
-- **Cost Efficiency**: DynamoDB-based dedup cache, no NAT gateways, no ElastiCache, Aurora Serverless v2 auto-scales
+- **Cost Efficiency**: DynamoDB-based dedup cache, no NAT gateways, no ElastiCache, RDS PostgreSQL on a small fixed instance
 - **Negative EV Rejection**: Even with an edge, negative expected value → NO_TRADE
 - **Real-Time First**: WebSocket delivery for instant results, with email/push/webhook as secondary channels
 
@@ -206,7 +206,7 @@ All channels respect:
 ### When Fixing Issues
 
 - Check CloudWatch logs and alarms for error context
-- Verify agent memory retrieval from Aurora PostgreSQL
+- Verify agent memory retrieval from Amazon RDS for PostgreSQL
 - Check DynamoDB dedup cache for stale entries
 - Test with property-based testing to ensure correctness properties hold
 - Review per-analysis cost metrics for anomalies

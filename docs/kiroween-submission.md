@@ -1,214 +1,179 @@
-# TradeWizard - Kiroween 2026 Submission
+# TradeWizard Operations Portal - Kiroween 2026
 
 > **Category: Frankenstein**
 >
-> The intelligence layer for real-world prediction markets, stitched together from a fourteen-agent league, three deterministic gates, a serverless AWS nervous system, an on-chain payment rail, and a Next.js trading terminal - built spec-first with Kiro.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal Next.js product, specified and documented by two Kiro specs during the submission period.
 
----
+## Why this is the submission
 
-## Inspiration
+TradeWizard itself is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, credits, on-chain billing, support, and a newsletter.
 
-Prediction markets are one of the cleanest signal-generation mechanisms ever built. They aggregate dispersed information into a single number - the price - and that number is a probability. In theory, anyone can trade them. In practice, almost nobody can trade them well.
+The new thing built during Kiroween is the **Operations Portal**: the product that lets a team operate that platform safely. It is not a rebrand of the platform and not a CRUD dashboard. It is a separate application with its own API, identity, roles, audit trail, runtime controls, and deployment.
 
-To consistently price an outcome on Polymarket you need to monitor breaking news, read polling internals, watch order books for whale activity, track narrative velocity across media and social platforms, and time entries against catalysts. Those are five different jobs. Most retail traders have none of them, so they trade headlines, lose money, and quit. The asymmetry is not liquidity - it is intelligence.
+The platform is context. The portal is the submission.
 
-We also wanted to confront the part most "AI trading" products avoid: what happens after the recommendation. Reading a thesis is one thing. Acting on it under time pressure, with the right size, with mandatory exits, while the market is moving - that is where retail loses. So we built an opt-in autonomous Portfolio Manager that executes inside hard guardrails the user pre-approves, with a kill switch that fails closed. Bounded autonomy, not unbounded delegation.
+## What the portal does
 
-## What it does
+The portal is a role-gated control surface with four jobs: observe, control, configure, and account for what happened.
 
-TradeWizard is two products that share one brain.
+**Observe.** Overview metrics, users and their credits/analyses/sessions/payments/notes, analyses with quality analytics and presigned payloads, portfolio sessions with trades and decisions, billing, agent calibration and cost, queues and alarms, markets, and the audit log.
 
-**The intelligence layer.** A user can request analysis on any Polymarket market. Behind the request is an 11-stage workflow that runs 14 specialized intelligence agents in parallel, fuses their signals deterministically, debates the resulting thesis adversarially, runs a deterministic consensus engine, asks three risk-philosophy agents about sizing, and emits a recommendation with entry zone, target zone, mandatory stop-loss, expected value, win probability, and a full reasoning chain.
+**Control.** A fail-closed per-user kill switch, session pause/resume/terminate, credit grants, plan overrides, account suspension, support notes, member invitations and removal, analysis cache invalidation, refunds, and market requeue.
 
-If the agents disagree above a hard threshold, or if expected value is non-positive, the system refuses to recommend. It returns `NO_TRADE` and explains which gate rejected the trade. Results are delivered through WebSocket, email, push, and webhook, respecting quiet hours and notification preferences. Every recommendation is scored after it hits take-profit or stop-loss, and every agent has an accuracy leaderboard that feeds back into signal weighting. Outcomes are explicit in the product - pending, target hit, stop hit, expired, or no trade - and a pending pick is only highlighted for 60 minutes, because entry, target, and stop are priced at execution time.
+**Configure.** Audited runtime settings, each with a named consumer: pause new analysis, edit the maintenance message, override the AI provider, pause new Portfolio Manager activations, tune support SLA, or disable newsletter opt-ins. A missing or unreadable setting falls back to the deployed default.
 
-**The autonomous Portfolio Manager (Pro and Elite).** A user opts into autonomous execution on a specific market by activating a session with a chosen persona (Sniper, Scalper, Contrarian, Catalyst Hunter, Hedge Architect, Momentum Rider), a capital envelope, and pre-approved guardrails. The Portfolio Manager Lambda consumes recurring analyses for that market - it never triggers its own - and decides entry, sizing, stop-loss, and take-profit per trade. Orders are placed through the Polymarket CLOB API.
+**Account for it.** Every mutation requires a reason and writes an append-only audit row before the side effect, with actor, action, target, before/after state, request id, and idempotency key. Database triggers reject updates and deletes.
 
-A Position Guard monitors every open position for regime shifts and stale markets. A Risk Engine enforces loss limits, cooldowns, and a kill switch that fails closed. The user can pause, resume, stop, or kill all sessions at any time, and every trade, exit, and risk event fans out across notification channels in real time.
+The portal also carries the support inbox and the newsletter composer. Support tickets keep the analysis or session context that prompted them and use a tokenised customer thread. Newsletter campaigns are composed from typed templates and sent by an owner with fresh auth; bounce and complaint webhooks are signature-verified.
 
-Around these sit the pieces a real product needs: passwordless Cognito Magic Link auth, on-chain USDC.e billing on Polygon with auto-renewal via ERC-20 allowances, a market-level analysis pool that prevents redundant compute, a credit system with an immutable audit trail, an internal management portal with MFA enrolment, audited runtime settings, analysis requeue, and owner-managed membership, and a Next.js 16 / React 19 frontend that surfaces all of it through a clean trading-terminal UI.
-
-Customers can also ask for help from the analysis or session that prompted the question. Tickets carry a context snapshot and a tokenised thread, and the admin inbox handles claim, reply, and resolution.
-
-An opt-in editorial newsletter, The Weekly Brief, runs on explicit consent, one-click unsubscribe, and signed delivery webhooks. Campaigns are composed and sent from the admin portal, with a public web view for every published issue.
+It is installable as a PWA, but the service worker caches only content-hashed static assets. Navigations, API responses, RSC payloads, and presigned S3 URLs are never cached, so a shared machine cannot show a previous operator's shell.
 
 ## Why this is a Frankenstein
 
-TradeWizard is a working chimera, not a themed wrapper:
+The portal is a chimera of systems that normally do not share a body:
 
-- **Fourteen independent model personalities** run in parallel, each with its own tool kit and its own isolated memory. They are encouraged to disagree.
-- **Deterministic TypeScript gates** sit between the models and the user and can overrule every one of them. The consensus engine, signal fusion, expected-value rejection, and schema validation contain no model calls.
-- **A serverless AWS substrate** runs the whole thing without a long-lived server: CDK, Lambda, Aurora PostgreSQL Serverless v2, DynamoDB, SQS FIFO, SNS, API Gateway, S3, and EventBridge.
-- **An on-chain payment rail** settles subscriptions and credit packs in USDC.e on Polygon, with Safe trading wallets, ERC-20 allowances, and transaction-hash verification.
-- **A separate internal admin portal** shares the backend contracts but deploys independently and is never linked from the customer app.
-- **A bounded-autonomy executor** lets an agent decide trades while a different service enforces stop-loss, take-profit, loss caps, cooldowns, and a fail-closed kill switch.
+- A separate Next.js 16 application that never enters the customer bundle
+- Amazon Cognito for email + password + TOTP, admin groups, and a request authorizer
+- A dedicated admin API on API Gateway, backed by Lambda
+- Amazon RDS for PostgreSQL for business state and an append-only audit log
+- Amazon DynamoDB for kill-switch state, rate limits, and concurrent claims
+- Amazon S3 for analysis payloads behind short-lived presigned URLs
+- EventBridge Scheduler for housekeeping and metrics rollups
+- SNS and CloudWatch for alarms and operational visibility
+- AWS Amplify Hosting for a separate admin domain
+- A conservative PWA service worker that treats browser caching as a security decision
 
-The parts should not fit together this cleanly. What holds them together is Kiro: every major seam has a spec, every architectural rule has a steering document, and the workflows that protect the gates are encoded as hooks.
+The unusual part is the contract between them: the portal can stop a live trading system, but it cannot move money; it can change runtime behavior, but every change names its consumer and lands in an immutable log; it can read sensitive data, but it never holds the keys to act on-chain.
 
-## How we built it with Kiro
+Kiro is the stitching. Two specs define the foundation and the operations layer, four steering documents constrain the work, and hooks verify the parts most likely to drift.
 
-### Spec-driven development
+## How Kiro built it
 
-The repository contains **34 specs** under [`.kiro/specs/`](../.kiro/specs/) - thirty-three product specs plus the spec for this submission. Most follow the requirements → design → tasks rhythm and cover a real slice of the product, including:
+### Specs
 
-- [`advanced-agent-league`](../.kiro/specs/advanced-agent-league/requirements.md) - the fourteen-agent league and signal contracts
-- [`autonomous-portfolio-manager`](../.kiro/specs/autonomous-portfolio-manager/requirements.md) - personas, guardrails, and execution lifecycle
-- [`market-intelligence-engine`](../.kiro/specs/market-intelligence-engine/requirements.md) - the 11-stage analysis workflow
-- [`phase3-delivery-frontend`](../.kiro/specs/phase3-delivery-frontend/requirements.md) - auth, WebSocket delivery, and results viewer
-- [`wallet-subscription-system`](../.kiro/specs/wallet-subscription-system/requirements.md) - on-chain plans, credits, and renewal
-- [`admin-portal-foundation`](../.kiro/specs/admin-portal-foundation/requirements.md) - isolated portal package, auth/MFA, RBAC, audit spine, admin API, read surfaces, and UI shell
-- [`admin-portal-operations`](../.kiro/specs/admin-portal-operations/requirements.md) - mutation envelope, kill switch, session controls, membership, runtime settings, support inbox, and newsletter
-- [`admin-api`](../docs/admin-portal-architecture.md) - the internal portal's route contracts and audit model
+- **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the append-only audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist.
+- **`admin-portal-operations`** - the mutation envelope, per-user kill switch, session controls, account operations, membership and invites, runtime settings, analysis operations, support inbox, newsletter, and verification.
 
-The specs are not decoration. They define the acceptance criteria, the edge cases, and the task order that the implementation followed. When a model or a contributor is unsure what a stage is allowed to do, the spec is the tiebreaker.
+Both have requirements, a design, and an ordered task list. The tasks are checked against shipped code.
 
 ### Steering
 
-Four steering documents under [`.kiro/steering/`](../.kiro/steering/) give the agent the context that does not belong in any single prompt:
+Four documents constrain the work:
 
-- [`product.md`](../.kiro/steering/product.md) - what TradeWizard is, who it serves, and the value proposition
-- [`structure.md`](../.kiro/steering/structure.md) - package boundaries, naming, and where new code belongs
-- [`tech.md`](../.kiro/steering/tech.md) - the stack, the deterministic stages, and the invariants that must not drift
-- [`kiroween.md`](../.kiro/steering/kiroween.md) - the submission constraints: category, license, honest claims, and demo rules
+- `product.md` - the platform the portal operates, and the support/newsletter surfaces.
+- `structure.md` - package boundaries; portal code stays in `tradewizard-admin/` and `admin-api`.
+- `tech.md` - shared modules and the deterministic analysis invariants the portal must not bypass.
+- `kiroween.md` - category, license, honest claims, and demo rules.
 
-The most useful steering rule was negative: the deterministic stages must never contain model calls. That single invariant prevented several plausible-looking but unsafe changes.
+The most useful rule was negative: deterministic analysis stages must never contain model calls. That kept a portal change from weakening the product it operates.
 
 ### Hooks
 
-Five hooks under [`.kiro/hooks/`](../.kiro/hooks/) automate the verification work that would otherwise be forgotten:
-
-| Hook | Trigger | What it runs |
-|------|---------|--------------|
-| `infra-typecheck` | Save under `infra/lib`, `infra/services`, or `infra/scripts` | `npx tsc --noEmit` in `infra/` |
-| `frontend-typecheck` | Save a frontend `.ts`/`.tsx` file | `npx tsc --noEmit` in `tradewizard-frontend/` |
-| `admin-typecheck` | Save an admin `.ts`/`.tsx` file | `npx tsc --noEmit` in `tradewizard-admin/` |
-| `analysis-gate-guard` | Save a gate file (`signal-fusion`, `consensus-engine`, `recommendation`, `shadow-consensus`) | An agent review that checks determinism, live-path isolation, and test coverage |
-| `spec-task-followthrough` | A spec task completes | Update the matching `tasks.md`, run the affected tests, and reconcile docs |
-
-The gate guard is the important one. The deterministic stages are the safety story, so a hook that asks the agent to prove they stayed deterministic is worth more than a generic test runner.
+Five hooks automate verification: `admin-typecheck`, `infra-typecheck`, `frontend-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough`. The admin typecheck is the daily guardrail; the gate guard matters when a portal change reaches into the analysis pipeline.
 
 ### MCP
 
-[`.kiro/settings/mcp.json`](../.kiro/settings/mcp.json) connects Kiro to two active documentation servers:
-
-- **Magic Link docs** - the passwordless auth flow used by Cognito
-- **Polymarket docs** - CLOB and Gamma API contracts, so order and market fields are verified against the source instead of recalled
-
-Two more servers (Railway and Ranger) are present but disabled. Keeping the configuration in the repository means the next contributor inherits the same verified context.
+`.kiro/settings/mcp.json` connects Kiro to Magic Link and Polymarket documentation, so admin auth and the product's market/order contracts are verified against the source instead of recalled.
 
 ### Property-based testing
 
-The deterministic gates are covered by focused Vitest suites for consensus, fusion, calibration, gate profiles, and shadow consensus. `fast-check` is available in `infra/` for property-level tests, but the submitted test strategy is example-based rather than property-based. We are not claiming a PBT practice the repository does not have.
+The portal's authorization surface is covered by `fast-check` properties: role ranking, group-to-role resolution, order independence, `requireRole` across every role pair, the fresh-auth window, and bearer-token extraction. Each property runs 100-300 generated cases. The remaining suites are example-based.
 
 ## How it works
 
-### Inputs
+```
+Operator browser
+  │  Cognito email + password + TOTP
+  ▼
+tradewizard-admin/  (Next.js 16, Amplify)
+  │  ID token + 30-day refresh token
+  │  presence-only tw_admin_session cookie
+  ▼
+admin-api  (API Gateway REST + Cognito REQUEST authorizer)
+  │  verify ID token → groups → role → MFA gate
+  │  requireRole + requireFreshAuth at the handler
+  ▼
+shared modules → RDS PostgreSQL / DynamoDB / S3 / CloudWatch
+                → Lambda invoke for support and newsletter workers
+```
 
-Every analysis begins with a market identifier from Polymarket. From that seed the system collects:
+The four roles are cumulative: analyst (read-only), support (credits, notes, session pause/resume), admin (all mutations except settings and roles), owner (settings and membership). Every handler re-checks the minimum role. Destructive actions require a token fresher than 10 minutes and a reason. The last owner cannot be removed.
 
-1. **Price history** - OHLC-style data from the Polymarket CLOB API, written as a deterministic CSV for agents to query numerically
-2. **Market metadata** - resolution criteria, expiry, probability, spread, volume, and liquidity from the Gamma API, plus related sibling markets
-3. **Agent memory** - per-agent historical signals from Aurora PostgreSQL; each agent sees only its own history to avoid cross-agent anchoring
-4. **Real-time web context** - an autonomous research stage uses NewsData.io and Serper tools to gather breaking news, expert opinion, polling, and social discourse
-5. **Agent performance weights** - historical accuracy from the `agent_performance` table, used to scale influence during fusion
+The kill switch is per-user and two-phase: a synchronous DynamoDB halt blocks new entries before the response, then the risk engine is invoked asynchronously to cancel orders and exit positions. If the dispatch fails, the halt still stands and the response says the exit failed.
 
-For the Portfolio Manager, additional inputs include the active session, persona, capital envelope, current position, order-book depth, the latest analysis, trade history, and session performance.
+A runtime setting is only allowed if a service reads it in the same change. Reads are cached for 60 seconds; a missing row falls back to the default. Writes are owner-only, fresh-auth, reason-required, and audited.
 
-### The three deterministic gates
+## Challenges
 
-**Gate 1 - Signal Fusion (no LLM).** Agent signals are aggregated in log-odds space, anchored to the market price. Each forecast is de-biased against its own fitted calibration line. Brier-calibrated weights set influence. Evidence-scaled pass-through decides how much of the ensemble's edge survives, and a standard-error noise floor plus a conflict map describe how much of the result is signal rather than agreement.
+**Operating a live system is a product, not a script.** The first version was console runbooks. The hard part was making the portal fast during an incident while still forcing a reason, a role, and an audit row.
 
-**Gate 2 - Adversarial Debate.** A thesis stage generates competing bull and bear cases from the fused signal. A cross-examination stage runs five tests against each thesis - evidence, causality, timing, liquidity, tail risk - for ten structured tests in total. Each produces survived / weakened / refuted with a numeric score.
+**Fresh authentication was a dead end.** The API returned `REAUTH_REQUIRED`, but the UI had no way forward. The fix was a reauthentication notice that signs out and returns to the same page.
 
-**Gate 3 - Consensus Engine (no LLM).** The engine uses `CONSENSUS_MODE=anchored` by default: an edge floor derived from the market's spread plus slippage, two standard errors of ensemble noise, thesis confirmation, and a divergence cap. `CONSENSUS_MODE=agent` opts into the confidence-weighted, de-biased vote. It fails to `NO_TRADE` on disagreement above 30% or confidence below 20%, and persists a machine-readable reason (`consensus_failed`, `divergence_cap`, `edge_below_threshold`, `edge_below_significance`, `thesis_veto`, plus recommendation-stage `levels_rejected`, `recommendation_failed`, and `analysis_failed`).
+**The last owner is a single point of failure.** Removing the final owner would lock everyone out. The check runs in a transaction and returns `409 LAST_OWNER`.
 
-The recommendation stage then validates schema and price ordering. If expected value is non-positive, the recommendation is rejected and replaced with `NO_TRADE`. These are not model behaviors we hope for; they are deterministic checks the models cannot override.
+**A kill switch must fail closed.** The halt is written before the exit dispatch. If the dispatch fails, the halt remains and the operator sees the failure.
 
-### Shadow consensus
+**Settings are theatre without consumers.** Every switch names the service that reads it. A value nobody reads is worse than no switch, because it looks like control.
 
-Every analysis computes both consensus configurations. The non-live one is stored in the `shadow_*` columns, and both are graded on the same fixed-horizon price move. The shadow decision is never shown to users and never influences the live recommendation. It is the evidence we require before switching modes or changing a gate.
+**Support concurrency.** Two agents can open the same ticket. Claim is a conditional update, replies take a row lock, and ownership is checked before a reply.
 
-### Bounded autonomy
+**Newsletter idempotency.** The campaign claim, unique `(campaign_id, email)`, and per-delivery status transitions make a retried send safe.
 
-The Portfolio Manager's decision agent has a read-only tool layer. It cannot place an order. Its output is a structured decision, and the Trade Executor validates that decision against hard limits before touching the CLOB:
+**PWA caching is a security decision.** A normal service worker would cache a previous operator's shell on a shared machine. This one caches content-hashed assets only.
 
-- Mandatory stop-loss and take-profit on every position
-- Per-session loss limit at 50% of capital; cross-session cap at 40%
-- 30-minute cooldown after a loss exit
-- Position size capped at 50% of session capital
-- Concurrent session limits: 3 for Pro, 10 for Elite
-- Capital conservation: no trade can exceed uninvested session capital
-- Mutual exclusion between Trade Executor and Position Guard
-- Token-ID resolution by outcome string, never by array index, in analysis and execution
-- Kill switch totality: exits all positions, terminates all sessions, and fails closed
+## Accomplishments
 
-## Challenges we ran into
-
-**The autonomy paradox.** "The human is the final decision maker" and "autonomous execution" sound contradictory. The resolution was to separate the agent's decision authority from the executor's enforcement authority, then express the perimeter as machine-checked invariants the user pre-approves.
-
-**LLM determinism is a fantasy; pipeline determinism is achievable.** Early prototypes tried to make the model behave consistently. That never worked at the tail. The fix was to stop asking the model to be deterministic and bracket it with deterministic stages.
-
-**Agreement is not consensus.** When all fourteen agents agree, it often means they read the same headline. The divergence penalty, the 30% disagreement gate, and isolated per-agent memory made disagreement informative.
-
-**Cost runaway under naive deduplication.** Per-user caching is the same as no caching. The market-level analysis pool coalesces requests, and delivery accounting had to be redesigned so users pay only for results they actually receive.
-
-**Token ordering on the CLOB.** Outcome arrays are not stably ordered. A trade executor that indexes YES at `[0]` will eventually place a YES order on a NO token. The resolver matches by outcome string and has a regression test.
-
-**Keeping the docs honest.** The repository's older READMEs contain stale model and file names. The submission uses `.kiro/steering/` and the current code as the source of truth, and the Kiro write-up only claims artifacts a judge can inspect.
-
-## Accomplishments we are proud of
-
-- **A multi-agent system that is allowed to refuse.** When disagreement is high or expected value is non-positive, TradeWizard returns `NO_TRADE` with a structured reason and does not bill the user.
-- **Three deterministic gates around fourteen models.** Fusion and consensus are non-LLM stages. Schema validation and EV rejection are non-LLM stages.
-- **Bounded-autonomy execution.** A fail-closed kill switch, mandatory exits, hard loss limits, cooldowns, capital conservation, and mutual exclusion between executor and guard.
-- **A market-level analysis pool.** Cost scales with markets analyzed, not users requesting.
-- **Closed-loop learning.** Every recommendation is scored, every agent has a leaderboard, and memory feeds back into signal weighting.
-- **A spec-first build.** Thirty-four specs, four steering documents, five hooks, and two MCP servers keep a large system coherent.
-- **A serverless platform that idles at roughly fifteen to twenty dollars a month.** No NAT, no ElastiCache, no always-on compute.
+- A real control plane for a live trading system: role-gated, reason-required, append-only.
+- Four-tier RBAC enforced by the authorizer and re-checked in every handler.
+- An audit spine inserted before the side effect and immutable at the database layer.
+- A fail-closed kill switch with synchronous halt and asynchronous exit.
+- Runtime settings with named consumers.
+- Contextual support tickets and consent-first newsletter campaigns in the same control plane.
+- A PWA that does not leak the previous operator.
+- Two Kiro specs that trace the portal end to end.
 
 ## What we learned
 
-- **Refusing to recommend is a feature.** The most professional thing a trading system can do under high disagreement is decline.
-- **Independence beats agreement at the agent layer.** Isolated memory made disagreement signal-bearing.
-- **Enforce safety below the model, not inside it.** A prompt that says "always set a stop-loss" will eventually be ignored. An executor that rejects the trade will not.
-- **Specs are a safety mechanism, not paperwork.** The determinism invariant survived because it was written down and checked.
-- **Explainability is a product feature.** Reasoning chains, debate scores, agent leaderboards, and disagreement indices make the output usable and defensible.
+- Admin UX is safety UX: the reason, role, and audit row are the real features.
+- Write the audit row before the action; append-after-success loses the record.
+- Every setting needs a consumer, or the portal lies about control.
+- Fresh auth is not friction to remove; it separates a stolen session from a kill switch.
+- Caching is a security boundary, not a performance tweak.
+- Specs keep a control plane coherent.
 
 ## What's next
 
-- **Model benchmarking.** Systematic quality and cost benchmarking per agent category, with routing updates when a model's price-to-quality ratio shifts.
-- **Agent specialization and ablation.** Use the leaderboard's outcome data to retire under-performing agents and split high-performing ones into specialized variants.
-- **Verticals beyond politics.** Macro, central-bank decisions, sports, and entertainment inherit the same workflow with domain-specific tools.
-- **Portfolio-aware analysis.** Recommendations conditioned on existing exposure, with correlation-aware sizing and cross-market hedges.
-- **Institutional surface.** A research-grade API with audit logs, signed reasoning chains, and SLA-backed delivery.
-- **Public performance reporting.** Publish recommendation accuracy with methodology.
-
----
+- Portfolio Manager session-cap override as a runtime setting.
+- Maintenance banner coordinated with the product frontend.
+- Model routing view once a configuration source exists.
+- Hosted production portal on its own Amplify app and `admin.tradewizard.live` domain.
+- Audit export and retention policy for compliance reviews.
 
 ## Kiro usage summary
 
-| Kiro capability | Evidence in this repository |
-|-----------------|-----------------------------|
-| Spec-driven development | 34 specs in `.kiro/specs/`, each with a design and ordered tasks |
+| Kiro capability | Evidence |
+|-----------------|----------|
+| Spec-driven development | `admin-portal-foundation` and `admin-portal-operations`, each with requirements, design, and completed tasks |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
-| Agent hooks | 5 JSON hooks in `.kiro/hooks/` for typechecks, gate protection, and spec follow-through |
-| MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation servers |
-| Custom agents | Not claimed; the repository's steering and specs are the primary context mechanism |
-
-The full judge-facing write-up is in [docs/kiro-usage.md](kiro-usage.md).
+| Agent hooks | 5 hooks, including `admin-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough` |
+| MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation |
+| Custom agents | Not claimed; steering and specs are the context mechanism |
 
 ## Built with
 
-Kiro · TypeScript · Node.js 20 · AWS CDK · AWS Lambda · Amazon Aurora PostgreSQL Serverless v2 · DynamoDB · SQS · SNS · EventBridge · API Gateway · Cognito · S3 · CloudWatch · Amazon Bedrock (default inference) · Nebius Token Factory (optional inference) · Strands Agents SDK · Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query · Zod · Vitest · Remotion · Polymarket CLOB & Gamma APIs · viem · Safe · USDC.e on Polygon · Resend · NewsData.io · Serper
+Kiro · TypeScript · Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query · Amazon Cognito · API Gateway · AWS Lambda · Amazon RDS for PostgreSQL · Amazon DynamoDB · Amazon S3 · Amazon EventBridge · Amazon SNS · Amazon CloudWatch · AWS Secrets Manager · AWS IAM · AWS Amplify Hosting · AWS CDK · Zod · Vitest · Remotion
+
+Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Gamma APIs · viem · Safe · USDC.e on Polygon · Resend · NewsData.io · Serper
 
 ## Links
 
 - **Repository**: https://github.com/balojey/tradewizard-kiroween
-- **Live app**: _add the deployed URL to the Devpost submission form_
-- **Demo video**: _add the public YouTube URL to the Devpost submission form_
-- **Kiro usage write-up**: [docs/kiro-usage.md](kiro-usage.md)
-- **Product overview**: [docs/tradewizard-overview.md](tradewizard-overview.md)
+- **Operations portal**: https://admin.tradewizard.live
+- **Platform it operates**: https://tradewizard.live
+- **Kiro usage write-up**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
+- **Portal foundation spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-foundation/requirements.md
+- **Portal operations spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-operations/requirements.md
 
 ---
 
-**Disclaimer**: TradeWizard provides AI-generated analysis for educational and informational purposes. All trading involves risk. Past performance does not guarantee future results. Please trade responsibly.
+**Note**: The Operations Portal is internal and is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.

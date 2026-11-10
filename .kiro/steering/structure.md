@@ -24,7 +24,7 @@ infra/
 │   └── tradewizard.ts              # CDK app entry point
 ├── lib/
 │   ├── network-stack.ts            # Minimal VPC, public subnets, security groups
-│   ├── database-stack.ts           # Aurora PostgreSQL Serverless v2 + DynamoDB tables (dedup, connections, rate limits)
+│   ├── database-stack.ts           # Amazon RDS for PostgreSQL + DynamoDB tables (dedup, connections, rate limits)
 │   ├── auth-stack.ts               # Cognito user pool, app clients, custom auth Lambda triggers
 │   ├── queue-stack.ts              # SQS FIFO queue, DLQ, EventBridge event bus
 │   ├── notification-stack.ts       # SNS topics (analysis-complete, system-notifications) and retained SES identity
@@ -51,7 +51,7 @@ infra/
 │   │   │   └── tool-factory.ts     # Tool factory for agent-specific tool sets
 │   │   └── stages/
 │   │       ├── data-preparation.ts     # Price history CSV + related markets JSON
-│   │       ├── historical-context.ts   # Agent memory from Aurora PostgreSQL
+│   │       ├── historical-context.ts   # Agent memory from Amazon RDS for PostgreSQL
 │   │       ├── web-research.ts         # Autonomous web research agent
 │   │       ├── intelligence-agents.ts  # 14 parallel agents with system prompts
 │   │       ├── signal-fusion.ts        # Deterministic weighted aggregation
@@ -72,8 +72,8 @@ infra/
 │   │       ├── market-data.ts      # get_market_data (Polymarket CLOB)
 │   │       ├── order-book.ts       # get_order_book (CLOB depth)
 │   │       ├── analysis-reader.ts  # read_full_analysis (S3 - detail + public result)
-│   │       ├── trade-history.ts    # get_trade_history (Aurora PostgreSQL)
-│   │       ├── session-performance.ts # get_session_performance (Aurora PostgreSQL)
+│   │       ├── trade-history.ts    # get_trade_history (Amazon RDS for PostgreSQL)
+│   │       ├── session-performance.ts # get_session_performance (Amazon RDS for PostgreSQL)
 │   │       └── agent-accuracy.ts   # get_agent_accuracy (agent performance leaderboard)
 │   ├── analysis-subscriptions/
 │   │   └── handler.ts              # List + cancel recurring analysis subscriptions; publishes recurring-analysis.cancelled
@@ -141,7 +141,7 @@ infra/
 │       ├── clob-credentials.ts     # Polymarket CLOB API credentials (Secrets Manager + env fallback)
 │       ├── connections.ts          # WebSocket connection utilities (store, remove, getByUser)
 │       ├── credits.ts              # Credit/subscription SQL queries, plan limits
-│       ├── db.ts                   # Aurora PostgreSQL client
+│       ├── db.ts                   # Amazon RDS for PostgreSQL client
 │       ├── delivery-utils.ts       # Common delivery utilities (quiet hours, preferences checks)
 │       ├── dynamo.ts               # DynamoDB dedup cache, in-flight tracking, rate limiting
 │       ├── email.ts                # Shared transactional email sender (Resend primary, SES retained)
@@ -323,12 +323,12 @@ tradewizard-frontend/
 ### V2 Analysis Flow (AWS-Native)
 ```
 User requests analysis → API Gateway → Lambda (analysis-request)
-  → Credit check (Aurora) → Dedup check (DynamoDB)
+  → Credit check (RDS PostgreSQL) → Dedup check (DynamoDB)
   → If cached: serve result immediately (200)
   → If in-flight: subscribe user to pending result
   → If fresh needed: SQS → Lambda (analysis-orchestrator)
     → Lambda invoke (Analysis_Lambda - 11-stage Strands SDK workflow)
-    → Store result (Aurora + S3)
+    → Store result (RDS PostgreSQL + S3)
     → Publish to SNS (Analysis Complete topic)
     → Fan-out to delivery Lambdas:
       → WebSocket push (analysis-delivery)
@@ -340,7 +340,7 @@ User requests analysis → API Gateway → Lambda (analysis-request)
 ### Market-Level Analysis Pool
 - One fresh analysis per market per hour (hard minimum interval)
 - DynamoDB TTL-based cache (1-hour TTL) for fast freshness checks
-- Per-user delivery tracking via `analysis_deliveries` table in Aurora PostgreSQL
+- Per-user delivery tracking via `analysis_deliveries` table in Amazon RDS for PostgreSQL
 - Users only pay 1 credit when receiving an analysis they haven't seen before
 - Recurring schedules coalesce to shortest active interval per market
 - **When modifying**: `infra/services/analysis-request/handler.ts`, `infra/services/shared/dynamo.ts`
@@ -375,7 +375,7 @@ User requests analysis → API Gateway → Lambda (analysis-request)
 - **When adding agents**: Add system prompt to `AGENT_SYSTEM_PROMPTS` record, add name to `ALL_AGENT_NAMES`, add to tool category arrays in `intelligence-agents.ts`
 
 ### Memory System
-- Historical agent signals stored in Aurora PostgreSQL `agent_memory` table
+- Historical agent signals stored in Amazon RDS for PostgreSQL `agent_memory` table
 - Retrieved before each analysis via `infra/services/analysis-lambda/stages/historical-context.ts`
 - Fetches the past N analyses from `analysis_results` + `agent_memory` tables using `pg` client
 - Each agent receives only its own historical signals - independent opinions, no cross-agent anchoring
@@ -394,7 +394,7 @@ User requests analysis → API Gateway → Lambda (analysis-request)
 ### Notification & Delivery
 - Multi-channel: in-app (WebSocket), email (Resend primary, SES retained), push (SNS), webhook (HTTP POST)
 - WebSocket connections tracked in DynamoDB with 24h TTL
-- User notification preferences stored in Aurora PostgreSQL
+- User notification preferences stored in Amazon RDS for PostgreSQL
 - Quiet hours and probability-shift thresholds supported
 - Plan-based channel restrictions (free=in_app, starter+=email/push, pro+=webhook)
 - SNS topic fan-out triggers all delivery Lambdas simultaneously
@@ -501,7 +501,7 @@ User requests analysis → API Gateway → Lambda (analysis-request)
 
 ### Database Schema Changes
 1. Modify `infra/sql/001-schema.sql` (all tables, indexes, and idempotent migration guards are in this single file)
-2. Apply to Aurora cluster (deploy.sh handles this automatically)
+2. Apply to RDS PostgreSQL instance (deploy.sh handles this automatically)
 3. Update relevant service handlers if schema affects queries
 4. Verify agent memory retrieval works after changes
 

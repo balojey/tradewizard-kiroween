@@ -5,7 +5,7 @@ Generated using the Python `diagrams` package.
 
 from diagrams import Diagram, Cluster, Edge
 from diagrams.aws.compute import Lambda
-from diagrams.aws.database import Aurora, Dynamodb
+from diagrams.aws.database import RDS, Dynamodb
 from diagrams.aws.network import APIGateway, CloudFront
 from diagrams.aws.integration import SQS, SNS, Eventbridge
 from diagrams.aws.security import Cognito, SecretsManager
@@ -104,7 +104,7 @@ with Diagram(
 
     # --- Data Layer ---
     with Cluster("Data Layer"):
-        aurora = Aurora("Aurora PostgreSQL\nServerless v2")
+        rds = RDS("Amazon RDS\nfor PostgreSQL")
         dynamodb = Dynamodb("DynamoDB\n(Dedup, Connections,\nRate Limits)")
         s3 = S3("S3\n(Results, Traces)")
         secrets = SecretsManager("Secrets Manager\n(API Keys, DB Creds)")
@@ -172,7 +172,7 @@ with Diagram(
     # Analysis completion
     analysis_lambda >> sns_topic
     analysis_lambda >> s3
-    analysis_lambda >> aurora
+    analysis_lambda >> rds
 
     # SNS fan-out delivery
     sns_topic >> ws_delivery
@@ -187,15 +187,15 @@ with Diagram(
     trade_executor >> polymarket
     position_guard >> portfolio_lambda
     scheduler >> position_guard
-    risk_engine >> aurora
-    portfolio_lifecycle >> aurora
+    risk_engine >> rds
+    portfolio_lifecycle >> rds
 
     # Data layer connections
-    analysis_request >> aurora
-    subscription_api >> aurora
+    analysis_request >> rds
+    subscription_api >> rds
     results_api >> s3
-    portfolio_dashboard >> aurora
-    analysis_lambda >> aurora
+    portfolio_dashboard >> rds
+    analysis_lambda >> rds
 
     # DynamoDB uses
     ws_delivery >> dynamodb

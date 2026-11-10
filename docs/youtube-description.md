@@ -2,9 +2,9 @@
 
 ## Title options
 
-1. **TradeWizard - 14 AI Agents, 3 Gates, 1 Kill Switch | Kiroween 2026 (Frankenstein)**
-2. **I Stitched 14 AI Agents Into a Prediction-Market Trader | Kiroween 2026**
-3. **TradeWizard: An AI Hedge Fund That Knows When to Stay Out | Kiroween 2026**
+1. **TradeWizard Operations Portal - The Audited Control Plane for a Live AI Trading System | Kiroween 2026**
+2. **I Built the Control Plane for a Live Prediction-Market Platform | Kiroween 2026**
+3. **TradeWizard Operations Portal: Kill Switch, Audit Log, and 4-Role RBAC | Kiroween 2026**
 
 Recommended: option 1.
 
@@ -12,72 +12,76 @@ Recommended: option 1.
 
 ## Description
 
-**TradeWizard - an AI hedge fund for real-world outcomes, built to know when to stay out.**
+**The audited control surface for a live multi-agent prediction-market platform.**
 
-Prediction markets let you trade real-world events - elections, court rulings, economic policy - but they give you markets without intelligence. TradeWizard is the missing layer: fourteen AI specialists that analyze Polymarket markets in parallel, three deterministic gates that can overrule them, and an optional autonomous Portfolio Manager bounded by hard, machine-checked limits.
+TradeWizard is live: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. The Operations Portal is the separate internal product built to operate it safely.
 
-Submitted to **Kiroween 2026** in the **Frankenstein** category: multi-agent inference + deterministic TypeScript + serverless AWS + on-chain payments + a Next.js terminal, stitched together with Kiro specs, steering, hooks, and MCP.
+It is not a CRUD dashboard. It is a role-gated control plane with its own Next.js app, API, Cognito identity, append-only audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB.
+
+**Submitted to Kiroween 2026 in the Frankenstein category.** The portal stitches together Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and two Kiro specs.
+
+- **Operations portal:** https://admin.tradewizard.live
+- **Platform it operates:** https://tradewizard.live
+- **Repository:** https://github.com/balojey/tradewizard-kiroween
+- **Kiro usage write-up:** https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
 
 ⏱️ CHAPTERS
 
-0:00 The problem: markets without intelligence
-0:18 A live market analysis
-0:35 Fourteen agents, one typed signal each
-0:50 The part most AI trading apps skip
-1:00 Signal fusion and adversarial debate
-1:20 The consensus engine and NO_TRADE
-1:40 The autonomous Portfolio Manager
-1:55 Guardrails and the kill switch
-2:20 Serverless architecture and shared analysis
-2:35 How Kiro built it
-2:50 Close
+0:00 The portal and the problem
+0:08 Sign-in, TOTP, and role enforcement
+0:20 Operational overview
+0:32 Users, credits, plans, and notes
+0:45 Analysis quality, requeue, and refunds
+1:00 Portfolio sessions and decisions
+1:10 The fail-closed kill switch
+1:25 Runtime settings with real consumers
+1:40 Support inbox
+1:55 Newsletter composer and subscribers
+2:10 Append-only audit and RBAC
+2:25 PWA cache safety and Kiro artifacts
+2:45 Close
 
-🧠 THE INTELLIGENCE LAYER
+🔐 AUTHENTICATION AND AUTHORIZATION
 
-• 11-stage analysis workflow
-• 14 specialized agents run on every market, no router
-• Per-agent isolated memory from Aurora PostgreSQL - no cross-agent anchoring
-• Tools: NewsData.io, Serper search/scrape, sandboxed shell, Polymarket CLOB and Gamma APIs
-• Zod-validated signals with structured fallback
+• Separate Cognito admin app client: email + password + TOTP
+• Self-service MFA enrolment with QR code
+• Four cumulative roles: analyst, support, admin, owner
+• Request authorizer computes the role; every handler re-checks it
+• Destructive actions require a token fresher than 10 minutes
+• The last owner cannot be removed (`409 LAST_OWNER`)
 
-🛡️ THREE DETERMINISTIC GATES (NON-LLM)
+📜 APPEND-ONLY AUDIT
 
-1. **Signal Fusion** - market-anchored log-odds aggregation, per-agent calibration, Brier-derived weights, evidence-scaled pass-through, standard-error noise floor
-2. **Adversarial Debate** - bull and bear theses each face 5 tests: evidence, causality, timing, liquidity, tail risk
-3. **Consensus Engine** - edge floor from spread + slippage, two standard errors of noise, divergence cap; fails to NO_TRADE with a machine-readable reason
+• Audit row written before the side effect
+• Actor, action, target, reason, before/after state, request id, IP, user agent
+• Idempotency key per actor + action
+• Database triggers reject updates and deletes
+• Pending rows make crashes visible
 
-🤖 AUTONOMOUS PORTFOLIO MANAGER (BOUNDED AUTONOMY)
+🎛️ OPERATIONAL CONTROLS
 
-• The agent decides; a separate executor enforces
-• Read-only tool layer on the decision agent
-• Mandatory stop-loss and take-profit on every position
-• 50% per-session loss limit, 40% cross-session cap
-• 30-minute cooldown after a loss exit
-• Token ID resolved by outcome string, never array index
-• Mutual exclusion between Trade Executor and Position Guard
-• Kill switch fails closed - exits all positions and terminates all sessions
-
-☁️ SERVERLESS SUBSTRATE
-
-Lambda (Node.js 20) · Aurora PostgreSQL Serverless v2 · DynamoDB · SQS FIFO + DLQ · EventBridge · SNS fan-out · S3 · API Gateway REST + WebSocket · Cognito Magic Link · Amplify Hosting
-
-💰 MARKET-LEVEL ANALYSIS POOL
-
-One analysis per market per hour, shared across all users. Ten thousand requests on the same market become one execution. Users pay only for results they receive, exactly once.
+• Fail-closed per-user kill switch: synchronous halt, asynchronous exit
+• Session pause/resume/terminate
+• Credits, plan overrides, account status, support notes
+• Analysis cache invalidation, refunds, market requeue
+• Runtime settings with a named consumer each
+• Support ticket inbox with context snapshots
+• Newsletter campaigns, subscribers, and suppression
 
 🧵 BUILT WITH KIRO
 
-• 34 specs under `.kiro/specs/` - requirements → design → tasks
-• 4 steering documents: product, structure, tech, and Kiroween submission rules
-• 5 hooks: typecheck each package on save, guard the deterministic gates, close out spec tasks
+• `admin-portal-foundation` spec: package isolation, auth/MFA, RBAC, audit, admin API, read surfaces, shell
+• `admin-portal-operations` spec: mutation envelope, kill switch, session controls, membership, settings, support, newsletter
+• 4 steering documents and 5 hooks
+• `fast-check` property tests for RBAC, fresh-auth, and bearer extraction
 • MCP servers for Magic Link and Polymarket documentation
-
-The repository is the evidence: https://github.com/balojey/tradewizard-kiroween
 
 🏗️ BUILT WITH
 
-Kiro · TypeScript · AWS CDK · AWS Lambda · Amazon Aurora PostgreSQL Serverless v2 · DynamoDB · SQS · SNS · EventBridge · API Gateway · Cognito · S3 · CloudWatch · Amazon Bedrock · Nebius Token Factory · Strands Agents SDK · Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query · Zod · Vitest · Remotion · Polymarket CLOB and Gamma APIs · viem · Safe · USDC.e on Polygon · Resend · NewsData.io · Serper
+Kiro · TypeScript · Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query · Amazon Cognito · API Gateway · AWS Lambda · Amazon RDS for PostgreSQL · Amazon DynamoDB · Amazon S3 · Amazon EventBridge · Amazon SNS · Amazon CloudWatch · AWS Secrets Manager · AWS IAM · AWS Amplify Hosting · AWS CDK · Zod · Vitest · Remotion
+
+Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Gamma APIs · viem · Safe · USDC.e on Polygon · Resend · NewsData.io · Serper
 
 ---
 
-#KiroweenHackathon26 #Kiroween2026 #Kiro #PredictionMarkets #Polymarket #MultiAgentAI #AIAgents #AWSBedrock #StrandsSDK #SystemsDesign #AITrading #ServerlessArchitecture #AutonomousAgents #TypeScript #Hackathon #Frankenstein
+#KiroweenHackathon26 #Kiroween2026 #Kiro #OperationsPortal #AdminPortal #RBAC #AuditLog #AWS #Serverless #NextJS #TypeScript #Hackathon #Frankenstein

@@ -2,7 +2,7 @@
 
 **The intelligence layer for real-world prediction markets.**
 
-> This document is part of the [TradeWizard Kiroween 2026 submission](kiroween-submission.md) (Frankenstein category). For how the project was built with Kiro, see [kiro-usage.md](kiro-usage.md).
+> This document describes the platform that the submission's **Operations Portal** operates. The Kiroween entry is the portal itself: see [kiroween-submission.md](kiroween-submission.md) and [kiro-usage.md](kiro-usage.md).
 
 TradeWizard is an AI-powered platform that turns prediction markets on Polymarket into a guided, probability-driven trading experience. It pairs a multi-agent analysis engine - 14 specialized AI agents that debate every market and produce explainable recommendations - with an optional autonomous Portfolio Manager that can execute trades inside hard, user-defined risk limits.
 
@@ -155,7 +155,7 @@ TradeWizard runs entirely on AWS with no long-lived servers. The entire stack - 
 |---------|---------|
 | Compute | AWS Lambda (Node.js 20) |
 | AI inference | Amazon Bedrock (default) or Nebius Token Factory (optional) |
-| Durable state | Amazon Aurora PostgreSQL Serverless v2 |
+| Durable state | Amazon RDS for PostgreSQL |
 | Cache / dedup / locks | Amazon DynamoDB (with TTL) |
 | Queue | Amazon SQS (FIFO) with dead-letter queue |
 | Scheduling & events | Amazon EventBridge |
@@ -166,9 +166,9 @@ TradeWizard runs entirely on AWS with no long-lived servers. The entire stack - 
 | Infrastructure as code | AWS CDK (TypeScript) |
 | Frontend hosting | AWS Amplify Hosting |
 
-### 6.2 Aurora as the Durable Brain
+### 6.2 RDS PostgreSQL as the Durable Brain
 
-Aurora PostgreSQL Serverless v2 holds everything that must survive: user accounts, subscriptions, credit transactions, analysis results, per-agent memory, agent performance scores, delivery tracking, and the full Portfolio Manager state (sessions, trades, and an audit log of every decision). It auto-scales down to 0.5 ACU at idle and scales up under load. The relational feature set - joins, window functions, atomic upserts, transactional guarantees - is what makes the closed-loop scoring and the never-charge-twice billing logic possible.
+Amazon RDS for PostgreSQL holds everything that must survive: user accounts, subscriptions, credit transactions, analysis results, per-agent memory, agent performance scores, delivery tracking, and the full Portfolio Manager state (sessions, trades, and an audit log of every decision). It runs on a single-AZ `db.t4g.micro` with encrypted storage that auto-expands from 20 GB to 50 GB, and 7-day backups in production. The relational feature set - joins, window functions, atomic upserts, transactional guarantees - is what makes the closed-loop scoring and the never-charge-twice billing logic possible.
 
 ### 6.3 DynamoDB as the Speed Layer
 
@@ -176,11 +176,11 @@ DynamoDB handles everything that needs millisecond latency and benefits from aut
 
 ### 6.4 Cost-Efficient by Design
 
-The infrastructure is deliberately lean: no NAT Gateway (Aurora uses a public endpoint with SSL enforcement and security-group restrictions), no managed cache cluster, and serverless compute and database that scale to near-zero at idle. Baseline infrastructure cost is roughly $15–20 per month, with a clear scale-up path as usage grows.
+The infrastructure is deliberately lean: no NAT Gateway (RDS PostgreSQL uses a public endpoint with SSL enforcement and security-group restrictions), no managed cache cluster, Lambda scales to zero, and the database is a single small instance rather than an always-on cluster. Baseline fixed infrastructure cost is roughly $15–25 per month, with a clear scale-up path as usage grows.
 
 ### 6.5 The Market-Level Analysis Pool
 
-Analysis is pooled at the market level, not the user level. The system produces at most one fresh analysis per market per hour, deduplicated through DynamoDB. Per-user delivery is tracked in Aurora so that users pay one credit only when they receive an analysis they have not already seen, and never pay twice for the same result. Recurring schedules from many users on the same market coalesce to the shortest active interval.
+Analysis is pooled at the market level, not the user level. The system produces at most one fresh analysis per market per hour, deduplicated through DynamoDB. Per-user delivery is tracked in RDS PostgreSQL so that users pay one credit only when they receive an analysis they have not already seen, and never pay twice for the same result. Recurring schedules from many users on the same market coalesce to the shortest active interval.
 
 The effect on unit economics is significant: when many users request the same popular market in the same window, the system runs one analysis and serves it to all of them, while still attributing a credit per delivery. Cost scales with the number of distinct markets analyzed, not with the number of users requesting - which is what makes the platform viable at scale.
 

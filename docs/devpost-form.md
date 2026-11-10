@@ -6,11 +6,11 @@ Copy-paste fields for the Devpost submission form. Replace every `TODO` before s
 
 ## Project name
 
-**TradeWizard**
+**TradeWizard Operations Portal**
 
 ## Elevator pitch (≤ 200 characters)
 
-Fourteen AI agents analyze prediction markets, three deterministic gates decide whether to trade, and a bounded-autonomy Portfolio Manager executes inside hard limits. Built spec-first with Kiro.
+The audited control plane for a live AI prediction-market platform: four-role RBAC, append-only audit, a fail-closed kill switch, runtime settings, support, and newsletter. Built with Kiro.
 
 ## Category
 
@@ -21,52 +21,59 @@ Fourteen AI agents analyze prediction markets, three deterministic gates decide 
 | Field | Value |
 |-------|-------|
 | Public GitHub repository | https://github.com/balojey/tradewizard-kiroween |
-| Live app URL | `TODO: deployed Amplify URL` |
+| Live app URL | https://admin.tradewizard.live |
 | Demo video (YouTube, public) | `TODO: https://youtu.be/...` |
 | Blog post (optional bonus) | `TODO` |
 | Social post (optional bonus) | `TODO` |
 
 ## Short description
 
-TradeWizard is the intelligence layer for real-world prediction markets. A user requests analysis on any Polymarket market and an 11-stage workflow runs fourteen specialized AI agents in parallel. Their signals are fused, debated, and then passed through three deterministic, non-LLM gates. If the agents disagree above a hard threshold, or expected value is non-positive, the system returns `NO_TRADE` with a machine-readable reason instead of inventing a trade.
+TradeWizard is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. Operating that from the AWS console is unsafe and slow.
 
-For Pro and Elite users, an optional autonomous Portfolio Manager can execute inside guardrails the user pre-approves. The decision agent has read-only tools; a separate executor enforces mandatory stop-loss and take-profit, per-session and cross-session loss caps, cooldowns, and a fail-closed kill switch.
+The TradeWizard Operations Portal is the separate internal product built to operate it. A Next.js 16 app with its own admin API, Cognito identity, four-role RBAC, and an append-only audit trail. Every mutation requires a reason and writes an audit row before the side effect. Operators can inspect users, analyses, portfolio sessions, billing, agents, queues, and markets; run a fail-closed per-user kill switch; pause or terminate sessions; grant credits and plan overrides; requeue or refund analyses; change audited runtime settings; handle support tickets; and compose the newsletter.
 
-The platform is serverless on AWS, with on-chain USDC.e billing on Polygon, passwordless Cognito auth, real-time delivery over WebSocket, email, push, and webhook, and a Next.js 16 trading terminal. It is a Kiroween Frankenstein build: multi-agent inference, deterministic TypeScript, serverless infrastructure, on-chain payments, and a modern frontend, stitched together by Kiro specs, steering, hooks, and MCP.
+The portal never holds wallet keys, signs transactions, or calls the CLOB. It is a control surface, not a second business-logic layer.
 
 ## Full description
 
-Use [docs/kiroween-submission.md](kiroween-submission.md) for the Devpost text description, or [docs/devpost-submission.md](devpost-submission.md) for the long-form technical narrative.
+Paste `docs/devpost-submission.md` into the Devpost description field. It follows Devpost’s section order, contains absolute GitHub links, and is under the 5,000-word limit. The internal category write-up is [docs/kiroween-submission.md](kiroween-submission.md).
 
 ## How we used Kiro
 
 Use [docs/kiro-usage.md](kiro-usage.md) for the full write-up. The short version:
 
-- **Spec-driven development.** Thirty-four specs under `.kiro/specs/` define the agent league, 11-stage workflow, autonomous Portfolio Manager, wallet subscriptions, delivery frontend, admin API, management portal, and memory system. Most follow requirements → design → tasks with an ordered task list.
-- **Steering.** Four documents under `.kiro/steering/` encode the product model, package boundaries, technical invariants, and submission rules. The most important rule is negative: deterministic stages contain no model calls.
-- **Agent hooks.** Five hooks under `.kiro/hooks/` typecheck each package on save, run an agent review when a deterministic gate changes, and close out completed spec tasks.
-- **MCP.** `.kiro/settings/mcp.json` connects the agent to Magic Link and Polymarket documentation so integration details are verified rather than recalled.
-- **Honest scope.** We do not claim Kiro Crew, CLI, Web, powers, custom agents, or property-based testing; the repository does not contain evidence for them.
+- **Specs.** The portal is specified and documented by two specs: `admin-portal-foundation` (package isolation, auth/MFA, RBAC, audit spine, admin API, read surfaces, shell) and `admin-portal-operations` (mutation envelope, kill switch, session controls, membership, settings, support, newsletter). Each has requirements, a design, and an ordered task list.
+- **Steering.** Four documents under `.kiro/steering/` encode the product model, package boundaries, technical invariants, and submission rules. The most important rule is negative: deterministic analysis stages contain no model calls.
+- **Agent hooks.** Five hooks, including `admin-typecheck` for the portal, `analysis-gate-guard` for changes that reach into the analysis pipeline, and `spec-task-followthrough` to close tasks and reconcile docs.
+- **MCP.** `.kiro/settings/mcp.json` connects the agent to Magic Link and Polymarket documentation so auth and market contracts are verified, not recalled.
+- **Property-based testing.** `fast-check` covers the authorization invariants: role ranking, group resolution, `requireRole` across every role pair, the fresh-auth window, and bearer extraction.
+- **Honest scope.** We do not claim Kiro Crew, CLI, Web, powers, or custom agents; the repository does not contain evidence for them.
 
 ## Built with
 
-Kiro, TypeScript, AWS CDK, AWS Lambda, Amazon Aurora PostgreSQL Serverless v2, DynamoDB, SQS, SNS, EventBridge, API Gateway, Cognito, S3, CloudWatch, Amazon Bedrock, Nebius Token Factory, Strands Agents SDK, Next.js 16, React 19, Tailwind CSS 4, TanStack Query, Zod, Vitest, Remotion, Polymarket CLOB and Gamma APIs, viem, Safe, USDC.e on Polygon, Resend, NewsData.io, Serper.
+Kiro, TypeScript, Next.js 16, React 19, Tailwind CSS 4, TanStack Query, Amazon Cognito, API Gateway, AWS Lambda, Amazon RDS for PostgreSQL, Amazon DynamoDB, Amazon S3, Amazon EventBridge, Amazon SNS, Amazon CloudWatch, AWS Secrets Manager, AWS IAM, AWS Amplify Hosting, AWS CDK, Zod, Vitest, Remotion.
+
+Platform context: Amazon Bedrock, Strands Agents SDK, Polymarket CLOB and Gamma APIs, viem, Safe, USDC.e on Polygon, Resend, NewsData.io, Serper.
 
 ## Try it out
 
 ### Judge instructions
 
-1. Open the live app URL.
-2. Sign in with the test account below (Magic Link auth; the inbox is monitored for the demo).
-3. Open **Markets**, choose a live Polymarket market, and click **Analyze**.
-4. Wait for the 14 agent signals and open the result detail. Scroll to the thesis, cross-examination, and final recommendation.
-5. Open **Portfolio Manager** to see session activation, guardrails, and the kill switch.
+1. Open https://admin.tradewizard.live.
+2. Sign in with the test account below. The portal uses email + password + TOTP; the demo account’s TOTP is provided with the credentials.
+3. Start at **Overview**, then open **Users** and search for the demo customer.
+4. Open **Analyses** to inspect a result, its quality panel, and the payload viewer.
+5. Open **Portfolio** to see a session, its decisions, and the kill-switch control.
+6. Open **Settings** to see runtime settings with their named consumers.
+7. Open **Audit** to see the append-only record of every mutation.
 
 ### Test credentials
 
 ```
 Email: TODO
-Demo tier: TODO (Pro recommended, so the Portfolio Manager is visible)
+Password: TODO
+TOTP secret / current code: TODO
+Demo role: TODO (owner recommended, so Settings and Members are visible)
 ```
 
 Do not put real credentials in the repository. Enter them only in the Devpost form, which is visible to judges.
@@ -75,17 +82,18 @@ Do not put real credentials in the repository. Enter them only in the Devpost fo
 
 ```bash
 cd infra && npm install && cp .env.example .env.dev && ./deploy.sh up dev
-cd ../tradewizard-frontend && npm install && cp .env.example .env.local && npm run dev
+cd ../tradewizard-admin && npm install && cp .env.example .env.local && npm run dev
 ```
 
-Full setup: [README.md](../README.md).
+The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md).
 
 ## Demo video
 
 - Script: [docs/devpost-vo-script.md](devpost-vo-script.md)
 - Metadata: [docs/youtube-description.md](youtube-description.md)
 - Runtime target: 2:45, hard cap 3:00.
-- Must show the app working end-to-end: market discovery → analysis → agent signals → deterministic decision (including a `NO_TRADE`) → Portfolio Manager and kill switch → Kiro panel.
+- Show the portal at `https://admin.tradewizard.live`: login/MFA → overview → users → analyses → session and kill switch → settings and audit → support → newsletter → Kiro specs and hooks.
+- Mention the platform at `https://tradewizard.live` only as the system the portal operates. Do not present the platform as the new build.
 
 ## Bonus prize eligibility
 
@@ -104,9 +112,10 @@ Full setup: [README.md](../README.md).
 - [ ] Repository is public and the About section shows the MIT license
 - [ ] `.kiro/` is present at the root and not gitignored
 - [ ] No `.env`, secrets, `node_modules`, `.next`, or `cdk.out` committed
-- [ ] Live app URL works in an incognito window
-- [ ] Test credentials verified
-- [ ] Demo video is public, under 3:00, and plays end-to-end
+- [ ] Operations portal URL works in an incognito window
+- [ ] Test credentials and TOTP verified
+- [ ] Demo video is public, under 3:00, and shows the portal end-to-end
+- [ ] Description pasted from `docs/devpost-submission.md` (under the 5,000-word limit)
 - [ ] Category set to Frankenstein
 - [ ] Kiro write-up added to the form
 - [ ] Bonus prize fields completed or intentionally skipped

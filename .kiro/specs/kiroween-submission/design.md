@@ -2,73 +2,101 @@
 
 ## Overview
 
-The submission is a documentation and packaging layer over the existing TradeWizard product. No analysis, execution, or billing behavior changes. The design has four parts:
+The submission is a documentation and packaging layer around the existing Operations Portal. No product or portal behavior changes. The design has five parts:
 
-1. **Repository hygiene** - copy the working tree without build artifacts, add an MIT license, confirm `.kiro` is tracked.
-2. **Kiro evidence** - keep the 31 existing specs and 3 steering documents, add five hooks, and document the MCP configuration.
-3. **Narrative** - recast the product as a Frankenstein build in the root README and a dedicated submission write-up.
-4. **Presentation** - rewrite the voiceover script and YouTube description around a sub-three-minute demo, and add a Devpost checklist.
+1. **Framing** - the portal is the new artifact; the platform is context.
+2. **Canonical documents** - one Devpost entry, one internal write-up, one Kiro evidence document.
+3. **Video** - a portal-first demo under three minutes.
+4. **Repository eligibility** - license, `.kiro`, no secrets, no old beta artifact.
+5. **Consistency** - the README, form pack, script, and YouTube description agree.
 
-## Architecture of the submission
+## Canonical document map
 
 ```
-tradewizard-kiroween/
-├── LICENSE                               # MIT, detected by GitHub
-├── README.md                             # product + Kiroween framing + quick start
-├── .kiro/
-│   ├── specs/                            # 34 specs; requirements → design → tasks
-│   ├── steering/                         # product, structure, tech, kiroween
-│   ├── hooks/                            # 5 functional hooks
-│   └── settings/mcp.json                 # Magic Link + Polymarket docs MCP
-├── docs/
-│   ├── kiroween-submission.md            # Devpost text description
-│   ├── kiro-usage.md                     # judge-facing Kiro write-up
-│   ├── devpost-submission.md             # long-form product story
-│   ├── devpost-vo-script.md              # <3 min voiceover
-│   └── youtube-description.md            # video metadata
-├── infra/                                # CDK + Lambda backend
-├── tradewizard-frontend/                 # Next.js product UI
-├── tradewizard-admin/                    # internal management portal
-└── remotion/                             # demo video compositions
+docs/
+├── devpost-submission.md      # Canonical Devpost entry (under 5,000 words, absolute links)
+├── kiroween-submission.md     # Internal category write-up
+├── kiro-usage.md              # Judge-facing Kiro evidence
+├── devpost-form.md            # Form fields, test instructions, checklist
+├── devpost-vo-script.md       # Portal demo shot list + voiceover
+├── youtube-description.md     # Title, description, chapters
+├── admin-portal-architecture.md
+└── admin-portal-runbook.md
 ```
 
-## Key decisions
+`README.md` is portal-first. It names the portal as the submission, describes the portal, and keeps the platform in a short context section.
 
-### Category: Frankenstein
+## Portal-first framing
 
-The product is a genuine chimera: model inference from multiple providers, deterministic TypeScript gates that overrule the models, a serverless AWS substrate, on-chain payments on Polygon, and a Next.js terminal. The category claim is defensible without changing the product.
+### What is claimed as new
 
-### Kiro evidence over invented history
+- The `tradewizard-admin/` Next.js application
+- The admin API, authorizer, and audit spine
+- The four-role RBAC and MFA flow
+- The kill switch, session controls, account operations, and analysis operations
+- Runtime settings with named consumers
+- The support inbox and newsletter operations
+- The PWA cache policy
+- The two Kiro specs that define the portal
 
-The repository already contains 33 product specs, 3 steering documents, and MCP configuration. The submission adds hooks that run real commands and a steering document that encodes the submission rules. The Kiro write-up describes only these artifacts and does not claim Crew, CLI, Web, powers, or property-based testing.
+### What is context
 
-### Hooks
+- The fourteen-agent analysis pipeline
+- The customer frontend
+- On-chain billing and the Portfolio Manager
+- The platform's data model and existing services
 
-| Hook | Trigger | Action | Why |
-|------|---------|--------|-----|
-| `infra-typecheck` | `PostFileSave` on `infra/**/*.ts` | `tsc --noEmit` | Catch backend type drift before deploy |
-| `frontend-typecheck` | `PostFileSave` on frontend TS/TSX | `tsc --noEmit` | The frontend has no test runner; typecheck is the safety net |
-| `admin-typecheck` | `PostFileSave` on admin TS/TSX | `tsc --noEmit` | Keep the separate admin package honest |
-| `analysis-gate-guard` | `PostFileSave` on gate files | Agent prompt | Preserve determinism and NO_TRADE reasons |
-| `spec-task-followthrough` | `PostTaskExec` | Agent prompt | Close the loop between tasks.md and the code |
+The entry must not imply the platform was built during the submission period.
 
-### License
+## Devpost entry
 
-MIT with `Copyright (c) 2026 TradeWizard`. Required for Kiroween eligibility and consistent with the project's intent to publish the source for judging.
+`docs/devpost-submission.md` follows the Devpost section order and includes:
 
-### Demo
+- The problem: operating a live trading platform from the console is unsafe
+- The portal: observe, control, configure, account
+- Why Frankenstein: the stitched technologies and the contract between them
+- How Kiro built it: the two specs, steering, hooks, MCP
+- How it works: auth, RBAC, audit, kill switch, settings, support, newsletter, PWA, AWS map
+- Challenges, accomplishments, lessons, next steps
+- Kiro usage summary, built-with list, links
 
-The existing Remotion compositions render product UI sequences at 1600×1000 and 900×1125. The final demo is a screen recording of the live app, optionally intercut with Remotion clips. The script allocates:
+Constraints: under 5,000 words, absolute links, no Nebius, no old beta site.
 
-- 0:00–0:20 problem and category
-- 0:20–0:50 market discovery and analysis request
-- 0:50–1:35 agent signals, debate, deterministic gates
-- 1:35–2:20 Portfolio Manager and kill switch
-- 2:20–2:50 Kiro evidence and close
+## Video
+
+Target 2:45, hard cap 3:00.
+
+| Time | Beat |
+|------|------|
+| 0:00 | Portal login; the problem |
+| 0:08 | TOTP and role enforcement |
+| 0:20 | Overview |
+| 0:32 | Users |
+| 0:45 | Analyses |
+| 1:00 | Portfolio session |
+| 1:10 | Kill switch |
+| 1:25 | Runtime settings and audit |
+| 1:40 | Support |
+| 1:55 | Newsletter |
+| 2:10 | Audit + RBAC |
+| 2:25 | PWA + Kiro artifacts |
+| 2:45 | Close |
+
+The platform appears only as the system being operated. The old beta site is not shown.
+
+## Kiro evidence
+
+- `admin-portal-foundation` and `admin-portal-operations` specs
+- Four steering documents
+- Five hooks, including `admin-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough`
+- Two active MCP servers
+- `fast-check` property tests for role ranking, group resolution, `requireRole`, fresh-auth, and bearer extraction
+- Example-based Vitest coverage for the remaining portal behavior
 
 ## Risks
 
-- **Stale docs**: the repo's READMEs are partially stale. The submission docs use `.kiro/steering/` and current code as the source of truth.
-- **Model claims drift**: model IDs are environment-driven. The submission docs describe capability routing rather than naming every model.
-- **Overclaiming Kiro**: the write-up is limited to artifacts a judge can inspect.
-- **Demo length**: the script is timed to 2:50 to leave margin under the three-minute cap.
+- **Overclaiming the platform**: the entry must keep the platform in context.
+- **Eligibility**: only the portal is claimed as new work.
+- **Word limit**: the canonical entry must stay under 5,000 words.
+- **Old beta artifact**: do not link or show it.
+- **Duplicate docs**: `devpost-submission.md` is canonical; `kiroween-submission.md` is internal.

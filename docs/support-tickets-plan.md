@@ -57,7 +57,7 @@ pages as part of support work.
 
 ---
 
-## 3. Data model (Aurora)
+## 3. Data model (RDS PostgreSQL)
 
 Appended to the single consolidated, idempotent `infra/sql/001-schema.sql`. No new
 `NNN-*.sql` file — `deploy.sh` only runs that one.

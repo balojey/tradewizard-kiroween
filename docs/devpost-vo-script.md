@@ -1,8 +1,10 @@
-# TradeWizard - Kiroween 2026 Demo Script
+# TradeWizard Operations Portal - Kiroween 2026 Demo Script
 
 **Target runtime:** 2:45 · **Hard cap:** 3:00
 **Category:** Frankenstein
-**Tone:** Calm, technical, slightly ominous. Halloween framing without costume props.
+**Subject:** the Operations Portal, not the platform it operates.
+
+The video should feel like an incident console, not a marketing site. Open on the portal, show real controls, and let the product appear only as the thing being operated.
 
 ---
 
@@ -10,58 +12,60 @@
 
 | Time | On screen | Action |
 |------|-----------|--------|
-| 0:00 | Title card / market grid | Open on the problem, not a logo. Slow push into the live markets view. |
-| 0:18 | Markets page | Hover a live Polymarket market, open it. |
-| 0:28 | Market detail | Click **Analyze**. Show the credit balance decrement. |
-| 0:35 | Analysis progress | Show agents reporting in; keep the agent grid visible. |
-| 0:50 | Results - agent signals | Scroll the fourteen signals. Pause on two that disagree. |
-| 1:00 | Results - thesis / debate | Show bull and bear theses and the cross-examination scores. |
-| 1:20 | Results - final recommendation | Show entry, target, stop, EV, confidence. Then cut to a `NO_TRADE` example with its reason. |
-| 1:40 | Portfolio Manager | Open the session activation form; show persona, capital, guardrails. |
-| 1:55 | Portfolio dashboard | Show an open position, stop-loss, take-profit, and the kill switch. |
-| 2:10 | Kill switch confirmation | Show the fail-closed copy. Do not actually execute unless using a demo account. |
-| 2:20 | Architecture / terminal | Optional cut to a simple architecture overlay. |
-| 2:35 | Kiro panel | Open one spec, one steering file, and the Agent Hooks list. |
-| 2:45 | End card | Product name + repo URL. |
+| 0:00 | `admin.tradewizard.live` login | Hold on the “Operations portal” copy. Lower third: **TradeWizard Operations Portal**. |
+| 0:08 | Sign-in | Email → password → TOTP. Show the error path for a protected action without a fresh token, then recover. |
+| 0:20 | Overview | Metrics: signups, analyses, revenue, active PM sessions, realized P&L, error trend. |
+| 0:32 | Users | Search a user; show credits, analyses, sessions, payments, notes, plan, status. |
+| 0:45 | Analyses | Open an analysis; show quality, no-trade reason, payload, then requeue/refund controls. |
+| 1:00 | Portfolio | Open a live session; show trades, decisions, P&L. |
+| 1:10 | Kill switch | Show the confirmation, the synchronous halt, and the asynchronous exit result. Do not execute unless using a demo account. |
+| 1:25 | Settings | Show a runtime setting with its named consumer, change it with a reason, then show the audit row. |
+| 1:40 | Support | Open a ticket; show context snapshot, claim, reply, internal note. |
+| 1:55 | Newsletter | Compose from a template, preview, show subscriber/suppression list. |
+| 2:10 | Audit + roles | Show the append-only log; switch to an analyst view and show mutations disappear. |
+| 2:25 | PWA + Kiro | Show the install prompt, then the two portal specs, steering, and hooks. |
+| 2:45 | End card | Portal URL + repo URL. |
 
 ---
 
 ## Full version (≈ 2:45)
 
-Prediction markets turn the world's information into a single number: a probability. In theory, anyone can trade them. In practice, almost nobody can trade them well. Pricing an outcome means doing five jobs at once - news, polling, order flow, narrative, and timing. TradeWizard does those five jobs, then refuses to trade when the evidence does not hold.
+This is TradeWizard: a live prediction-market platform with fourteen AI agents, autonomous execution, on-chain billing, support, and a newsletter.
 
-We built it for Kiroween's Frankenstein category, because it is genuinely stitched together: fourteen AI specialists, three deterministic gates, a serverless AWS backend, an on-chain payment rail, and this Next.js terminal. The stitching is Kiro.
+But a live trading system is only as safe as the people operating it. This is the product built to do that: the TradeWizard Operations Portal.
 
-I pick a live Polymarket market and request an analysis. Fourteen agents run in parallel - microstructure, news, polling, sentiment, momentum, tail risk. Each returns a typed signal.
+A separate internal Next.js app with its own API, identity, audit trail, and deployment. Sign-in is Cognito email, password, and TOTP on a dedicated admin client. Four roles - analyst, support, admin, owner - are enforced by the API on every request. Hiding a button is not the security boundary.
 
-Then comes the part most AI trading apps skip: three deterministic gates. Signal fusion de-biases each agent against its own calibration and weights it by historical accuracy. A bull and a bear thesis each face five adversarial tests. The consensus engine applies an edge floor from spread and slippage, two standard errors of noise, and a divergence cap. If disagreement crosses thirty percent, or expected value is not positive, the answer is no trade - with a reason code, not a vibe.
+The overview shows signups, analyses, revenue, active sessions, realized P&L, and error trend. Users gives support credits, analyses, sessions, payments, notes, plan, and status without a database session.
 
-That refusal is the product. A system that always answers teaches you to stop thinking.
+Analyses shows the full payload, no-trade reason, live-versus-shadow performance, and controls to invalidate a cache, refund every recipient, or requeue a market. Requeue clears the in-flight state atomically, so a concurrent request cannot create a duplicate run.
 
-When the evidence holds, the recommendation carries an entry zone, a target, a mandatory stop-loss, expected value, and the full reasoning chain.
+Portfolio shows sessions, trades, decisions, and P&L. The kill switch is per-user and two-phase: a synchronous halt stops new entries before the response, then an asynchronous exit. If the exit fails, the halt remains and the response says so. The safe direction is stopping.
 
-For Pro and Elite there is the Portfolio Manager. I choose the market, the capital, and a persona. The agent can decide, but it cannot place an order. A separate executor enforces mandatory stop-loss and take-profit, loss caps, cooldowns, and this kill switch, which exits everything and fails closed.
+Settings is runtime configuration. Every switch names its consumer: pause analysis, edit the maintenance message, override the AI provider, or pause new Portfolio Manager activations. Changes are owner-only, fresh-auth, reason-required, and audited.
 
-Under the hood: Lambda, Aurora, DynamoDB, SQS, and SNS. One analysis per market is shared across users, so cost scales with markets, not traffic. Every recommendation is scored after it resolves, and every agent's accuracy feeds back into the next analysis.
+Support is the customer queue: tickets carry the analysis or session context, a tokenised thread, and an honest SLA. Newsletter adds typed templates, production preview, owner-only send, subscriber suppression, and signed bounce webhooks.
 
-Kiro built it with us. Thirty-four specs, four steering documents, five hooks that typecheck each package and guard the deterministic gates, and MCP servers for the Polymarket and Magic Link docs.
+Underneath it all, the audit log: every mutation writes an append-only row before the side effect, with who, what, why, before, after, and request id. Triggers reject edits and deletes.
 
-Fourteen specialists. Three gates. One kill switch. TradeWizard - an AI hedge fund for real-world outcomes, built to know when to stay out.
+The PWA caches only content-hashed assets - never a navigation, API data, or a presigned payload - so a shared machine cannot show the previous operator's shell.
+
+We built it from two Kiro specs: foundation and operations. Four steering documents constrain the work, and hooks typecheck the admin app and guard the deterministic analysis stages it can touch.
+
+The platform is the product. This is the control plane. Two Kiro specs, one audited portal - built to let a team operate a live trading system without guessing.
 
 ---
 
 ## Short version (≈ 75s)
 
-Prediction markets turn the world's information into a probability. Almost nobody trades them well, because pricing an outcome means doing five jobs at once. TradeWizard does those five jobs with fourteen AI specialists, then refuses to trade when the evidence does not hold.
+TradeWizard is a live prediction-market platform. This is the product built to operate it: the TradeWizard Operations Portal.
 
-It is our Kiroween Frankenstein build: fourteen agents, three deterministic gates, a serverless AWS backend, an on-chain payment rail, and a Next.js terminal - stitched together with Kiro.
+A separate internal Next.js app with Cognito email, password, and TOTP; four roles enforced by the API; and an append-only audit row before every mutation.
 
-The agents return typed signals. Fusion calibrates and weights them. Bull and bear theses face ten adversarial tests. The consensus engine applies an edge floor, a noise floor, and a divergence cap. If disagreement crosses thirty percent, or expected value is not positive, the answer is no trade, with a reason code.
+Operators get users, analyses, portfolio sessions, billing, agents, queues, and markets. They can run a fail-closed per-user kill switch, pause or terminate a session, grant credits, requeue an analysis, change audited runtime settings, answer support tickets, and send the newsletter.
 
-When the evidence holds, the recommendation includes entry, target, mandatory stop, expected value, and the full reasoning chain.
+Every switch names the service that reads it. Every destructive action requires a reason and a fresh token. The PWA caches only static assets, never a previous operator's shell.
 
-For Pro and Elite, the Portfolio Manager executes inside guardrails the user pre-approves. The agent decides. A separate executor enforces. The kill switch fails closed.
+Two Kiro specs, foundation and operations, define the whole control plane.
 
-Kiro gave us thirty-four specs, four steering documents, and five hooks that protect the gates.
-
-Fourteen specialists. Three gates. One kill switch. TradeWizard - built to know when to stay out.
+The platform is the product. This is the control plane.
