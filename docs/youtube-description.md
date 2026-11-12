@@ -49,7 +49,9 @@ It also has **Ask Warden**, a read-only AI copilot. It answers incident, support
 • Separate Cognito admin app client: email + password + TOTP
 • Self-service MFA enrolment with QR code
 • Four cumulative roles: analyst, support, admin, owner
-• Request authorizer computes the role; every handler re-checks it
+• Request authorizer reads live Cognito group membership, not the token snapshot
+• Warden-only `+warden` aliases; the product refuses `+tag` addresses
+• Role-carrying invite links with expiry, use caps, and one-click revoke
 • Destructive actions require a token fresher than 10 minutes
 • The last owner cannot be removed (`409 LAST_OWNER`)
 

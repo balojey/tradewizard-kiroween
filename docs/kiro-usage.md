@@ -178,6 +178,7 @@ The portal and its backend use **Vitest**:
 - `services/shared/admin-auth.property.test.ts` uses `fast-check` for the invariants: role ranking, group-to-role resolution, order independence, `requireRole` across every role pair, the fresh-auth window, and bearer-token extraction. Each property runs 100-300 generated cases.
 - `services/shared/audit-chain.test.ts`, `services/admin-api/lib/audit-chain.test.ts`, and `services/admin-api/lib/audit.integration.test.ts` cover canonical hashing, completion hashes, concurrent inserts, backfill idempotency, and first-broken-row verification.
 - `services/admin-api/routes/copilot.test.ts` and `services/admin-copilot/lib/*.test.ts` cover role scoping, citation validation, prompt construction, redaction, context building, and the no-execution boundary.
+- `services/shared/invite-token.test.ts`, `admin-email.test.ts`, `email-policy.test.ts`, `temp-password.test.ts`, and `services/admin-join/handler.test.ts` cover invite-link hashing, `+warden` aliasing, plus-tag rejection, one-time passwords, and the public join path.
 - Focused tests cover kill-switch state, session controls, settings fallback/cache, support claim/reply concurrency, newsletter idempotency, and webhook signatures.
 - `npx tsc --noEmit` in `tradewizard-admin/` is the UI safety net; `admin-typecheck` runs it on save.
 
@@ -221,6 +222,8 @@ npm run synth:dev
 | Audit chain code | `infra/services/shared/audit-chain.ts`, `infra/services/admin-api/lib/audit-chain.ts`, `infra/scripts/backfill-audit-chain.ts` |
 | Admin copilot spec | `.kiro/specs/admin-copilot/` |
 | Admin copilot code | `infra/services/admin-copilot/`, `infra/services/admin-api/routes/copilot.ts`, `tradewizard-admin/components/copilot/` |
+| Invite links and aliases | `infra/services/admin-api/routes/invite-links.ts`, `infra/services/shared/invite-token.ts`, `admin-email.ts`, `email-policy.ts`, `infra/services/admin-join/` |
+| Live authorization | `infra/services/admin-authorizer/handler.ts`, `infra/services/shared/admin-auth.ts` |
 | Testing | `infra/services/shared/admin-auth.property.test.ts` (fast-check), the audit-chain suites, the copilot suites, and the focused Vitest suites |
 | License | `LICENSE` |
 

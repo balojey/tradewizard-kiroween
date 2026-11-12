@@ -28,6 +28,8 @@ The portal also carries the support inbox and the newsletter composer. Support t
 
 **Ask Warden.** A read-only AI copilot answers operational questions over audit rows, tickets, analyses, sessions, settings, and metrics. Retrieval is deterministic and role-scoped; one tool-less model call writes an answer with citations to the exact record. Every suggested action is a link to an existing human control. There is no mutation route, no tool loop, and its own `copilot_enabled` kill switch.
 
+**Access and invites.** Every Warden account is created on a `+warden` alias, and the product refuses `+tag` addresses, so an admin identity can never double as a customer account. Owners can mint role-carrying invite links with a lifetime, use cap, and one-click revoke; the token lives in the URL fragment and only its SHA-256 is stored. The authorizer reads live Cognito group membership on every request, so a removal or demotion lands on the next request.
+
 It is installable as a PWA, but the service worker caches only content-hashed static assets. Navigations, API responses, RSC payloads, and presigned S3 URLs are never cached, so a shared machine cannot show a previous operator's shell.
 
 ## Why this is a Frankenstein
@@ -129,7 +131,8 @@ A runtime setting is only allowed if a service reads it in the same change. Read
 ## Accomplishments
 
 - A real control plane for a live trading system: role-gated, reason-required, hash-chained.
-- Four-tier RBAC enforced by the authorizer and re-checked in every handler.
+- Four-tier RBAC enforced by the authorizer from live Cognito membership and re-checked in every handler.
+- Warden-only `+warden` aliases and revocable, expiring, use-capped invite links.
 - An audit spine inserted before the side effect and immutable at the database layer.
 - A fail-closed kill switch with synchronous halt and asynchronous exit.
 - Runtime settings with named consumers.

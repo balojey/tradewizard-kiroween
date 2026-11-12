@@ -27,13 +27,15 @@ The portal is a chimera of systems that normally do not share a body:
 
 The unusual part is the contract between them: the portal can stop a live trading system, but it cannot move money; it can change runtime behavior, but every change names its consumer and lands in an immutable log; it can read sensitive data, but it never holds the keys to act on-chain.
 
-Kiro is the stitching. Two specs define the foundation and the operations layer, four steering documents constrain the work, and hooks verify the parts most likely to drift.
+Kiro is the stitching. Four specs define the foundation, the operations layer, the audit chain, and the read-only copilot; four steering documents constrain the work, and hooks verify the parts most likely to drift.
 
 ## What the portal does
 
 ### Authentication and roles
 
 Admin accounts are dedicated Cognito identities. Sign-in is email + password + TOTP on a separate admin client. MFA enrolment is self-service with a QR code. Sessions use a 30-day refresh token; the UI keeps the session in `localStorage` and writes a presence-only cookie for the route guard. The API authorizer is the security boundary.
+
+Warden accounts are created on a `+warden` alias (`name@example.com` → `name+warden@example.com`), and the product refuses any `+tag` address, so a Warden identity can never double as a customer account. Owners can mint **role-carrying invite links** with a lifetime, use cap, and one-click revoke; the token lives in the URL fragment and only its SHA-256 is stored. The authorizer reads **live Cognito group membership** on every request, so a removal or demotion takes effect on the next request rather than when the ID token expires.
 
 | Role | Rank | Capability |
 |------|------|------------|
@@ -65,7 +67,7 @@ Every mutation writes a hash-chained audit row before the side effect, with acto
 - **Kill switch** - per-user, fail-closed: synchronous DynamoDB halt, asynchronous risk-engine exit, explicit exit-dispatch result
 - **Session controls** - pause, resume, terminate; existing exits and guards stay active while paused
 - **Users** - credit grants, plan overrides with expiry, suspension, support notes
-- **Members** - owner-managed invites, role changes, immediate revocation, MFA enrolment
+- **Members** - owner-managed invites, role-carrying invite links with expiry/use caps/revoke, `+warden` aliases, live group authorization, role changes, immediate revocation, MFA enrolment
 - **Analyses** - cache invalidation, refund every recipient, atomic market requeue
 - **Settings** - audited runtime settings, each with a named consumer
 - **Support** - ticket inbox with context snapshots, claim/reply, tokenised threads
@@ -250,7 +252,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,324 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,443 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist

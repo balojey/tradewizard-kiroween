@@ -124,6 +124,8 @@ shared modules → RDS PostgreSQL / DynamoDB / S3 / CloudWatch
 
 Admin accounts are dedicated Cognito identities. Sign-in is email + password + TOTP on a separate admin client. MFA enrolment is self-service: the portal asks for status, shows a QR code, verifies the code, and records the enrolment only after Cognito confirms the factor.
 
+Warden accounts are created on a `+warden` alias (`name@example.com` → `name+warden@example.com`), and the product refuses any `+tag` address, so a Warden identity can never double as a customer account. Owners can mint role-carrying invite links with a lifetime, use cap, and one-click revoke; the token lives in the URL fragment and only its SHA-256 is stored. The authorizer reads live Cognito group membership on every request, so a removal or demotion takes effect on the next request rather than when the ID token expires.
+
 The four roles are cumulative:
 
 | Role | Rank | Capability |
@@ -185,7 +187,7 @@ The safety design is the feature. Retrieval is deterministic and parameterised, 
 The portal is nine CDK stacks, with the platform as its subject:
 
 - **AWS CDK + CloudFormation** - network, database, auth, storage, queues, notifications, compute, monitoring, and admin.
-- **AWS Lambda (Node.js 20)** - admin API, authorizer, copilot, metrics rollup, support housekeeping, newsletter sender.
+- **AWS Lambda (Node.js 20)** - admin API, authorizer, public join, copilot, metrics rollup, support housekeeping, newsletter sender.
 - **Amazon API Gateway** - the admin REST API with a Cognito request authorizer and access logs.
 - **Amazon Cognito** - the admin app client, four groups, TOTP, and the authorizer.
 - **Amazon RDS for PostgreSQL 18.3** - users, credits, analyses, portfolio sessions, audit, settings, support, newsletter. Single-AZ `db.t4g.micro`, encrypted 20-50 GB, SSL enforced, 7-day production backups.
@@ -219,7 +221,8 @@ The portal is nine CDK stacks, with the platform as its subject:
 ## Accomplishments we are proud of
 
 - **A real control plane for a live trading system.** Not a CRUD dashboard: a role-gated, reason-required, hash-chained operations product.
-- **Four-tier RBAC enforced twice.** The authorizer computes the role; every handler re-checks the minimum.
+- **Four-tier RBAC enforced twice.** The authorizer computes the role from live Cognito membership; every handler re-checks the minimum.
+- **Access that cannot be shared by accident.** Warden accounts live on `+warden` aliases, the product refuses `+tag` addresses, and role-carrying invite links can be capped, expired, and revoked.
 - **An audit spine that proves itself.** Inserted before the side effect, hash-chained, append-only at the database layer, with before/after state and a verifier that names the first broken row.
 - **A fail-closed kill switch.** Synchronous halt, asynchronous exit, explicit failure reporting.
 - **Runtime settings with named consumers.** Pause analysis, pause new Portfolio Manager sessions, or change the provider without a deploy.
