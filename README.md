@@ -252,7 +252,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,443 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,455 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
@@ -283,6 +283,7 @@ tradewizard-kiroween/
 - [x] Frankenstein category rationale
 - [x] Kiro usage write-up with file-level references
 - [ ] Operations portal URL added to the Devpost form
+- [ ] Judge invite link created, tested through first-sign-in TOTP, and revocable
 - [ ] Demo video uploaded to YouTube (under three minutes, public)
 - [ ] Devpost form completed with category and bonus prizes
 

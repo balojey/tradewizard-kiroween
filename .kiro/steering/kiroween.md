@@ -11,6 +11,7 @@ The platform the portal operates is context. The portal is the new artifact. Do 
 - Category: Frankenstein - a separate internal control plane stitched from Next.js, Cognito, API Gateway, Lambda, RDS, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and four Kiro specs.
 - License: MIT (`LICENSE` at repo root, visible in GitHub's About section).
 - Live portal: `https://admin.tradewizard.live`
+- Judge access: an owner/admin invite link with a short expiry and small use cap; revoke it after judging. The link is a bearer credential; never commit it.
 - Platform context: `https://tradewizard.live`
 - Demo video: public YouTube URL, under three minutes, shows the portal working end-to-end.
 - The `/.kiro` directory is a submission artifact. Never add it to `.gitignore`.

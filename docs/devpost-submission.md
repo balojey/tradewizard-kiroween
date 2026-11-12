@@ -273,6 +273,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 
 - **Repository**: https://github.com/balojey/tradewizard-kiroween
 - **Operations portal**: https://admin.tradewizard.live
+- **Judge access**: a role-carrying invite link provided in the Devpost form
 - **Platform it operates**: https://tradewizard.live
 - **Demo video**: _add the public YouTube URL to the Devpost submission form_
 - **Kiro usage write-up**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md

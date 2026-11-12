@@ -22,6 +22,7 @@ The audited control plane for a live AI prediction-market platform: four-role RB
 |-------|-------|
 | Public GitHub repository | https://github.com/balojey/tradewizard-kiroween |
 | Live app URL | https://admin.tradewizard.live |
+| Judge invite link | `TODO: https://admin.tradewizard.live/join#t=...` (owner/admin, 1–25 uses, short expiry, revoke after judging) |
 | Demo video (YouTube, public) | `TODO: https://youtu.be/...` |
 | Blog post (optional bonus) | `TODO` |
 | Social post (optional bonus) | `TODO` |
@@ -59,26 +60,29 @@ Platform context: Amazon Bedrock, Strands Agents SDK, Polymarket CLOB and Gamma 
 
 ### Judge instructions
 
-1. Open https://admin.tradewizard.live.
-2. Sign in with the test account below. The portal uses email + password + TOTP; the demo account’s TOTP is provided with the credentials.
-3. Start at **Overview**, then open **Users** and search for the demo customer.
-4. Open **Analyses** to inspect a result, its quality panel, and the payload viewer.
-5. Open **Portfolio** to see a session, its decisions, and the kill-switch control.
-6. Open **Settings** to see runtime settings with their named consumers.
-7. Open **Audit** to see the hash-chained record of every mutation; click **Verify chain** and show the verified/broken badge.
-8. Open **Ask Warden** on the Audit or Support page and ask “What changed in the last hour?” or “Summarize this ticket.” Show the citations and the read-only notice.
-9. Open **Members** to see role-carrying invite links, `+warden` aliases, and live access controls.
+**Primary access is the invite link above.** It is a role-carrying Warden link; no shared password is needed.
 
-### Test credentials
+1. Open the judge invite link from this form. It lands on `https://admin.tradewizard.live/join#t=…`.
+2. Enter an email address you can access. The page shows the exact `+warden` address you will sign in with.
+3. Check that inbox for the one-time password from Resend.
+4. Sign in with the `+warden` address, choose your own password, then enrol an authenticator (TOTP).
+5. The portal opens with the role carried by the link. Start at **Overview**, then open **Users** and search for the demo customer.
+6. Open **Analyses** to inspect a result, its quality panel, and the payload viewer.
+7. Open **Portfolio** to see a session, its decisions, and the kill-switch control.
+8. Open **Settings** to see runtime settings with their named consumers.
+9. Open **Audit** to see the hash-chained record of every mutation; click **Verify chain** and show the verified/broken badge.
+10. Open **Ask Warden** on the Audit or Support page and ask “What changed in the last hour?” or “Summarize this ticket.” Show the citations and the read-only notice.
+11. Open **Members** to see role-carrying invite links, `+warden` aliases, and live access controls.
 
-```
-Email: TODO
-Password: TODO
-TOTP secret / current code: TODO
-Demo role: TODO (owner recommended, so Settings and Members are visible)
-```
+The link is capped and expiring. Revoke it after judging. If an invite fails, mint a fresh link rather than sharing a password.
 
-Do not put real credentials in the repository. Enter them only in the Devpost form, which is visible to judges.
+### Access notes
+
+- Use a dedicated **owner** or **admin** link for judges; owner is required to see Settings and Members.
+- Keep the lifetime short and the use count small. The link is a bearer credential.
+- The invitee still chooses a password and enrols TOTP on first sign-in. That is the product’s normal access flow, not extra setup.
+- Do not put the invite token in the repository. Put it only in the Devpost form, which is visible to judges.
+- Revoke the link from **Members → Invite links** after judging.
 
 ### Local run
 
@@ -115,7 +119,8 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 - [ ] `.kiro/` is present at the root and not gitignored
 - [ ] No `.env`, secrets, `node_modules`, `.next`, or `cdk.out` committed
 - [ ] Operations portal URL works in an incognito window
-- [ ] Test credentials and TOTP verified
+- [ ] Judge invite link created (owner/admin, short expiry, small use cap) and tested end-to-end, including first-sign-in TOTP
+- [ ] Judge invite link revoked after judging
 - [ ] Demo video is public, under 3:00, and shows the portal end-to-end
 - [ ] Description pasted from `docs/devpost-submission.md` (under the 5,000-word limit)
 - [ ] Category set to Frankenstein

@@ -86,6 +86,19 @@ This spec covers the submission packaging: the repository eligibility, the porta
 #### Acceptance Criteria
 
 1. THE README SHALL link the portal docs, the four portal specs, and the Kiro write-up.
-2. THE Devpost form pack SHALL name the portal, provide the live URL, and list demo credentials as `TODO`.
+2. THE Devpost form pack SHALL name the portal, provide the live URL, and provide a role-carrying judge invite link.
 3. THE Video script, YouTube description, and form pack SHALL use the same portal narrative.
 4. THE Word count in the README and form pack SHALL match `docs/devpost-submission.md`.
+
+### Requirement 7: Judge access
+
+**User Story:** As a judge, I want one working way into the portal, so that I can test it without asking for a shared password.
+
+#### Acceptance Criteria
+
+1. THE Devpost form SHALL provide a role-carrying Warden invite link.
+2. THE Judge link SHALL carry owner or admin access so Settings and Members are visible.
+3. THE Judge link SHALL have a short expiry and a small use cap.
+4. THE Form SHALL explain the first sign-in: choose a password and enrol TOTP.
+5. THE Judge link SHALL be revoked after judging.
+6. THE Invite token SHALL NOT be committed to the repository.

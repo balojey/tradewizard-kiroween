@@ -41,3 +41,8 @@
   - Describe Ask Warden: read-only retrieval, citations, role scoping, no execution path.
   - Add `admin-copilot` as the fourth portal spec.
   - Show Ask Warden and Verify chain in the demo.
+- [x] 12. Make the judge path the invite link
+  - Use a role-carrying owner/admin invite link as the primary access path.
+  - Document first sign-in: choose password, enrol TOTP.
+  - Keep the lifetime short and the use cap small; revoke after judging.
+  - Never commit the invite token.
