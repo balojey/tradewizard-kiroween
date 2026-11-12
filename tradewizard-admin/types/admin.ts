@@ -595,3 +595,52 @@ export interface NewsletterSubscriber {
   suppressedReason: string | null;
   createdAt: string;
 }
+
+// ─── Warden Copilot ───────────────────────────────────────────────────────────
+//
+// Read-only by construction: `suggestedActions` carries links only. There is no
+// execution variant, because the copilot has no mutation path to describe.
+
+export type CopilotKind = "incident" | "support" | "risk_brief" | "analysis" | "session";
+
+export type CopilotCitationType =
+  | "audit"
+  | "ticket"
+  | "analysis"
+  | "session"
+  | "setting"
+  | "metric"
+  | "runbook";
+
+export interface CopilotCitation {
+  type: CopilotCitationType;
+  id: string;
+  label: string;
+  /** Relative portal path. Rendered with `<Link>`, never as HTML. */
+  url: string;
+}
+
+export interface CopilotSuggestedAction {
+  label: string;
+  url: string;
+  kind: "open" | "review";
+}
+
+export interface CopilotAnswer {
+  answer: string;
+  citations: CopilotCitation[];
+  suggestedActions: CopilotSuggestedAction[];
+  confidence: "high" | "medium" | "low";
+  limitations: string | null;
+  model: string;
+  generatedAt: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostUsd: number;
+  };
+}
+
+export interface CopilotStatus {
+  enabled: boolean;
+}

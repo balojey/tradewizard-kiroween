@@ -84,6 +84,27 @@ export const SETTINGS: Record<string, SettingDefinition> = {
     description: 'Shown to users when analysis is paused.',
     consumer: 'analysis-request',
   },
+  // ─── Warden Copilot ─────────────────────────────────────────────────────────
+  // The copilot is read-only by construction (it has no mutation route and no
+  // tool loop), but it still spends money, so it gets its own kill switch.
+  // Turning this off hides the UI panels and makes the API answer 503.
+  copilot_enabled: {
+    key: 'copilot_enabled',
+    type: 'boolean',
+    defaultValue: true,
+    description:
+      'Offer the read-only Warden Copilot. When off, the portal hides every Ask Warden panel and the API refuses requests.',
+    consumer: 'admin-api (copilot routes) + admin-copilot',
+  },
+  copilot_daily_limit: {
+    key: 'copilot_daily_limit',
+    type: 'string',
+    defaultValue: '100',
+    description:
+      'Maximum copilot requests per operator per UTC day. Raise cautiously: every request is one model call.',
+    consumer: 'admin-api (copilot routes)',
+    allowed: ['25', '50', '100', '200', '500'],
+  },
 };
 
 const CACHE_TTL_MS = 60_000;

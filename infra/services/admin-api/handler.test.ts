@@ -100,6 +100,7 @@ const {
     checkInFlight: vi.fn(),
     markInFlight: vi.fn(),
     clearInFlight: vi.fn(),
+    incrementCounter: vi.fn(),
   },
   sqsMock: {
     send: vi.fn(),
@@ -110,6 +111,7 @@ const {
     resetSettingsCacheForTests: vi.fn(),
     warmSettings: vi.fn(),
     getSettingSync: vi.fn(),
+    getSetting: vi.fn(),
     SETTINGS: {},
   },
   killSwitchMock: {
@@ -354,6 +356,12 @@ const ROUTE_MATRIX: Array<{
   { method: 'PUT', path: '/admin/support/tickets/{id}', minimumRole: 'support' },
   { method: 'GET', path: '/admin/bootstrap/status', minimumRole: 'analyst' },
   { method: 'POST', path: '/admin/bootstrap/mfa-enrolled', minimumRole: 'analyst' },
+  { method: 'POST', path: '/admin/copilot/incident', minimumRole: 'analyst' },
+  { method: 'GET', path: '/admin/copilot/status', minimumRole: 'analyst' },
+  { method: 'POST', path: '/admin/copilot/analysis', minimumRole: 'analyst' },
+  { method: 'POST', path: '/admin/copilot/support', minimumRole: 'support' },
+  { method: 'POST', path: '/admin/copilot/session', minimumRole: 'support' },
+  { method: 'POST', path: '/admin/copilot/risk-brief', minimumRole: 'admin' },
 ];
 
 const ALL_ROLES: AdminRole[] = ['analyst', 'support', 'admin', 'owner'];
@@ -486,6 +494,7 @@ beforeEach(() => {
   process.env.RISK_ENGINE_FUNCTION_NAME = 'tw-dev-portfolio-risk-engine';
   process.env.ANALYSIS_QUEUE_URL = 'https://sqs.example/queue';
   process.env.NEWSLETTER_SEND_FUNCTION_NAME = 'tw-dev-newsletter-send';
+  process.env.COPILOT_FUNCTION_NAME = 'tw-dev-admin-copilot';
 
   getUserIdMock.mockReset();
   getUserIdMock.mockResolvedValue('user-uuid-1');
@@ -618,7 +627,23 @@ beforeEach(() => {
   killSwitchMock.activateUser.mockResolvedValue({ active: true, triggeredAt: '2026-11-02T00:00:00.000Z', reason: 'test', ttl: 1 });
   killSwitchMock.resetUser.mockResolvedValue(undefined);
   lambdaMock.send.mockReset();
-  lambdaMock.send.mockResolvedValue({});
+  lambdaMock.send.mockResolvedValue({
+    Payload: Buffer.from(
+      JSON.stringify({
+        ok: true,
+        response: {
+          answer: 'ok',
+          citations: [],
+          suggestedActions: [],
+          confidence: 'low',
+          limitations: null,
+          model: 'test',
+          generatedAt: '2026-01-01T00:00:00.000Z',
+          usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0 },
+        },
+      })
+    ),
+  });
   orderMock.cancelPendingOrders.mockResolvedValue({ cancelled: 1, releasedUsdc: 25 });
 
   sqsMock.send.mockReset();
@@ -627,9 +652,11 @@ beforeEach(() => {
   settingsMock.setSetting.mockResolvedValue(undefined);
   settingsMock.warmSettings.mockResolvedValue(undefined);
   settingsMock.getSettingSync.mockReturnValue('24');
+  settingsMock.getSetting.mockResolvedValue(true);
   dedupMock.checkInFlight.mockResolvedValue(null);
   dedupMock.markInFlight.mockResolvedValue(undefined);
   dedupMock.clearInFlight.mockResolvedValue(undefined);
+  dedupMock.incrementCounter.mockResolvedValue(1);
 
   dedupMock.deleteDedupCache.mockReset();
   dedupMock.deleteDedupCache.mockResolvedValue(2);
@@ -1906,6 +1933,7 @@ describe('audit chain', () => {
         status: 'succeeded',
         from: null,
         to: null,
+        id: null,
       },
       5000,
       null

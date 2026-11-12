@@ -1,6 +1,6 @@
 # tradewizard-admin
 
-> **Kiroween 2026 submission.** This package is the **TradeWizard Operations Portal**: the audited control surface for the live TradeWizard platform. See the [root README](../README.md) and [docs/kiro-usage.md](../docs/kiro-usage.md). The portal is a separate deployment and is never linked from the customer app.
+> **Kiroween 2026 submission.** This package is the **TradeWizard Warden**: the audited control surface for the live TradeWizard platform. See the [root README](../README.md) and [docs/kiro-usage.md](../docs/kiro-usage.md). Warden is a separate deployment and is never linked from the customer app.
 
 Internal management portal for TradeWizard. **Not** part of the customer product:
 it is a separate package, deployed as its own Amplify app, and its routes are

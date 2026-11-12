@@ -13,6 +13,8 @@ export interface AuditFilters {
   status: string;
   from: string;
   to: string;
+  /** Exact row id, used by copilot citation links. */
+  id: string;
 }
 
 /** Shared query string so verification and export cover exactly what is on screen. */
@@ -25,6 +27,7 @@ export function auditFilterParams(filters: AuditFilters): URLSearchParams {
   if (filters.status) params.set("status", filters.status);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
+  if (filters.id.trim()) params.set("id", filters.id.trim());
   return params;
 }
 
@@ -58,6 +61,9 @@ export function useVerifyAuditChain() {
   return useMutation({
     mutationFn: (filters: AuditFilters) => {
       const params = auditFilterParams(filters);
+      // `id` narrows the list to one row; a chain check over a single row would
+      // be meaningless, so verification covers the rest of the filters.
+      params.delete("id");
       const query = params.toString();
       return adminFetch<AuditVerification>(
         query ? `admin/audit/verify?${query}` : "admin/audit/verify",

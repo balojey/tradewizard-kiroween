@@ -1,5 +1,5 @@
 /*
- * TradeWizard Operations — service worker.
+ * TradeWizard Warden — service worker.
  *
  * The portal is an internal control surface, so this worker does the minimum a
  * PWA needs and nothing more:
@@ -28,7 +28,7 @@ const OFFLINE_HTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Offline · TradeWizard Operations</title>
+<title>Offline · TradeWizard Warden</title>
 <style>
   :root { color-scheme: dark; }
   html, body { height: 100%; }

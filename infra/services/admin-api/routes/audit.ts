@@ -22,6 +22,9 @@ import { verifyAuditChain, type VerificationRow } from '../lib/audit-chain';
 
 const STATUSES = ['pending', 'succeeded', 'failed'];
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Verify a bounded window by default; a full-table walk is never implicit. */
 const VERIFY_DEFAULT_LIMIT = 1_000;
 const VERIFY_MAX_LIMIT = 5_000;
@@ -49,6 +52,13 @@ function parseFilters(params: Record<string, string>): AuditFilters {
     throw new HttpError(400, 'BAD_REQUEST', '"from" must be before "to"');
   }
 
+  // Deep link from a copilot citation: one exact row, so the operator can see
+  // the evidence rather than a filtered list that may not contain it.
+  const id = params.id?.trim() || null;
+  if (id && !UUID_PATTERN.test(id)) {
+    throw new HttpError(400, 'BAD_REQUEST', 'Invalid audit id');
+  }
+
   return {
     actor: params.actor?.trim() || null,
     action: params.action?.trim() || null,
@@ -57,6 +67,7 @@ function parseFilters(params: Record<string, string>): AuditFilters {
     status: params.status ?? null,
     from,
     to,
+    id,
   };
 }
 

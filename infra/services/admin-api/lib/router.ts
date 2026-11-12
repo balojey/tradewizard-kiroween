@@ -28,6 +28,7 @@ import { settingsRoutes } from '../routes/settings';
 import { bootstrapRoutes } from '../routes/bootstrap';
 import { supportRoutes } from '../routes/support';
 import { newsletterRoutes } from '../routes/newsletter';
+import { copilotRoutes } from '../routes/copilot';
 
 export interface RouteContext {
   event: AdminApiEvent;
@@ -84,6 +85,7 @@ export const ROUTES: AdminRoute[] = [
   ...bootstrapRoutes,
   ...supportRoutes,
   ...newsletterRoutes,
+  ...copilotRoutes,
 ];
 
 const COMPILED: CompiledRoute[] = ROUTES.map(compile);

@@ -58,6 +58,8 @@ export default function SettingsPage() {
       setReason("");
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ["admin", "settings"] });
+      // The copilot panels appear/disappear based on this probe.
+      void queryClient.invalidateQueries({ queryKey: ["admin", "copilot", "status"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "audit"] });
     },
     onError: (caught: unknown) => setError(caught),

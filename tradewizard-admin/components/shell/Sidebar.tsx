@@ -64,8 +64,8 @@ export function Sidebar({ identity }: { identity?: AdminIdentity }) {
       >
         <LogoMark />
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-medium leading-tight text-fg">TradeWizard</div>
-          <div className="truncate text-[10.5px] leading-tight text-faint">Operations portal</div>
+          <div className="truncate text-[13px] font-medium leading-tight text-fg">TradeWizard Warden</div>
+          <div className="truncate text-[10.5px] leading-tight text-faint">Operations control plane</div>
         </div>
       </Link>
 

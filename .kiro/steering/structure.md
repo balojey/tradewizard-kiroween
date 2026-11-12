@@ -522,3 +522,21 @@ User requests analysis → API Gateway → Lambda (analysis-request)
 - All LLM-dependent tests must complete within 30 seconds
 
 ```
+
+## Admin Portal — Copilot Files
+
+- **Lambda:** `infra/services/admin-copilot/`
+  - `handler.ts` (envelope), `types.ts`
+  - `lib/scope.ts` (role → surfaces), `lib/redact.ts` (untrusted text)
+  - `lib/retrieve-{audit,support,analysis,session,settings,metrics,impact,runbook}.ts`
+  - `lib/build-context.ts`, `lib/prompt.ts`, `lib/citations.ts`
+  - `lib/generate.ts` (provider-aware model), `lib/run.ts`, `lib/db.ts`
+- **API:** `infra/services/admin-api/routes/copilot.ts` (registered in
+  `lib/router.ts`; every route has a `handler.test.ts` RBAC matrix entry).
+- **Portal:** `tradewizard-admin/hooks/useCopilot.ts` and
+  `tradewizard-admin/components/copilot/{CopilotPanel,CopilotAnswer,CitationList,SuggestedActions}.tsx`.
+- **Spec:** `.kiro/specs/admin-copilot/{requirements,design,tasks}.md`.
+
+Adding a copilot surface: add the `kind` to `types.ts`, a framing line in
+`prompt.ts`, a `case` in `build-context.ts`, a route (with minimum role and a
+matrix entry), a `reviewActions` entry, and tests for role scoping.

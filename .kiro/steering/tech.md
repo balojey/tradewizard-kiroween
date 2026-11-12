@@ -360,3 +360,34 @@ npm run lint             # Check linting
 - WebSocket stale connection cleanup (410 Gone → delete from DynamoDB)
 
 ```
+
+## Admin Portal — Warden Copilot (read-only)
+
+The management portal has an AI copilot (`infra/services/admin-copilot`, UI in
+`tradewizard-admin/components/copilot`). It is a **reader, not an operator**:
+
+- **No execution path.** The copilot Lambda has read-only IAM (DB secret read,
+  analysis bucket read, Bedrock invoke) and no mutation route. Its model is
+  created with **no tools**. `suggestedActions` are links (`open`/`review`) to
+  existing human controls; there is deliberately no `execute` variant.
+- **One model call per request.** 20 s timeout, at most one retry on a
+  non-timeout error, 1,200-token output cap (ceiling 2,000). Bounded context
+  (60 records / 48k chars) and a 7-day maximum retrieval window.
+- **Every factual claim is cited.** Retrieval is deterministic and parameterised
+  (audit full-text, tickets, analyses, sessions, settings, metrics). The prompt
+  wraps each record in a delimited, JSON-encoded block and states that record
+  text is untrusted data. Citations are validated against the records actually
+  sent; invented ones are dropped and confidence is lowered.
+- **Role scoping reuses `AdminRole`.** Analyst: audit/analyses/metrics. Support:
+  adds tickets, sessions, customer context. Admin/owner: adds settings. There is
+  no second role model.
+- **Its own kill switch.** `copilot_enabled` hides the UI and returns
+  `503 COPILOT_DISABLED`; `copilot_daily_limit` caps per-actor spend; 10/min.
+- **Not audited as a mutation.** Questions do not write to `admin_audit_log`.
+  Usage is a `CopilotQuery` CloudWatch log line (latency, tokens, cost, citation
+  count — never question text or record content).
+
+Rule: if a proposed copilot feature requires the model to call a mutation route,
+reject it. The product's value is that the human stays in control while the
+context becomes legible. Full design: `.kiro/specs/admin-copilot/` and
+`docs/admin-portal-architecture.md` §18.

@@ -38,6 +38,8 @@ export interface AuditFilters {
   status: string | null;
   from: string | null;
   to: string | null;
+  /** Exact row id, used for deep links from copilot citations. */
+  id?: string | null;
 }
 
 export async function listAuditEntries(
@@ -76,12 +78,13 @@ export async function listAuditEntries(
       AND ($5::text IS NULL OR a.status = $5)
       AND ($6::timestamptz IS NULL OR a.created_at >= $6::timestamptz)
       AND ($7::timestamptz IS NULL OR a.created_at < $7::timestamptz)
+      AND ($8::uuid IS NULL OR a.id = $8::uuid)
       AND (
-        $8::timestamptz IS NULL
-        OR (a.created_at, a.id) < ($8::timestamptz, $9::uuid)
+        $9::timestamptz IS NULL
+        OR (a.created_at, a.id) < ($9::timestamptz, $10::uuid)
       )
     ORDER BY a.created_at DESC, a.id DESC
-    LIMIT $10
+    LIMIT $11
     `,
     [
       filters.actor,
@@ -91,6 +94,7 @@ export async function listAuditEntries(
       filters.status,
       filters.from,
       filters.to,
+      filters.id ?? null,
       cursor?.createdAt ?? null,
       cursor?.id ?? null,
       limit + 1,

@@ -57,7 +57,7 @@ export function Topbar({ identity }: { identity?: AdminIdentity }) {
   return (
     <header className="sticky top-0 z-30 flex min-h-12 shrink-0 items-center justify-between gap-4 border-b border-border bg-rail/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-sm md:px-6">
       <div className="flex min-w-0 items-center gap-2.5">
-        <Link className="lg:hidden" href="/overview" aria-label="TradeWizard overview">
+        <Link className="lg:hidden" href="/overview" aria-label="TradeWizard Warden overview">
           <LogoMark size={20} />
         </Link>
 
@@ -78,7 +78,7 @@ export function Topbar({ identity }: { identity?: AdminIdentity }) {
             )}
           </nav>
         ) : (
-          <span className="truncate text-[11.5px] text-faint">TradeWizard operations</span>
+          <span className="truncate text-[11.5px] text-faint">TradeWizard Warden</span>
         )}
       </div>
 

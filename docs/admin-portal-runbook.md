@@ -535,7 +535,52 @@ because removal and role changes force a global sign-out.
 4. Reset the switch; confirm the DynamoDB item is gone.
 5. Check the audit log for `portfolio.kill_switch.activate` and `.reset`.
 
-### 7.10 Still outstanding
+### 7.11 Warden Copilot
+
+The copilot answers questions from audit rows, tickets, analyses, and sessions.
+It cannot change anything; every suggestion is a link to a control you operate.
+
+**Where it appears**
+
+| Page | What it does |
+|---|---|
+| `/audit` | "What changed in the last hour?", "Who changed settings this week?", "Build a timeline" |
+| `/support/{id}` | "Summarize", "Draft reply" (the draft goes into the composer for you to edit and send) |
+| `/analyses/{id}` | "Explain this verdict", "Why NO_TRADE?" |
+| `/portfolio/{id}` | "Explain this session", "What happened before the exit?" |
+| Terminate / kill-switch dialogs | "Review context": blast radius and recent related actions |
+
+**It is grounded, and that is checkable.** Click a citation chip and you land on
+the exact audit row, ticket, analysis, or session. If an answer cites nothing,
+treat it as a hint, not a finding.
+
+**Switching it off.** Settings → `copilot_enabled` → off. The panels disappear
+from the portal and every copilot endpoint returns `503 COPILOT_DISABLED`. The
+rest of the portal is unaffected. Copilot is the only feature whose outage is by
+design a no-op for incident response.
+
+**Limits and cost.** 10 questions per minute and `copilot_daily_limit` (default
+100) per operator per UTC day. Exceeding either returns `429`; the UI shows the
+limit and the retry hint. Each request is one model call. Look for the
+`CopilotQuery` log line in `tw-{env}-admin-copilot` for latency, record count,
+citation count, token usage, and estimated cost. There is no per-question audit
+row by design (reads are not mutations).
+
+**When it fails**
+
+| Symptom | Cause | Action |
+|---|---|---|
+| `503 COPILOT_DISABLED` | `copilot_enabled` is off | Owner re-enables it in Settings |
+| `429` | Minute/day budget | Wait, or raise `copilot_daily_limit` |
+| `502 UPSTREAM_FAILED` | Model timeout or provider error | Retry once; check the function's logs and `AI_PROVIDER` |
+| `confidence: low` / "could not be matched" | The model tried to cite records it was not given; those citations were removed | Answer narrower questions or widen the window |
+| Empty answer with "No matching records" | The window really is empty | Widen the window or clear the target filters |
+
+**Model choice.** `COPILOT_MODEL_ID` (Bedrock) or `NEBIUS_MODEL_NON_TOOL`
+(Nebius) selects the model; `COPILOT_MAX_TOKENS` caps the answer (clamped to
+2,000). The copilot follows the same `AI_PROVIDER` switch as the pipeline.
+
+### 7.12 Still outstanding
 
 - **DLQ inspect + redrive** — use the AWS console; the portal shows depth only.
 - **Payment reconciliation** — mutations exist for trial extension only.

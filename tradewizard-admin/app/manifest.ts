@@ -10,10 +10,10 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "TradeWizard Operations",
-    short_name: "TW Ops",
+    name: "TradeWizard Warden",
+    short_name: "Warden",
     description:
-      "Internal management portal for TradeWizard: analyses, accounts, billing and autonomous portfolio managers.",
+      "Operations control plane for TradeWizard: analyses, accounts, billing and autonomous portfolio managers.",
     start_url: "/overview",
     scope: "/",
     display: "standalone",

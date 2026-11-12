@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { ReauthNotice, errorMessage, isReauthRequired } from "@/components/auth/ReauthNotice";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
 import { adminFetch } from "@/lib/admin-api";
 import { useAdminAuth } from "@/providers/AdminAuthProvider";
 import { hasRole, type AdminIdentity } from "@/constants/roles";
@@ -130,6 +131,22 @@ export function KillSwitchControl({
           error={isReauthRequired(error) ? undefined : errorMessage(error)}
           autoFocus
         />
+
+        <div className="mt-3">
+          <CopilotPanel
+            compact
+            kind="risk_brief"
+            title="Review context"
+            description="What this halt touches, and what has happened to this account recently. Read-only; it does not block or perform the halt."
+            context={{
+              action: "portfolio.kill-switch.activate",
+              targetType: "user",
+              targetId: userId,
+            }}
+            questionEnabled={false}
+            prompts={[{ label: "Review context" }]}
+          />
+        </div>
 
         <ReauthNotice error={error} />
       </Dialog>

@@ -14,6 +14,7 @@ import { Notice } from "@/components/ui/Notice";
 import { useAdminMe } from "@/hooks/useAdminMe";
 import { useSupportMutations, useSupportTicket } from "@/hooks/useSupport";
 import { SupportAnalysisDialog } from "@/components/support/SupportAnalysisDialog";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
 import { marketSlugFromContext, marketUrlFromContext, productUrl } from "@/lib/product-url";
 import { hasRole } from "@/constants/roles";
 import { formatDateTime, formatRelative } from "@/lib/format";
@@ -247,6 +248,22 @@ export function SupportTicketView() {
         </div>
       )}
 
+      <div className="mb-4">
+        <CopilotPanel
+          kind="support"
+          title="Ask Warden"
+          description="Reads this ticket, its thread, the linked analysis, and the requester's plan. It cannot reply — the draft lands in the composer below for you to edit and send."
+          context={{ ticketId: ticket.id }}
+          questionEnabled={false}
+          prompts={[
+            { label: "Summarize", mode: "summary" },
+            { label: "Draft reply", mode: "draft_reply" },
+          ]}
+          onUseAnswer={(text) => setReply(text)}
+          useAnswerLabel="Use as reply draft"
+        />
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex flex-col gap-4">
           <Panel title="Conversation" description={`${messages.length} message${messages.length === 1 ? "" : "s"}`}>
@@ -261,8 +278,9 @@ export function SupportTicketView() {
             </ul>
           </Panel>
 
-          <Panel
-            title={internal ? "Internal note" : "Reply"}
+          <div id="reply">
+            <Panel
+              title={internal ? "Internal note" : "Reply"}
             description={
               internal
                 ? "Visible to the team only. Never emailed, never shown to the customer."
@@ -312,6 +330,7 @@ export function SupportTicketView() {
               )}
             </div>
           </Panel>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4">

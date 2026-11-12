@@ -47,5 +47,6 @@ export type ErrorCode =
   | 'NOT_YOURS'
   | 'TICKET_CLOSED'
   | 'RATE_LIMITED'
+  | 'COPILOT_DISABLED'
   | 'UPSTREAM_FAILED'
   | 'INTERNAL';

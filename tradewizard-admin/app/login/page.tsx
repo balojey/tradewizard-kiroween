@@ -26,11 +26,11 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center gap-2.5">
                 <LogoMark size={26} />
-                <span className="text-[14px] font-medium text-fg">TradeWizard</span>
+                <span className="text-[14px] font-medium text-fg">TradeWizard Warden</span>
               </div>
 
               <h1 className="mt-8 text-[26px] font-medium leading-[1.15] tracking-[-0.02em] text-fg">
-                Operations portal
+                Operations control plane
               </h1>
               <p className="mt-2 max-w-[36ch] text-[12.5px] leading-relaxed text-muted">
                 The control surface for analyses, accounts, and autonomous portfolio managers.

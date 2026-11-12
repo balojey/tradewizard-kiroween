@@ -11,6 +11,8 @@ import { Notice } from "@/components/ui/Notice";
 import { Page, PageHeader } from "@/components/ui/PageHeader";
 import { Tabs } from "@/components/ui/Tabs";
 import { SessionControls } from "@/components/portfolio/SessionControls";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
+import { hasRole } from "@/constants/roles";
 import { KillSwitchControl } from "@/components/users/KillSwitchControl";
 import { useAdminMe } from "@/hooks/useAdminMe";
 import { useCursorStack } from "@/hooks/useCursorStack";
@@ -224,7 +226,7 @@ export function SessionDetailView() {
         actions={
           session && (
             <>
-              <SessionControls sessionId={session.id} identity={identity} status={session.status} />
+              <SessionControls sessionId={session.id} userId={session.userId} identity={identity} status={session.status} />
               {/* The halt belongs next to the session it would stop, not only on
                   the user page: this is where a runaway is noticed. */}
               <KillSwitchControl userId={session.userId} identity={identity} />
@@ -250,6 +252,26 @@ export function SessionDetailView() {
           )
         }
       />
+
+      {session && identity && hasRole(identity.role, "support") && (
+        <div className="mb-4">
+          <CopilotPanel
+            kind="session"
+            title="Ask Warden"
+            description="Reads this session's trades, decisions, and the analysis that drove the last decision. Read-only — pausing or terminating stays with the controls above."
+            context={{ sessionId: session.id }}
+            placeholder="e.g. Why did it exit here?"
+            prompts={[
+              { label: "Explain this session" },
+              {
+                label: "What happened before the exit?",
+                question:
+                  "What happened before the exit? Walk the last trades and decisions in order and cite them.",
+              },
+            ]}
+          />
+        </div>
+      )}
 
       {session && (
         <div className="grid gap-4 md:grid-cols-3">

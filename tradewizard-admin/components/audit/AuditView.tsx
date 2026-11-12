@@ -18,6 +18,7 @@ import { CopyableId, TimeCell } from "@/components/domain/Primitives";
 import { Dialog } from "@/components/ui/Dialog";
 import { Notice } from "@/components/ui/Notice";
 import { Page, PageHeader } from "@/components/ui/PageHeader";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
 import { fetchAuditExport, useAudit, useVerifyAuditChain, type AuditFilters } from "@/hooks/useAudit";
 import { useCursorStack } from "@/hooks/useCursorStack";
 import { useAdminAuth } from "@/providers/AdminAuthProvider";
@@ -186,6 +187,7 @@ export function AuditView() {
     status: params.get("status") ?? "",
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",
+    id: params.get("id") ?? "",
   };
 
   const [actorTerm, setActorTerm] = useState(filters.actor);
@@ -281,7 +283,8 @@ export function AuditView() {
       filters.targetId ||
       filters.status ||
       filters.from ||
-      filters.to
+      filters.to ||
+      filters.id
   );
 
   const chainState = !verification ? "unverified" : verification.valid ? "verified" : "broken";
@@ -454,9 +457,40 @@ export function AuditView() {
         </Notice>
       )}
 
+      <div className="mb-4">
+        <CopilotPanel
+          kind="incident"
+          title="Ask about this timeline"
+          description="Warden reads the same audit rows this view is filtered to, plus bounded operational metrics, then cites the exact rows it used. It cannot change anything."
+          context={{
+            from: filters.from || undefined,
+            to: filters.to || undefined,
+            targetType: filters.targetType || undefined,
+            targetId: filters.targetId || undefined,
+          }}
+          placeholder="e.g. What changed for this user?"
+          prompts={[
+            {
+              label: "What changed in the last hour?",
+              question: "What changed in the last hour, and what should I look at first?",
+              windowHours: 1,
+            },
+            {
+              label: "Who changed settings this week?",
+              question: "Who changed runtime settings this week, and what did they change?",
+              windowHours: 168,
+            },
+            {
+              label: "Build a timeline",
+              question:
+                "Build a timeline for this incident: what changed, who did it, what the result was, and where the evidence sits.",
+            },
+          ]}
+        />
+      </div>
+
       <Toolbar
-        right={
-          <ClearFilters
+        right={          <ClearFilters
             active={filtersActive}
             onClick={() => {
               setActorTerm("");

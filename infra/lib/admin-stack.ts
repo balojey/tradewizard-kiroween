@@ -258,6 +258,82 @@ export class AdminStack extends cdk.Stack {
       })
     );
 
+    // ─── Warden Copilot ───────────────────────────────────────────────────────
+    //
+    // A separate function on purpose (copilot plan §4):
+    // - its model has no tools and no mutation route;
+    // - its IAM is read-only (DB secret read, analysis bucket read, Bedrock
+    //   invoke) and it cannot touch the rate-limit, dedup, or queue resources;
+    // - a model outage cannot take down the admin API, and vice versa.
+    //
+    // The admin API gets exactly one permission against it: invoke this ARN.
+    const nebiusApiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'CopilotNebiusApiKey',
+      resourceName(config.envName, 'nebius-api-key')
+    );
+
+    const copilotLogGroup = new logs.LogGroup(this, 'AdminCopilotLogs', {
+      logGroupName: `/aws/lambda/${resourceName(config.envName, 'admin-copilot')}`,
+      retention: isProd ? logs.RetentionDays.THREE_MONTHS : logs.RetentionDays.ONE_WEEK,
+      removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    const copilotAiEnv: Record<string, string> = {
+      AI_PROVIDER: process.env.AI_PROVIDER || 'bedrock',
+      NEBIUS_API_KEY_SECRET_ARN: nebiusApiKeySecret.secretArn,
+      NEBIUS_BASE_URL: process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1/',
+      NEBIUS_MAX_TOKENS: process.env.NEBIUS_MAX_TOKENS || '30000',
+      NEBIUS_MODEL_NON_TOOL: process.env.NEBIUS_MODEL_NON_TOOL || '',
+      NEBIUS_MODEL_NON_TOOL_MAX_TOKENS:
+        process.env.NEBIUS_MODEL_NON_TOOL_MAX_TOKENS || process.env.NEBIUS_MAX_TOKENS || '',
+    };
+
+    const copilotHandler = new lambdaNode.NodejsFunction(this, 'AdminCopilotHandler', {
+      functionName: resourceName(config.envName, 'admin-copilot'),
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: 'services/admin-copilot/handler.ts',
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 1024,
+      logGroup: copilotLogGroup,
+      environment: {
+        ENVIRONMENT: config.envName,
+        DB_SECRET_ARN: dbSecret.secretArn,
+        DB_HOST: dbEndpoint,
+        DB_NAME: 'tradewizard',
+        ANALYSIS_BUCKET: analysisBucket.bucketName,
+        // Bedrock default; override without a deploy by setting the env var.
+        COPILOT_MODEL_ID:
+          process.env.COPILOT_MODEL_ID ||
+          this.node.tryGetContext('copilotModelId') ||
+          process.env.BEDROCK_MODEL_ID ||
+          'global.amazon.nova-2-lite-v1:0',
+        COPILOT_MAX_TOKENS: process.env.COPILOT_MAX_TOKENS || '1200',
+        ...copilotAiEnv,
+      },
+      bundling: { minify: isProd, sourceMap: !isProd },
+      description: 'Warden Copilot: read-only retrieval + one model call per request',
+    });
+
+    // Read-only data access. Note there is deliberately no grantWrite here.
+    dbSecret.grantRead(copilotHandler);
+    analysisBucket.grantRead(copilotHandler);
+    nebiusApiKeySecret.grantRead(copilotHandler);
+
+    // Bedrock invocation only. The model has no tools, and this role has no
+    // mutation permissions, so this is the full extent of what a bad prompt can
+    // cause.
+    copilotHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        resources: ['*'],
+      })
+    );
+
+    this.adminApiHandler.addEnvironment('COPILOT_FUNCTION_NAME', copilotHandler.functionName);
+    copilotHandler.grantInvoke(this.adminApiHandler);
+
     // ─── REST API ─────────────────────────────────────────────────────────────
 
     const accessLogGroup = new logs.LogGroup(this, 'AdminApiAccessLogs', {
@@ -548,6 +624,45 @@ export class AdminStack extends cdk.Stack {
 
     if (alarmTopic) {
       apiErrorAlarm.addAlarmAction(new actions.SnsAction(alarmTopic));
+    }
+
+    // ─── Copilot usage metrics ────────────────────────────────────────────────
+    //
+    // The copilot logs one `CopilotQuery` line per request with token counts and
+    // an estimated cost. These two filters make that visible as metrics, so a
+    // cost spike or a quiet outage is a graph, not a grep. No question text or
+    // record content is logged.
+    new logs.MetricFilter(this, 'CopilotQueryCountFilter', {
+      logGroup: copilotLogGroup,
+      filterPattern: logs.FilterPattern.literal('"CopilotQuery"'),
+      metricNamespace: 'TradeWizard/Admin',
+      metricName: 'CopilotQueries',
+      defaultValue: 0,
+    });
+
+    // A dynamic metric value (`$.field`) requires a JSON pattern; a text literal
+    // is rejected with "requires metric values to be static numbers".
+    new logs.MetricFilter(this, 'CopilotCostFilter', {
+      logGroup: copilotLogGroup,
+      filterPattern: logs.FilterPattern.stringValue('$.metric', '=', 'CopilotQuery'),
+      metricNamespace: 'TradeWizard/Admin',
+      metricName: 'CopilotEstimatedCostUsd',
+      metricValue: '$.estimatedCostUsd',
+      defaultValue: 0,
+    });
+
+    const copilotErrorAlarm = new cloudwatch.Alarm(this, 'AdminCopilotErrorAlarm', {
+      alarmName: resourceName(config.envName, 'admin-copilot-errors'),
+      alarmDescription: 'Warden Copilot is failing; the rest of the portal is unaffected',
+      metric: copilotHandler.metricErrors({ period: cdk.Duration.minutes(15) }),
+      threshold: 3,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    if (alarmTopic) {
+      copilotErrorAlarm.addAlarmAction(new actions.SnsAction(alarmTopic));
     }
 
     // A silent rollup means the dashboard quietly lies. Alarm on its failures.

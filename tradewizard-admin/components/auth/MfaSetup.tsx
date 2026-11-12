@@ -45,7 +45,7 @@ function emailFromIdToken(token: string): string | null {
  * must never be sent to a QR-image service to be turned into a picture.
  */
 function otpauthUri(secret: string, account: string): string {
-  const issuer = "TradeWizard Admin";
+  const issuer = "TradeWizard Warden";
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
   const params = new URLSearchParams({
     secret,

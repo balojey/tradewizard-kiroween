@@ -6,6 +6,7 @@ import { Pause, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
 import { adminFetch } from "@/lib/admin-api";
 import { useAdminAuth } from "@/providers/AdminAuthProvider";
 import { hasRole, type AdminIdentity } from "@/constants/roles";
@@ -19,10 +20,12 @@ import { hasRole, type AdminIdentity } from "@/constants/roles";
  */
 export function SessionControls({
   sessionId,
+  userId,
   identity,
   status,
 }: {
   sessionId: string;
+  userId?: string;
   identity?: AdminIdentity;
   status: string;
 }) {
@@ -129,6 +132,26 @@ export function SessionControls({
           error={error ?? undefined}
           autoFocus
         />
+
+        {action === "terminate" && (
+          <div className="mt-3">
+            <CopilotPanel
+              compact
+              kind="risk_brief"
+              title="Review context"
+              description="Blast radius and recent related actions for this session. Read-only; it does not block or perform the termination."
+              context={{
+                action: "portfolio.session.terminate",
+                targetType: "portfolio_session",
+                targetId: sessionId,
+                sessionId,
+                userId,
+              }}
+              questionEnabled={false}
+              prompts={[{ label: "Review context" }]}
+            />
+          </div>
+        )}
       </Dialog>
     </>
   );

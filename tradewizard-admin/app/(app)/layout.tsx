@@ -17,7 +17,7 @@ function FullScreen({ children }: { children: ReactNode }) {
       <div className="w-full max-w-[420px]">
         <div className="mb-5 flex items-center gap-2.5">
           <LogoMark size={22} />
-          <span className="text-[12.5px] font-medium text-fg">TradeWizard operations</span>
+          <span className="text-[12.5px] font-medium text-fg">TradeWizard Warden</span>
         </div>
         {children}
       </div>

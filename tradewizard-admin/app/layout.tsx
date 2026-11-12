@@ -23,16 +23,16 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "TradeWizard Admin",
-    template: "%s · TradeWizard Admin",
+    default: "TradeWizard Warden",
+    template: "%s · TradeWizard Warden",
   },
-  description: "Internal management portal",
-  applicationName: "TradeWizard Operations",
+  description: "TradeWizard Warden — internal operations control plane",
+  applicationName: "TradeWizard Warden",
   robots: { index: false, follow: false, nocache: true },
   formatDetection: { telephone: false, email: false, address: false },
   appleWebApp: {
     capable: true,
-    title: "TW Ops",
+    title: "Warden",
     // Opaque status bar: content starts below it, so the shell never has to
     // guess where the notch ends.
     statusBarStyle: "black",

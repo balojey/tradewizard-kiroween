@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Panel } from "@/components/ui/Card";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
 import { CopyableId, KeyValue, StatusPill } from "@/components/domain/Primitives";
 import { InvalidateCacheButton } from "@/components/analyses/InvalidateCacheButton";
 import { RefundButton } from "@/components/analyses/RefundButton";
@@ -76,6 +77,30 @@ export function AnalysisDetailView() {
           )
         }
       />
+
+      {analysis && (
+        <div className="mb-4">
+          <CopilotPanel
+            kind="analysis"
+            title="Ask Warden"
+            description="Explains the verdict from the recorded agent signals, debate, and consensus. It does not re-run the analysis."
+            context={{ analysisId: analysis.id }}
+            placeholder="e.g. Which agents dissented?"
+            prompts={[
+              {
+                label: "Explain this verdict",
+                question:
+                  "Explain this verdict. Which agents drove it, what did the debate conclude, and how did live and shadow consensus differ?",
+              },
+              {
+                label: "Why NO_TRADE?",
+                question:
+                  "Why was this a NO_TRADE? Name the dissenting agents, the no-trade reason, and the gate that produced it.",
+              },
+            ]}
+          />
+        </div>
+      )}
 
       {analysis && (
         <div className="grid gap-4 md:grid-cols-2">
