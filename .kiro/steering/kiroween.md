@@ -1,14 +1,14 @@
 # Kiroween 2026 submission
 
-The Kiroween 2026 submission is the **TradeWizard Operations Portal**, in the **Frankenstein** category.
+The Kiroween 2026 submission is **TradeWizard Warden**, in the **Frankenstein** category.
 
 The platform the portal operates is context. The portal is the new artifact. Do not describe the whole TradeWizard platform as newly built for this submission.
 
 ## Submission constants
 
 - Public repo: `tradewizard-kiroween`
-- Project name: **TradeWizard Operations Portal**
-- Category: Frankenstein - a separate internal control plane stitched from Next.js, Cognito, API Gateway, Lambda, RDS, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and two Kiro specs.
+- Project name: **TradeWizard Warden**
+- Category: Frankenstein - a separate internal control plane stitched from Next.js, Cognito, API Gateway, Lambda, RDS, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and four Kiro specs.
 - License: MIT (`LICENSE` at repo root, visible in GitHub's About section).
 - Live portal: `https://admin.tradewizard.live`
 - Platform context: `https://tradewizard.live`

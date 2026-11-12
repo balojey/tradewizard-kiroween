@@ -67,6 +67,7 @@ Platform context: Amazon Bedrock, Strands Agents SDK, Polymarket CLOB and Gamma 
 6. Open **Settings** to see runtime settings with their named consumers.
 7. Open **Audit** to see the hash-chained record of every mutation; click **Verify chain** and show the verified/broken badge.
 8. Open **Ask Warden** on the Audit or Support page and ask “What changed in the last hour?” or “Summarize this ticket.” Show the citations and the read-only notice.
+9. Open **Members** to see role-carrying invite links, `+warden` aliases, and live access controls.
 
 ### Test credentials
 

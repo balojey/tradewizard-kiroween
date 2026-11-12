@@ -1,6 +1,6 @@
 # TradeWizard V2 Infrastructure
 
-> Hosts the admin API, authorizer, and portal Lambdas for the [TradeWizard Operations Portal](../README.md), the Kiroween 2026 submission. The Kiro specs, steering, and hooks live in [`.kiro/`](../.kiro/), and the build write-up is in [docs/kiro-usage.md](../docs/kiro-usage.md).
+> Hosts the admin API, authorizer, and portal Lambdas for [TradeWizard Warden](../README.md), the Kiroween 2026 submission. The Kiro specs, steering, and hooks live in [`.kiro/`](../.kiro/), and the build write-up is in [docs/kiro-usage.md](../docs/kiro-usage.md).
 
 AWS CDK infrastructure for TradeWizard V2 platform. Cost-optimized for pre-revenue stage.
 
