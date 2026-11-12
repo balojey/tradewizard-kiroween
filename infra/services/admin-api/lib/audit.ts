@@ -8,11 +8,22 @@
  * - `completeAudit` marks that row `succeeded` or `failed`. It is the only
  *   permitted update; a trigger in the database rejects everything else.
  *
+ * Integrity: every row is linked to the previous one by a SHA-256 hash. The
+ * insert takes a transaction-scoped advisory lock, reads the head, and writes
+ * `prev_hash`/`row_hash` in one statement (see services/shared/audit-chain.ts).
+ * If the chain write fails, the mutation fails: never execute an unauditable
+ * action.
+ *
  * Reads never go through here — the audit route queries the table directly.
  */
 
 import type { Client } from 'pg';
 import type { AdminIdentity } from '../../shared/admin-auth';
+import {
+  canonicalJson,
+  computeCompletionHash,
+  insertChainedAuditRow,
+} from '../../shared/audit-chain';
 
 export interface AuditWriteParams {
   actor: AdminIdentity;
@@ -28,32 +39,32 @@ export interface AuditWriteParams {
   idempotencyKey?: string | null;
 }
 
-export async function writeAuditLog(client: Client, params: AuditWriteParams): Promise<string> {
-  const result = await client.query(
-    `
-    INSERT INTO admin_audit_log (
-      actor_sub, actor_email, actor_role, action, target_type, target_id,
-      reason, status, before, ip, user_agent, request_id, idempotency_key
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8::jsonb, $9, $10, $11, $12)
-    RETURNING id
-    `,
-    [
-      params.actor.sub,
-      params.actor.email,
-      params.actor.role,
-      params.action,
-      params.targetType,
-      params.targetId,
-      params.reason,
-      params.before === undefined ? null : JSON.stringify(params.before),
-      params.ip ?? null,
-      params.userAgent ?? null,
-      params.requestId ?? null,
-      params.idempotencyKey ?? null,
-    ]
+export async function writeAuditLog(
+  client: Client,
+  params: AuditWriteParams,
+  options: { inTransaction?: boolean } = {}
+): Promise<string> {
+  const { id } = await insertChainedAuditRow(
+    client,
+    {
+      actorSub: params.actor.sub,
+      actorEmail: params.actor.email,
+      actorRole: params.actor.role,
+      action: params.action,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      reason: params.reason,
+      status: 'pending',
+      before: params.before ?? null,
+      ip: params.ip ?? null,
+      userAgent: params.userAgent ?? null,
+      requestId: params.requestId ?? null,
+      idempotencyKey: params.idempotencyKey ?? null,
+    },
+    options
   );
 
-  return String(result.rows[0].id);
+  return id;
 }
 
 export interface AuditCompletion {
@@ -67,19 +78,51 @@ export async function completeAudit(
   auditId: string,
   completion: AuditCompletion
 ): Promise<void> {
+  // The completion hash commits to the row hash, so the row must already carry
+  // one. A missing hash means the row predates the chain and the backfill has
+  // not run; refuse rather than write a completion that cannot be verified.
+  const current = await client.query<{ rowHash: string | null }>(
+    'SELECT row_hash AS "rowHash" FROM admin_audit_log WHERE id = $1',
+    [auditId]
+  );
+
+  const rowHash = current.rows[0]?.rowHash;
+
+  if (!rowHash) {
+    throw new Error(
+      `Audit row ${auditId} has no row_hash; run scripts/backfill-audit-chain.ts before completing it`
+    );
+  }
+
+  const after = completion.after ?? null;
+  const error = completion.error ?? null;
+  const completedAt = new Date().toISOString();
+
+  const completionHash = computeCompletionHash({
+    rowHash,
+    status: completion.status,
+    after,
+    error,
+    completedAt,
+  });
+
   await client.query(
     `
     UPDATE admin_audit_log
     SET status = $2,
         after = $3::jsonb,
-        error = $4
+        error = $4,
+        completion_hash = $5,
+        completed_at = $6::timestamptz
     WHERE id = $1 AND status = 'pending'
     `,
     [
       auditId,
       completion.status,
-      completion.after === undefined ? null : JSON.stringify(completion.after),
-      completion.error ?? null,
+      after === null ? null : canonicalJson(after),
+      error,
+      completionHash,
+      completedAt,
     ]
   );
 }

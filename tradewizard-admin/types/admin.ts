@@ -431,6 +431,36 @@ export interface AuditEntry {
   after: Record<string, unknown> | null;
   requestId: string | null;
   createdAt: string;
+  /** Chain linkage: the previous row's hash, null only for the first row ever. */
+  prevHash: string | null;
+  /** SHA-256 over the immutable fields. Null on a row written before the chain. */
+  rowHash: string | null;
+  /** SHA-256 over the terminal state (status/after/error/completedAt). */
+  completionHash: string | null;
+  hashVersion: number;
+  completedAt: string | null;
+}
+
+/** Result of `GET /admin/audit/verify`. A broken chain still answers 200. */
+export interface AuditVerification {
+  valid: boolean;
+  checked: number;
+  from: string | null;
+  to: string | null;
+  head: string | null;
+  firstBrokenId: string | null;
+  firstBrokenReason: string | null;
+  /** False when the window starts mid-chain, so its first link is unchecked. */
+  coversGenesis: boolean;
+  limit: number;
+  verifiedAt: string;
+}
+
+export interface AuditExport {
+  rows: AuditEntry[];
+  truncated: boolean;
+  cappedAt: number;
+  exportedAt: string;
 }
 
 export interface AdminMember {

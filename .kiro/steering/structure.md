@@ -135,8 +135,15 @@ infra/
 │   │   └── handler.ts              # Multi-channel notification delivery for portfolio events
 │   ├── portfolio-analysis-consumer/
 │   │   └── handler.ts              # Subscription cancellation detection, session pausing
+│   ├── admin-api/
+│   │   ├── handler.ts              # Management portal API (router, RBAC, rate limits, CORS)
+│   │   ├── lib/audit.ts            # Audit contract: chain-hashed pending row, then completion
+│   │   ├── lib/audit-chain.ts      # Chain verifier + admin-facing hashing re-exports
+│   │   ├── queries/audit.ts        # Audit list, bounded chain window, genesis probe
+│   │   └── routes/audit.ts         # GET /admin/audit, /admin/audit/verify, /admin/audit/export
 │   └── shared/
 │       ├── ai-provider.ts          # AI provider switch (Bedrock/Nebius), Nebius key + model factory
+│       ├── audit-chain.ts          # Canonical audit-row hashing + chained insert (admin-api + maintenance)
 │       ├── chain-verification.ts   # On-chain tx verification (viem), balance/allowance reads
 │       ├── clob-credentials.ts     # Polymarket CLOB API credentials (Secrets Manager + env fallback)
 │       ├── connections.ts          # WebSocket connection utilities (store, remove, getByUser)
@@ -151,6 +158,8 @@ infra/
 │       └── persona-registry.ts     # 6 trading personas with rules and customization
 ├── sql/
 │   └── 001-schema.sql              # Full PostgreSQL schema (all tables, indexes, triggers, idempotent migration guards)
+├── scripts/
+│   └── backfill-audit-chain.ts     # Seal/verify the admin audit hash chain (idempotent; --dry-run, --force)
 ├── deploy.sh                       # Deployment script (up/down/status, --skip-db)
 ├── package.json
 ├── tsconfig.json

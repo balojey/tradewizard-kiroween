@@ -780,6 +780,32 @@ DO $$ BEGIN
     CHECK (status IN ('pending', 'succeeded', 'failed'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- ----------------------------------------------------------------------------
+-- Audit hash chain
+--
+-- Every row commits to the previous row's hash, so editing any hashed field
+-- breaks the chain at that row and verification can name it. `row_hash` covers
+-- the immutable fields; `completion_hash` covers the terminal state, so a
+-- flipped status is detectable even though `row_hash` cannot change.
+--
+-- Chain order is `(created_at, id)`, which is also the order the verify
+-- endpoint walks. Writer: services/shared/audit-chain.ts.
+-- See docs/admin-portal-architecture.md §8.3.
+-- ----------------------------------------------------------------------------
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS prev_hash TEXT;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS row_hash TEXT;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS completion_hash TEXT;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS hash_version SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+-- A hash must never repeat. The advisory lock in the writer is the primary
+-- defence against a fork; this index is the backstop that makes it impossible.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_audit_row_hash
+  ON admin_audit_log (row_hash) WHERE row_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_chain_order
+  ON admin_audit_log (created_at, id);
+
 CREATE INDEX IF NOT EXISTS idx_admin_audit_created
   ON admin_audit_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_actor
@@ -789,12 +815,38 @@ CREATE INDEX IF NOT EXISTS idx_admin_audit_target
 CREATE INDEX IF NOT EXISTS idx_admin_audit_action
   ON admin_audit_log (action, created_at DESC);
 
--- Only the completion fields may change, and only while still pending.
+-- What the trigger permits, and nothing more:
+--   INSERT  a chain-hashed row, pending or born terminal with its completion
+--   UPDATE  pending -> succeeded|failed, setting the completion fields once
+--   DELETE  never
+-- Adding a column to this table with a consumer in the writer means adding it
+-- to the immutable list here too, or it becomes silently editable.
 CREATE OR REPLACE FUNCTION admin_audit_log_immutable()
 RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'admin_audit_log is append-only (delete rejected)';
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.row_hash IS NULL OR NEW.hash_version IS NULL THEN
+      RAISE EXCEPTION 'admin_audit_log row % cannot be written without a chain hash', NEW.id;
+    END IF;
+
+    IF NEW.status = 'pending' THEN
+      IF NEW.completion_hash IS NOT NULL OR NEW.completed_at IS NOT NULL THEN
+        RAISE EXCEPTION 'admin_audit_log row % is pending but carries completion fields', NEW.id;
+      END IF;
+    ELSE
+      IF NEW.status NOT IN ('succeeded', 'failed') THEN
+        RAISE EXCEPTION 'admin_audit_log row % must be pending, succeeded or failed', NEW.id;
+      END IF;
+      IF NEW.completion_hash IS NULL OR NEW.completed_at IS NULL THEN
+        RAISE EXCEPTION 'admin_audit_log row % is terminal but has no completion hash', NEW.id;
+      END IF;
+    END IF;
+
+    RETURN NEW;
   END IF;
 
   IF OLD.status <> 'pending' THEN
@@ -805,7 +857,16 @@ BEGIN
     RAISE EXCEPTION 'admin_audit_log row % must complete as succeeded or failed', OLD.id;
   END IF;
 
-  IF NEW.action IS DISTINCT FROM OLD.action
+  IF NEW.completion_hash IS NULL OR NEW.completed_at IS NULL THEN
+    RAISE EXCEPTION 'admin_audit_log row % must complete with a hash and a timestamp', OLD.id;
+  END IF;
+
+  IF NEW.completed_at < OLD.created_at THEN
+    RAISE EXCEPTION 'admin_audit_log row % cannot complete before it was written', OLD.id;
+  END IF;
+
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.action IS DISTINCT FROM OLD.action
      OR NEW.actor_sub IS DISTINCT FROM OLD.actor_sub
      OR NEW.actor_email IS DISTINCT FROM OLD.actor_email
      OR NEW.actor_role IS DISTINCT FROM OLD.actor_role
@@ -813,10 +874,16 @@ BEGIN
      OR NEW.target_id IS DISTINCT FROM OLD.target_id
      OR NEW.reason IS DISTINCT FROM OLD.reason
      OR NEW.before IS DISTINCT FROM OLD.before
+     OR NEW.ip IS DISTINCT FROM OLD.ip
+     OR NEW.user_agent IS DISTINCT FROM OLD.user_agent
+     OR NEW.request_id IS DISTINCT FROM OLD.request_id
      OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
      OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR NEW.prev_hash IS DISTINCT FROM OLD.prev_hash
+     OR NEW.row_hash IS DISTINCT FROM OLD.row_hash
+     OR NEW.hash_version IS DISTINCT FROM OLD.hash_version
   THEN
-    RAISE EXCEPTION 'admin_audit_log row % is append-only; only status/after/error may be set on completion', OLD.id;
+    RAISE EXCEPTION 'admin_audit_log row % is append-only; only status/after/error/completion may be set on completion', OLD.id;
   END IF;
 
   RETURN NEW;
@@ -825,7 +892,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS admin_audit_log_immutable ON admin_audit_log;
 CREATE TRIGGER admin_audit_log_immutable
-  BEFORE UPDATE OR DELETE ON admin_audit_log
+  BEFORE INSERT OR UPDATE OR DELETE ON admin_audit_log
   FOR EACH ROW EXECUTE FUNCTION admin_audit_log_immutable();
 
 -- ----------------------------------------------------------------------------

@@ -604,13 +604,28 @@ print(json.dumps({
         fi
       done
 
-      unset PGPASSWORD
-
       if [[ $migration_count -eq 0 ]]; then
         log_warn "No SQL migration files found in sql/"
       else
         log_ok "Applied $migration_count migration(s) successfully"
       fi
+
+      # Seal the audit hash chain. Idempotent: only rows without a hash are
+      # touched, so re-running after an interrupted deploy (or after a failed
+      # verification) is safe. A non-zero exit means the chain is still broken;
+      # that must be visible in the deploy output, not swallowed.
+      if [[ -f scripts/backfill-audit-chain.ts ]]; then
+        log_info "Sealing the audit hash chain (idempotent)"
+        if PGHOST="$DB_HOST" PGPORT="$DB_PORT" PGDATABASE="$DB_NAME" \
+           PGUSER="$DB_USER" PGPASSWORD="$DB_PASS" \
+           npx tsx scripts/backfill-audit-chain.ts --quiet; then
+          log_ok "Audit chain verified"
+        else
+          log_warn "Audit chain did not verify - see docs/admin-portal-runbook.md §4.3 before using the portal"
+        fi
+      fi
+
+      unset PGPASSWORD
     else
       log_warn "Skipping DB migration - could not retrieve credentials"
     fi

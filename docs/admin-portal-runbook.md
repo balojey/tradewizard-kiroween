@@ -295,6 +295,102 @@ Two operational facts that have already bitten us:
   ```
 
 - Run the full deploy **twice** after a schema change to prove idempotency.
+- **Never use `--skip-db` for the first deploy of a schema change.** CDK runs
+  before the migration, so the new Lambda code can reach a database that does not
+  have the columns yet. For the audit chain that means every mutation fails until
+  the migration runs.
+
+### 4.1 Audit chain: what the deploy does
+
+After `psql` applies `sql/001-schema.sql`, `deploy.sh` runs:
+
+```bash
+npx tsx scripts/backfill-audit-chain.ts --quiet
+```
+
+It seals any row written before the chain existed (only rows with
+`row_hash IS NULL`), then verifies the whole log with the same code the API uses.
+`Step 4/6` ends with either:
+
+- `✓ Audit chain verified` — proceed.
+- `⚠ Audit chain did not verify` — stop. Do not use the portal until §4.3.
+
+The script is safe to re-run; a second run finds nothing to seal.
+
+### 4.2 Verify and inspect
+
+In the portal: **Audit → Verify chain**. The badge reads **Not verified** until a
+verification returns; it drops back to **Not verified** when you change filters or
+page, because a result only describes the window it was run against.
+
+By API:
+
+```bash
+curl -s "$ADMIN_API/admin/audit/verify?limit=5000" -H "Authorization: Bearer $ID_TOKEN" | jq
+```
+
+`valid: true` also reports `checked` and the `from`/`to` range it covered. `200`
+with `valid: false` is the normal way to report a break — it is not a server
+error. The payload names `firstBrokenId` and `firstBrokenReason`:
+
+| Reason | Means |
+|---|---|
+| `missing_row_hash` | Row predates the chain; the backfill has not run |
+| `unsupported_hash_version` | Row was written by a newer algorithm than this portal knows |
+| `row_hash_mismatch` | A hashed field was edited after write |
+| `prev_hash_mismatch` | Row does not link to its predecessor (fork, reorder, deletion) |
+| `chain_start_mismatch` | First row of the whole log has a `prev_hash` |
+| `unexpected_completion` / `missing_completion` | Completion fields do not match the status |
+| `completion_hash_mismatch` | `status`/`after`/`error`/`completed_at` was edited after write |
+
+The window defaults to the last 1,000 rows; `coversGenesis: false` means the first
+checked row's link to its predecessor was outside the window and was not checked.
+
+### 4.3 A broken chain: what to do
+
+A break is evidence, not a bug report. Do this in order:
+
+1. **Preserve it.** Export the filtered rows (JSON) from the Audit page before
+   changing anything. The export includes every hash.
+2. **Identify the row.** `firstBrokenId` + the row detail dialog give you the
+   actor, action, target and timestamps. Check CloudWatch for that
+   `requestId` if it is present.
+3. **Decide which failure it is.**
+   - `missing_row_hash` right after a deploy → the backfill did not run. Run §4.4.
+   - `row_hash_mismatch` / `completion_hash_mismatch` → someone with database
+     access edited the row. Treat it as a security incident; do not re-seal it.
+   - `prev_hash_mismatch` with otherwise valid hashes → rows were reordered or a
+     row was removed with the trigger disabled. Same conclusion.
+4. **Do not run `--force`** outside a scratch database. It recomputes the chain
+   and destroys the evidence that something was edited.
+
+### 4.4 Re-run the backfill manually
+
+```bash
+cd infra
+# Credentials: either DATABASE_URL, or PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD.
+npx tsx scripts/backfill-audit-chain.ts --dry-run   # what would be sealed
+npx tsx scripts/backfill-audit-chain.ts             # seal + verify
+```
+
+Exit code `1` means the chain still does not verify; the output names the row.
+
+### 4.5 Tamper drill (scratch database only)
+
+Proves the feature does what the page claims. Never do this on shared data.
+
+```bash
+psql "$SCRATCH_DATABASE_URL" <<'SQL'
+ALTER TABLE admin_audit_log DISABLE TRIGGER admin_audit_log_immutable;
+UPDATE admin_audit_log SET reason = 'edited after the fact'
+ WHERE id = (SELECT id FROM admin_audit_log ORDER BY created_at DESC LIMIT 1);
+ALTER TABLE admin_audit_log ENABLE TRIGGER admin_audit_log_immutable;
+SQL
+```
+
+Then `GET /admin/audit/verify` returns `valid: false`, `firstBrokenReason:
+row_hash_mismatch`, and `firstBrokenId` equal to that id. `--force` re-seals it;
+that is exactly why it is not a production tool.
 
 ### Applying the schema manually (when the deploy aborted)
 
@@ -328,6 +424,10 @@ rm -f /tmp/pg.env /tmp/dbcreds.json
 | Presigned S3 fetch blocked by CORS | Bucket CORS missing an admin origin | Add it in `lib/storage-stack.ts` and redeploy Storage |
 | `{"code":"BAD_REQUEST"}` on an unknown path | API Gateway denial before routing | Not a Lambda error; check the URL |
 | `linked: false` in `/admin/me` | No `users` row for this Cognito sub | Investigate the signup path; do not grant more access |
+| `500 INTERNAL` on **every** mutation right after a deploy | `--skip-db` was used, so the chain columns are missing while the new code expects them | Run `./deploy.sh up <env>` (no `--skip-db`), then §4.4 |
+| Audit badge says **Chain broken** with `missing_row_hash` | Backfill has not run (interrupted deploy) | §4.4 |
+| Audit badge says **Chain broken** with `row_hash_mismatch` | A hashed field was edited outside the API | §4.3 — preserve, do not re-seal |
+| `completeAudit` fails with "has no row_hash" | A pending row predates the backfill | Run §4.4 before retrying the mutation |
 | `308`/`403` when calling the API root | Missing trailing path or a deployed stage rewrite | Use `${ADMIN_API}admin/me` |
 
 ---
@@ -338,7 +438,8 @@ rm -f /tmp/pg.env /tmp/dbcreds.json
 |---|---|
 | `GET /admin/me` without a token | `401`, JSON `{"error":{"code":"UNAUTHORIZED",…}}`, CORS header present |
 | `GET /admin/me` with a valid admin token | `200`, `linked: true` |
-| `admin_audit_log` after any mutation | exactly one row per action |
+| `admin_audit_log` after any mutation | exactly one row per action, with non-null `row_hash` and `hash_version`; `completion_hash` + `completed_at` once it completes |
+| `GET /admin/audit/verify` | `200` with `valid: true` and a plausible `checked` count |
 | `AdminAuthDenied` alarm | `OK`; brief spikes only during investigations |
 | `tw-dev-admin-api` Lambda errors | zero |
 

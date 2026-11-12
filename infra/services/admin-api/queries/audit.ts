@@ -62,7 +62,12 @@ export async function listAuditEntries(
       a.before,
       a.after,
       a.request_id      AS "requestId",
-      a.created_at      AS "createdAt"
+      a.created_at      AS "createdAt",
+      a.prev_hash       AS "prevHash",
+      a.row_hash        AS "rowHash",
+      a.completion_hash AS "completionHash",
+      a.hash_version    AS "hashVersion",
+      a.completed_at    AS "completedAt"
     FROM admin_audit_log a
     WHERE ($1::text IS NULL OR a.actor_sub = $1 OR a.actor_email ILIKE '%' || $1 || '%')
       AND ($2::text IS NULL OR a.action = $2)
@@ -93,4 +98,75 @@ export async function listAuditEntries(
   );
 
   return result.rows;
+}
+
+/**
+ * Rows for a chain verification, ascending `(created_at, id)` order.
+ *
+ * Bounded by `limit` and read newest-first, because "the last N rows" is the
+ * question an operator actually asks; unbounded verification would be an
+ * accidental full-table scan on every click.
+ */
+export async function listAuditChain(
+  client: Client,
+  filters: { from: string | null; to: string | null; limit: number }
+): Promise<Record<string, unknown>[]> {
+  const result = await client.query(
+    `
+    SELECT
+      a.id,
+      a.actor_sub       AS "actorSub",
+      a.actor_email     AS "actorEmail",
+      a.actor_role      AS "actorRole",
+      a.action,
+      a.target_type     AS "targetType",
+      a.target_id       AS "targetId",
+      a.reason,
+      a.status,
+      a.before,
+      a.after,
+      a.error,
+      a.created_at      AS "createdAt",
+      a.completed_at    AS "completedAt",
+      a.prev_hash       AS "prevHash",
+      a.row_hash        AS "rowHash",
+      a.completion_hash AS "completionHash",
+      a.hash_version    AS "hashVersion"
+    FROM admin_audit_log a
+    WHERE ($1::timestamptz IS NULL OR a.created_at >= $1::timestamptz)
+      AND ($2::timestamptz IS NULL OR a.created_at < $2::timestamptz)
+    ORDER BY a.created_at DESC, a.id DESC
+    LIMIT $3
+    `,
+    [filters.from, filters.to, filters.limit]
+  );
+
+  // The chain is verified oldest-first; the query reads newest-first so the
+  // bound selects the most recent rows rather than the oldest.
+  return result.rows.reverse();
+}
+
+/**
+ * Does the log contain a row before `id`? If not, the verification window
+ * starts at genesis and the first row's `prev_hash` must be null.
+ *
+ * The comparison uses the stored row's own `(created_at, id)`, not the
+ * millisecond-truncated value read into JS: legacy rows have microsecond
+ * timestamps, and comparing against a rounded one would place a phantom row
+ * before the first row of the log.
+ */
+export async function hasEarlierAuditRow(client: Client, id: string): Promise<boolean> {
+  const result = await client.query(
+    `
+    SELECT 1
+    FROM admin_audit_log a
+    WHERE (a.created_at, a.id) < (
+      SELECT p.created_at, p.id FROM admin_audit_log p WHERE p.id = $1
+    )
+    LIMIT 1
+    `,
+    [id]
+  );
+
+  return result.rows.length > 0;
 }

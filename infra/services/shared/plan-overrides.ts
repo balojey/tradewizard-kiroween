@@ -12,6 +12,7 @@
  */
 
 import type { Client } from 'pg';
+import { insertChainedAuditRow } from './audit-chain';
 
 export interface PlanOverride {
   userId: string;
@@ -166,20 +167,20 @@ export async function expireOverrides(
     }
 
     // A plan change is a governance event even when nobody clicked anything.
-    await client.query(
-      `
-      INSERT INTO admin_audit_log (
-        actor_sub, actor_email, actor_role, action, target_type, target_id,
-        reason, status, before, after
-      ) VALUES ('system', 'system', 'system', 'user.plan.override.expire', 'user', $1,
-                'Comp window elapsed', 'succeeded', $2::jsonb, $3::jsonb)
-      `,
-      [
-        userId,
-        JSON.stringify({ plan: row.previousPlan ?? null }),
-        JSON.stringify({ restoredPlan: row.previousPlan ?? null }),
-      ]
-    );
+    // Inserted through the chained writer like every other row: a raw insert
+    // would have no `row_hash` and break verification at that point.
+    await insertChainedAuditRow(client, {
+      actorSub: 'system',
+      actorEmail: 'system',
+      actorRole: 'system',
+      action: 'user.plan.override.expire',
+      targetType: 'user',
+      targetId: userId,
+      reason: 'Comp window elapsed',
+      status: 'succeeded',
+      before: { plan: row.previousPlan ?? null },
+      after: { restoredPlan: row.previousPlan ?? null },
+    });
 
     results.push({ userId, restoredPlan: row.previousPlan ?? null });
   }

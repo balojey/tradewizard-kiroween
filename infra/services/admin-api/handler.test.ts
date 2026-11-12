@@ -81,6 +81,8 @@ const {
   auditQueries: {
     listAuditEntries: vi.fn(),
     findAuditByKey: vi.fn(),
+    listAuditChain: vi.fn(),
+    hasEarlierAuditRow: vi.fn(),
   },
   creditQueries: {
     lockSubscription: vi.fn(),
@@ -268,6 +270,7 @@ vi.mock('./lib/s3', () => ({
 import { ROLE_RANK, type AdminRole } from '../shared/admin-auth';
 import { handler } from './handler';
 import { ROUTES } from './lib/router';
+import { computeCompletionHash, computeRowHash } from './lib/audit-chain';
 import type { AdminApiEvent, ApiResponse } from './lib/types';
 
 const ORIGINAL_ENV = { ...process.env };
@@ -311,6 +314,8 @@ const ROUTE_MATRIX: Array<{
   { method: 'GET', path: '/admin/markets/schedule', minimumRole: 'analyst' },
   { method: 'GET', path: '/admin/dashboard/summary', minimumRole: 'analyst' },
   { method: 'GET', path: '/admin/audit', minimumRole: 'analyst' },
+  { method: 'GET', path: '/admin/audit/verify', minimumRole: 'analyst' },
+  { method: 'GET', path: '/admin/audit/export', minimumRole: 'analyst' },
   { method: 'POST', path: '/admin/users/{id}/notes', minimumRole: 'support' },
   { method: 'POST', path: '/admin/users/{id}/credits', minimumRole: 'support' },
   { method: 'POST', path: '/admin/users/{id}/status', minimumRole: 'admin' },
@@ -541,6 +546,8 @@ beforeEach(() => {
   dashboardQueries.getDashboard.mockResolvedValue({ days: [], totals: {}, stale: false });
   auditQueries.listAuditEntries.mockResolvedValue([]);
   auditQueries.findAuditByKey.mockResolvedValue(null);
+  auditQueries.listAuditChain.mockResolvedValue([]);
+  auditQueries.hasEarlierAuditRow.mockResolvedValue(false);
 
   creditQueries.lockSubscription.mockResolvedValue({
     creditsRemaining: 100,
@@ -1693,6 +1700,231 @@ describe('billing and agents', () => {
 
     expect(response.statusCode).toBe(200);
     expect(payload).toHaveLength(1);
+  });
+});
+
+describe('audit chain', () => {
+  function rawRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: '00000000-0000-0000-0000-000000000001',
+      actorSub: 'sub-1',
+      actorEmail: 'admin@example.com',
+      actorRole: 'admin',
+      action: 'user.note.create',
+      targetType: 'user',
+      targetId: USER_ID,
+      reason: 'matrix test reason',
+      status: 'pending',
+      before: null,
+      after: null,
+      error: null,
+      createdAt: new Date('2026-11-02T10:00:00.000Z'),
+      completedAt: null,
+      prevHash: null,
+      rowHash: null,
+      completionHash: null,
+      hashVersion: 1,
+      ...overrides,
+    };
+  }
+
+  function seal(row: Record<string, unknown>): Record<string, unknown> {
+    const rowHash = computeRowHash({
+      id: String(row.id),
+      actorSub: String(row.actorSub),
+      actorEmail: String(row.actorEmail),
+      actorRole: String(row.actorRole),
+      action: String(row.action),
+      targetType: String(row.targetType),
+      targetId: (row.targetId as string | null) ?? null,
+      reason: String(row.reason),
+      before: row.before ?? null,
+      createdAt: (row.createdAt as Date).toISOString(),
+      prevHash: (row.prevHash as string | null) ?? null,
+      hashVersion: row.hashVersion as number,
+    });
+
+    const sealed: Record<string, unknown> = { ...row, rowHash };
+
+    if (row.status !== 'pending') {
+      sealed.completionHash = computeCompletionHash({
+        rowHash,
+        status: row.status as 'succeeded' | 'failed',
+        after: row.after ?? null,
+        error: (row.error as string | null) ?? null,
+        completedAt: (row.completedAt as Date).toISOString(),
+      });
+    }
+
+    return sealed;
+  }
+
+  it('returns a verified result with the checked range and head', async () => {
+    const genesis = seal(rawRow());
+    const second = seal(
+      rawRow({
+        id: '00000000-0000-0000-0000-000000000002',
+        createdAt: new Date('2026-11-02T10:00:01.000Z'),
+        prevHash: genesis.rowHash,
+        status: 'succeeded',
+        after: { noteId: 'note-1' },
+        completedAt: new Date('2026-11-02T10:00:02.000Z'),
+      })
+    );
+    auditQueries.listAuditChain.mockResolvedValue([genesis, second]);
+
+    const response = await handler(makeEvent({ path: '/admin/audit/verify' }));
+    const payload = body(response).data as Record<string, unknown>;
+
+    expect(response.statusCode).toBe(200);
+    expect(payload).toMatchObject({
+      valid: true,
+      checked: 2,
+      firstBrokenId: null,
+      firstBrokenReason: null,
+      coversGenesis: true,
+      from: '2026-11-02T10:00:00.000Z',
+      to: '2026-11-02T10:00:01.000Z',
+      head: `sha256:${second.rowHash}`,
+    });
+    expect(payload.verifiedAt).toEqual(expect.any(String));
+  });
+
+  it('answers 200 with the first broken row instead of a server error', async () => {
+    const genesis = seal(rawRow());
+    // The stored hash no longer matches the row: the database was edited.
+    const tampered = {
+      ...seal(
+        rawRow({
+          id: '00000000-0000-0000-0000-000000000002',
+          createdAt: new Date('2026-11-02T10:00:01.000Z'),
+          prevHash: genesis.rowHash,
+        })
+      ),
+      reason: 'a reason nobody typed',
+    };
+    auditQueries.listAuditChain.mockResolvedValue([genesis, tampered]);
+
+    const response = await handler(makeEvent({ path: '/admin/audit/verify' }));
+    const payload = body(response).data as Record<string, unknown>;
+
+    expect(response.statusCode).toBe(200);
+    expect(payload).toMatchObject({
+      valid: false,
+      checked: 2,
+      firstBrokenId: '00000000-0000-0000-0000-000000000002',
+      firstBrokenReason: 'row_hash_mismatch',
+    });
+  });
+
+  it('defaults to 1000 rows and clamps the window to 5000', async () => {
+    await handler(makeEvent({ path: '/admin/audit/verify' }));
+    await handler(makeEvent({ path: '/admin/audit/verify', queryStringParameters: { limit: '9999' } }));
+
+    expect(auditQueries.listAuditChain).toHaveBeenNthCalledWith(1, expect.anything(), {
+      from: null,
+      to: null,
+      limit: 1000,
+    });
+    expect(auditQueries.listAuditChain).toHaveBeenNthCalledWith(2, expect.anything(), {
+      from: null,
+      to: null,
+      limit: 5000,
+    });
+  });
+
+  it('rejects a non-numeric limit before touching the database', async () => {
+    const response = await handler(
+      makeEvent({ path: '/admin/audit/verify', queryStringParameters: { limit: 'all' } })
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(auditQueries.listAuditChain).not.toHaveBeenCalled();
+  });
+
+  it('passes from/to through as ISO timestamps', async () => {
+    await handler(
+      makeEvent({
+        path: '/admin/audit/verify',
+        queryStringParameters: { from: '2026-10-01', to: '2026-10-08' },
+      })
+    );
+
+    expect(auditQueries.listAuditChain).toHaveBeenCalledWith(expect.anything(), {
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-10-08T00:00:00.000Z',
+      limit: 1000,
+    });
+  });
+
+  it('does not treat a mid-chain window as a broken genesis link', async () => {
+    auditQueries.hasEarlierAuditRow.mockResolvedValue(true);
+    auditQueries.listAuditChain.mockResolvedValue([
+      seal(
+        rawRow({
+          prevHash: 'f'.repeat(64),
+          createdAt: new Date('2026-11-02T10:00:00.000Z'),
+        })
+      ),
+    ]);
+
+    const response = await handler(makeEvent({ path: '/admin/audit/verify' }));
+    const payload = body(response).data as Record<string, unknown>;
+
+    expect(payload).toMatchObject({ valid: true, checked: 1, coversGenesis: false });
+  });
+
+  it('exports a capped page and says when it truncated', async () => {
+    const rows = Array.from({ length: 5001 }, (_, index) =>
+      rawRow({ id: `00000000-0000-0000-0000-${String(index).padStart(12, '0')}` })
+    );
+    auditQueries.listAuditEntries.mockResolvedValue(rows);
+
+    const response = await handler(
+      makeEvent({
+        path: '/admin/audit/export',
+        queryStringParameters: { action: 'user.note.create', status: 'succeeded' },
+      })
+    );
+    const payload = body(response).data as {
+      rows: unknown[];
+      truncated: boolean;
+      cappedAt: number;
+    };
+
+    expect(response.statusCode).toBe(200);
+    expect(payload.rows).toHaveLength(5000);
+    expect(payload.truncated).toBe(true);
+    expect(payload.cappedAt).toBe(5000);
+    expect(auditQueries.listAuditEntries).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        actor: null,
+        action: 'user.note.create',
+        targetType: null,
+        targetId: null,
+        status: 'succeeded',
+        from: null,
+        to: null,
+      },
+      5000,
+      null
+    );
+  });
+
+  it('returns the chain hashes with the audit list', async () => {
+    auditQueries.listAuditEntries.mockResolvedValue([
+      seal(rawRow({ status: 'succeeded', completedAt: new Date('2026-11-02T10:00:02.000Z') })),
+    ]);
+
+    const response = await handler(makeEvent({ path: '/admin/audit' }));
+    const payload = body(response) as { data: Array<Record<string, unknown>> };
+
+    expect(payload.data[0]).toMatchObject({
+      rowHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      hashVersion: 1,
+      completionHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
   });
 });
 

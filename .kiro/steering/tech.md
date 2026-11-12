@@ -272,6 +272,16 @@ npm run lint             # Check linting
 - Key tables: users, subscriptions, credit_transactions, markets, analysis_requests, market_analysis_schedule, market_subscribers, analysis_results, analysis_deliveries, agent_memory, agent_performance, notification_preferences, payment_transactions, portfolio_manager_sessions, portfolio_manager_trades, portfolio_manager_decisions
 - Always test migrations in both directions
 
+### Audit Log Integrity (admin portal)
+- `admin_audit_log` is hash-chained: every row carries `prev_hash`, `row_hash`, `hash_version`; terminal rows also carry `completion_hash` and `completed_at`
+- **Never INSERT into `admin_audit_log` directly.** Use `infra/services/shared/audit-chain.ts` (`insertChainedAuditRow`) so the row joins the chain. A raw insert has no hash and verification fails at that row
+- `id` and `created_at` are generated in Node and inserted explicitly with millisecond precision — the hash covers `created_at`, so a database default would make every row unverifiable
+- Writes take a transaction-scoped advisory lock around read-head + insert; the unique index on `row_hash` is the backstop against a fork
+- Adding a field to the hashed set is a `hash_version` bump plus a chain reseal, not an edit to `canonicalAuditRow`. `verifyAuditChain` refuses versions it does not know
+- Verification is bounded (`GET /admin/audit/verify`, default 1,000 / max 5,000 rows) and a broken chain is a 200 with `valid: false`, never a 5xx
+- `deploy.sh` runs `scripts/backfill-audit-chain.ts` after migrations; it is idempotent and exits non-zero when the chain does not verify
+- Do not use `--skip-db` for the first deploy of a schema change: the new Lambda code writes chain columns that must already exist
+
 ### Market-Level Analysis Pool & Deduplication
 - **1-hour minimum interval** between analyses on the same market (hard minimum)
 - DynamoDB dedup cache with 1-hour TTL (replaces Redis/ElastiCache)

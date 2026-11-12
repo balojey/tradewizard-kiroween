@@ -300,17 +300,23 @@ export const userMutationRoutes: AdminRoute[] = [
 
           const existing = await getActiveOverride(client, userId);
 
-          auditRowId = await writeAuditLog(client, {
-            actor: identity,
-            action: PLAN_OVERRIDE_ACTION,
-            targetType: 'user',
-            targetId: userId,
-            reason: input.reason,
-            before: { plan: subscription.plan },
-            requestId: event.requestContext?.requestId ?? null,
-            ip: event.requestContext?.identity?.sourceIp ?? null,
-            idempotencyKey: auditId,
-          });
+          auditRowId = await writeAuditLog(
+            client,
+            {
+              actor: identity,
+              action: PLAN_OVERRIDE_ACTION,
+              targetType: 'user',
+              targetId: userId,
+              reason: input.reason,
+              before: { plan: subscription.plan },
+              requestId: event.requestContext?.requestId ?? null,
+              ip: event.requestContext?.identity?.sourceIp ?? null,
+              idempotencyKey: auditId,
+            },
+            // This route commits the audit row with the override: one atomic
+            // unit, unlike the "audit first, then work" default.
+            { inTransaction: true }
+          );
 
           await grantOverride(client, {
             userId,

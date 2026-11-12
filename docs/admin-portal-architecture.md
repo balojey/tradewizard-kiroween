@@ -408,6 +408,8 @@ stale context is ignored.
 - Admin app client: ID token 1 h, refresh 30 days; the ID token is silently refreshed.
 - Session held in `localStorage` under `tw_admin_session`; a legacy `sessionStorage` value is migrated and removed.
 - `tw_admin_session` cookie is a presence marker only (`SameSite=Strict`, `Secure`); it carries no token. `proxy.ts` uses it to choose login vs shell, never to authorize. The API authorizer remains the security boundary.
+  middleware, with `SameSite=Strict` and `Secure`. The middleware only checks
+  presence + `exp` (same approach as the product), never authorization.
 - Re-authentication is required for owner-level actions (settings, role changes)
   — enforced by requiring a fresh token (`auth_time` within 10 minutes).
 
@@ -486,6 +488,8 @@ GET  /admin/agents/performance
 GET  /admin/agents/models
 GET  /admin/ops/health
 GET  /admin/audit?actor=&action=&targetType=&targetId=&from=&to=
+GET  /admin/audit/verify?from=&to=&limit=
+GET  /admin/audit/export?actor=&action=&targetType=&targetId=&status=&from=&to=
 ```
 
 Write endpoints (minimum rank in brackets):
@@ -542,7 +546,10 @@ max `limit=200`. `offset` is forbidden — it is O(n) on this database.
 6. on failure: update to `status='failed'` + `error`, then rethrow
 
 Updating the pending row is the only permitted write to `admin_audit_log`
-(enforced by granting the trigger an allow-list for `status/after/error`).
+(enforced by granting the trigger an allow-list for `status/after/error/`
+`completion_hash/completed_at`). The write in step 4 also joins the row to the
+hash chain, and takes a transaction-scoped advisory lock so concurrent mutations
+cannot fork it (§8.3). If that insert fails, the mutation must not run.
 
 **Idempotency.** Mutations that move money accept an optional
 `Idempotency-Key` header stored in the rate-limit DynamoDB table for 24 h.
@@ -722,38 +729,97 @@ ALTER TABLE credit_transactions
 Verify existing rows before re-adding any CHECK. `deploy.sh` runs the file on
 every deploy, so a change that fails on existing data breaks deploys.
 
-### 8.3 Audit immutability
+### 8.3 Audit immutability and the hash chain
+
+Append-only by trigger is necessary but not sufficient: a database-level actor can
+still rewrite a row, and a reader cannot tell. Every row therefore commits to the
+row before it.
+
+```sql
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS prev_hash TEXT;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS row_hash TEXT;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS completion_hash TEXT;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS hash_version SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_audit_row_hash
+  ON admin_audit_log (row_hash) WHERE row_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_admin_audit_chain_order
+  ON admin_audit_log (created_at, id);
+```
+
+**Hashes.** `row_hash = sha256(canonical(row))` over the immutable fields (`id`,
+actor, action, target, reason, `before`, `created_at`, `prev_hash`,
+`hash_version`). `completion_hash = sha256(canonical({ rowHash, status, after,
+error, completedAt }))`, so a flipped status is detectable even though the row
+hash cannot change. The canonical form sorts keys and emits no whitespace; it is
+in `services/shared/audit-chain.ts`, shared with the maintenance job so the two
+writers cannot drift.
+
+**The timestamp is part of the hash.** `created_at` and `id` are generated in
+Node and inserted explicitly with millisecond precision. Letting Postgres default
+`created_at` (microseconds) while hashing a JavaScript ISO string (milliseconds)
+would make every row fail verification on read.
+
+**Ordering and forks.** The chain is ordered by `(created_at, id)`. The insert
+takes `pg_advisory_xact_lock(hashtext('admin_audit_log_chain'))` before reading
+the head, and bumps the timestamp by 1 ms if the head is at or after `now()` so
+clock skew between Lambda instances cannot place a new row before the head. The
+unique index on `row_hash` is the backstop if a writer ever skips the lock.
+
+**Trigger allow-list.**
 
 ```sql
 CREATE OR REPLACE FUNCTION admin_audit_log_immutable()
 RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
-    RAISE EXCEPTION 'admin_audit_log is append-only';
+    RAISE EXCEPTION 'admin_audit_log is append-only (delete rejected)';
   END IF;
-  -- Only the completion fields may change, and only from 'pending'.
-  IF OLD.status <> 'pending'
-     OR NEW.status = 'pending'
-     OR NEW.action IS DISTINCT FROM OLD.action
-     OR NEW.actor_sub IS DISTINCT FROM OLD.actor_sub
-     OR NEW.target_id IS DISTINCT FROM OLD.target_id
-     OR NEW.reason IS DISTINCT FROM OLD.reason
-     OR NEW.created_at IS DISTINCT FROM OLD.created_at
-  THEN
-    RAISE EXCEPTION 'admin_audit_log is append-only';
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.row_hash IS NULL OR NEW.hash_version IS NULL THEN
+      RAISE EXCEPTION 'admin_audit_log row % cannot be written without a chain hash', NEW.id;
+    END IF;
+    -- pending rows must have no completion fields; terminal rows must have both
+    ...
+    RETURN NEW;
   END IF;
-  RETURN NEW;
+
+  -- UPDATE: pending -> succeeded|failed only, completion fields set once,
+  -- every other column (including prev_hash/row_hash/hash_version) unchanged.
+  ...
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS admin_audit_log_immutable ON admin_audit_log;
 CREATE TRIGGER admin_audit_log_immutable
-  BEFORE UPDATE OR DELETE ON admin_audit_log
+  BEFORE INSERT OR UPDATE OR DELETE ON admin_audit_log
   FOR EACH ROW EXECUTE FUNCTION admin_audit_log_immutable();
 ```
 
-The RDS master user could drop the trigger; the goal is preventing application
-bugs and accidents, which is the realistic threat model.
+**Verification.** `GET /admin/audit/verify` walks a bounded window (default 1,000,
+max 5,000 rows) oldest-first and returns the first broken row with a reason:
+`missing_row_hash`, `unsupported_hash_version`, `row_hash_mismatch`,
+`prev_hash_mismatch`, `chain_start_mismatch`, `unexpected_completion`,
+`missing_completion`, `completion_hash_mismatch`. A broken chain is a `200` with
+`valid: false` — a finding, not a server error. `coversGenesis` says whether the
+window started at the first row ever; only then must its `prev_hash` be null.
+
+**Backfill.** `infra/scripts/backfill-audit-chain.ts` seals rows with
+`row_hash IS NULL`, oldest first, with the trigger disabled only inside the
+update transaction. It is idempotent, verifies on exit, and exits non-zero when
+the chain is broken. `--force` recomputes the whole chain and re-seals tampered
+rows: dev only. `deploy.sh` runs it after migrations. Legacy terminal rows use
+`created_at` as `completed_at` because the original schema never recorded a
+completion time.
+
+**What this does not prove.** The trigger and the chain stop application bugs,
+accidents, and edits by anyone who cannot disable a trigger and recompute a
+suffix. They do not stop the RDS master user, and they do not cover `ip`,
+`user_agent`, `request_id` or `idempotency_key`, which are trigger-immutable but
+outside the hash. The HMAC anchor in the plan (Secrets Manager key) would close
+the first gap and is deliberately not built yet; treat the chain as evidence
+against application and database mistakes, not against a determined DBA.
 
 ### 8.4 Naming conventions for audit actions
 
@@ -918,7 +984,7 @@ review, not the repo.
 
 | File | Change |
 |---|---|
-| `lib/auth-stack.ts` | Admin app client (`userSrp` only, 1 h ID / 30-day refresh); four `CfnUserPoolGroup`s; export `AdminClientId` |
+| `lib/auth-stack.ts` | Admin app client (`userSrp` only, 1 h ID / 8 h refresh); four `CfnUserPoolGroup`s; export `AdminClientId` |
 | `lib/admin-stack.ts` *(new)* | Authorizer + `admin-api` + route definition + `admin-metrics-rollup` + EventBridge rule; REST API with CORS allowlist (`https://admin.tradewizard.live`, `http://localhost:3001` in dev), throttle 20 rps / 40 burst, access logs |
 | `bin/tradewizard.ts` | Instantiate `AdminStack` after `ComputeStack`; pass `userPool`, `dbSecret`, `dbEndpoint`, `analysisBucket`, `rateLimitTable`, `eventBus`, `analysisQueue` |
 | `lib/monitoring-stack.ts` | Alarms: `AdminApi5xx`, `AdminAuthDenied`, `AdminRollupFailed`, `AdminAuditWriteFailed` |
@@ -944,13 +1010,19 @@ review, not the repo.
 
 - **One audit row per mutation**, written first, completed after (§7.3). Failures
   are recorded, not swallowed.
+- **The log is hash-chained** (§8.3): every row commits to its predecessor, and
+  every terminal row commits to its own completion state. `GET /admin/audit/verify`
+  reports the first broken row; the portal shows "Not verified" until it has a
+  response that says otherwise.
 - **Structured JSON logs** from `admin-api`:
   `{ level, requestId, actor, role, action, target, durationMs, outcome }`.
   Never log tokens, secrets, presigned URLs, or full payloads.
 - **Custom metrics**: `AdminAuthDenied`, `AdminAuditWriteFailed`,
   `AdminMutationFailed`, `AdminRollupFailed`, `AdminQuerySlow` (> 500 ms).
 - **Alarms** on all five metric names, published to the existing alarm SNS topic.
-- **Audit viewer** in the portal is paginated, filterable, read-only, CSV-exportable.
+- **Audit viewer** in the portal is paginated, filterable, read-only, and exports
+  the filtered rows (JSON or CSV, hashes included) capped at 5,000 rows with an
+  explicit truncation notice.
 - **Link-out, not reimplementation**: the ops page links to the CloudWatch
   dashboard and log group rather than embedding a log browser.
 
@@ -973,7 +1045,8 @@ assumed; the evidence column says how to re-check it.
 | 8 | Failed-auth and 5xx alarms wired to SNS | ✅ | `AdminAuthDenied` metric filter + alarm, plus `admin-api-errors` and `admin-rollup-errors` alarms on the monitoring topic |
 | 9 | No sensitive data in URLs | ✅ | User/analysis/session lookups are UUIDs; credentials and reasons travel in POST bodies |
 | 10 | No `console.log` of tokens/secrets/payloads | ✅ | Grep of `tradewizard-admin` and both admin Lambdas returns nothing for token/secret/payload-URL logging |
-| 11 | `admin_audit_log` update/delete trigger installed and tested | ✅ | Live: a second update on a finalised row raises "already final", `DELETE` raises "append-only" |
+| 11 | `admin_audit_log` update/delete trigger installed and tested | ✅ | Trigger now fires on INSERT/UPDATE/DELETE: an INSERT without `row_hash` is rejected, a second update on a finalised row raises "already final", `DELETE` raises "append-only" (integration suite + unit matrix) |
+| 11b | Audit log is hash-chained and the chain is verifiable | ✅ | Dev (2026-11-12): migration added `prev_hash`/`row_hash`/`completion_hash`/`hash_version`/`completed_at`, and the deploy-time backfill sealed all 47 pre-existing rows (`backfill-audit-chain.ts --dry-run` → "chain verified: 47 row(s), head `sha256:2792…`"). Tamper drill on a throwaway database on the same RDS instance: 3 rows seeded through the real writer verify; one trigger-disabled edit makes the script exit 1 naming that row (`row_hash_mismatch`); `--force` reseals and verifies. The 5 DB-gated integration tests pass there, including two concurrent writers producing one chain. Portal deployed: Amplify job 8 built `dba73d9` and succeeded, and the served chunk contains the Verify chain UI. Click-through (Verify chain → 3 rows) is the remaining visual check |
 | 12 | Destructive routes require `auth_time` within 10 minutes | ✅ | `requireFreshAuth` on kill switch, member changes and role updates; a 2-hour-old token returns `403 REAUTH_REQUIRED` (unit test) |
 | 13a | Not indexable by search engines | ✅ | Belongs only to the portal: `X-Robots-Tag: noindex, nofollow, noarchive` on every response (including the 307 from middleware), `<meta name="robots" content="noindex, nofollow">` from the root layout, and `robots.txt` with `Disallow: /`. Verified by curl, not assumption |
 | 13b | The PWA stores no admin data on the device | ✅ | Worker controlled the page with the server stopped: `/icons/icon-192.png` served from cache, `/login` absent from the cache, and an offline navigation returned the worker's notice instead of any cached page. Manifests/caching rules in §9.4, worker in `public/sw.js` |
@@ -1000,7 +1073,7 @@ a 12-concurrent test. API Gateway throttling keeps normal use well below it.
 | Layer | Requirement |
 |---|---|
 | Handlers | Vitest with a `pg` fake. **Property test (fast-check): for every route and every role below the minimum, no DB/S3/SQS call is made and the response is 403.** This single property is the backbone of the security model |
-| Audit | Property: every successful mutation produces exactly one `succeeded` row; every failed mutation exactly one `failed` row; no row is ever deleted or rewritten outside the completion fields |
+| Audit | Property: every successful mutation produces exactly one `succeeded` row; every failed mutation exactly one `failed` row; no row is ever deleted or rewritten outside the completion fields. Chain: golden canonical string + hash (a change is a `hash_version` bump), per-field sensitivity, every verifier outcome, and a DB-gated integration suite for concurrency, completion, tamper detection and trigger enforcement |
 | Kill switch | Unit tests for `shared/kill-switch.ts` including global + per-user interaction; regression tests proving `portfolio-risk-engine` and `portfolio-dashboard-api` both honour `kill_switch#global` |
 | Credit grant/refund | Balance arithmetic, transaction row correctness, `credit_source` values, idempotency key replay |
 | Analytics queries | Golden-file tests for the no-trade histogram, edge buckets, and live-vs-shadow aggregation on seeded rows |
@@ -1212,6 +1285,7 @@ something is reversed, add a new row.
 | 2026-11-04 | Session lifetime + subscriber list | Done | **Sessions:** the portal stored tokens in `sessionStorage` and the admin client's refresh token was 8 hours, so closing the browser or working past 8h forced a login. Tokens now live in `localStorage`, survive restarts, and the client's refresh token is **30 days** (ID/access stay at 1 hour and refresh silently). `proxy.ts` now checks a presence-only `tw_admin_session` marker cookie instead of decoding an ID token, because the ID token expires long before the refresh token — the old check would have redirected a valid session to `/login`. The authorizer remains the security boundary. Note this does not change `requireFreshAuth` (10 minutes) for kill switch/membership/settings: that is a deliberate presence check, not a session lifetime. **Subscribers:** `GET /admin/newsletter/subscribers` (admin, filters + search + cursor) and `/newsletter/subscribers` in the portal, showing status, source, join date, account link and suppression reason, with subscribed/unsubscribed/suppressed counts. 559 infra tests. |
 | 2026-11-03 | Support inbox | Done | Seven routes at `minimumRole: support`: `GET /admin/support/summary`, `GET /admin/support/tickets` (status/topic/assignee/q filters, cursor), `GET /admin/support/tickets/{id}`, `POST …/{id}/claim`, `POST …/{id}/release`, `POST …/{id}/messages`, `PUT …/{id}`. Concurrency is enforced, not documented: claim is a conditional `UPDATE … WHERE assigned IS NULL OR mine` (409 `ALREADY_CLAIMED` names the holder), replies `SELECT … FOR UPDATE` the ticket and refuse when another operator holds it unless the caller is admin+, and an unassigned ticket is claimed by whoever answers first. Status/priority/assignment require a reason and audit `before`/`after`; replies and internal notes are audited as `support.ticket.reply`/`.note` with no reason prompt. A public reply rotates the thread token and emails the customer through `shared/support-email.ts`; a second reply inside 60s is stored with the email suppressed (and the token left alone, so the customer's existing link keeps working). Resolving emails a notice with no link — rotating there would break the last working link. `support-housekeeping` (hourly, EventBridge) releases claims idle 8h and closes tickets resolved 7d ago; verified live by seeding a stale claim → `released: 1`. UI: `/support` (filters, summary stats, overdue flags) and `/support/{id}` (thread, internal notes, claim/release, update dialog). SLA comes from `support_first_response_target_hours`, whose only consumer is this inbox. 488 infra tests. |
 | 2026-11-03 | Installable portal (PWA) | Done | `app/manifest.ts` (standalone, `start_url: /overview`, any+maskable 192/512 icons, Users/Portfolio/Ops shortcuts), a production-only `ServiceWorkerRegistrar`, and a deliberately small `public/sw.js`. Cache policy is the security decision: content-hashed assets only (SWR, capped at 80); never navigations, API responses, RSC payloads (`RSC`/`?_rsc=`), presigned S3 URLs or non-GET. Offline navigations get an inline notice, so a shared machine can never be shown a cached shell. `sw.js` is served `no-store` with `Service-Worker-Allowed: /`. Verified on a standalone build with CDP: worker active and controlling, icon served from cache, `/login` not cached, and with the server stopped the offline notice rendered while cached assets still loaded. |
+| 2026-11-12 | Audit chain integrity | **Deployed to dev** (portal click-through pending) | `admin_audit_log` is now hash-chained: every row carries `prev_hash`/`row_hash`/`hash_version`, terminal rows also `completion_hash`/`completed_at`. Canonical form and the chained insert live in `services/shared/audit-chain.ts` so the hourly maintenance job (`user.plan.override.expire`, previously a raw terminal INSERT that would have broken the chain) uses the same writer. The writer generates `id` and `created_at` in Node with millisecond precision — Postgres defaults are microseconds and `created_at` is hashed, so letting the database set it would make every row fail verification on read — and takes `pg_advisory_xact_lock` before reading the head; a unique partial index on `row_hash` backs that up. The trigger now also fires on INSERT and rejects a row without a chain hash, and the completion transition is the only permitted update. `GET /admin/audit/verify` (analyst) walks a bounded window (1,000 default / 5,000 max) and answers 200 with the first broken row and a reason; `GET /admin/audit/export` returns the filtered rows capped at 5,000 with a truncation flag. `scripts/backfill-audit-chain.ts` seals legacy rows idempotently (trigger disabled only inside the update transaction), verifies on exit, and is wired into `deploy.sh` after migrations. Portal: verified/broken/not-verified badge that is keyed to the window it was run against, row dialog with all hashes, date + target-type filters, JSON/CSV export. Tests: 21 hash/verifier unit tests, 7 handler tests, and a DB-gated integration suite for concurrency, completion, tamper detection and trigger enforcement. HMAC anchor deferred. **Dev verification:** migration applied and the deploy-time backfill sealed all 47 pre-existing rows; `backfill-audit-chain.ts --dry-run` reports `chain verified: 47 row(s)`; the tamper drill on a throwaway database on the same RDS instance detects the edited row (`row_hash_mismatch`, exit 1) and `--force` reseals it; the 5 DB-gated integration tests pass there, including two concurrent writers producing one chain. Prod data verified the same way (3 rows sealed, chain valid); the prod portal rebuilt at `dba73d9` with the new UI. Remaining: click Verify chain in the prod portal and record the badge. |
 | next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
 
 ---
