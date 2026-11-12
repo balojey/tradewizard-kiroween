@@ -10,7 +10,7 @@ Copy-paste fields for the Devpost submission form. Replace every `TODO` before s
 
 ## Elevator pitch (≤ 200 characters)
 
-The audited control plane for a live AI prediction-market platform: four-role RBAC, append-only audit, a fail-closed kill switch, runtime settings, support, and newsletter. Built with Kiro.
+The audited control plane for a live AI prediction-market platform: four-role RBAC, hash-chained audit with verification, a fail-closed kill switch, runtime settings, support, and newsletter. Built with Kiro.
 
 ## Category
 
@@ -30,7 +30,7 @@ The audited control plane for a live AI prediction-market platform: four-role RB
 
 TradeWizard is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. Operating that from the AWS console is unsafe and slow.
 
-The TradeWizard Operations Portal is the separate internal product built to operate it. A Next.js 16 app with its own admin API, Cognito identity, four-role RBAC, and an append-only audit trail. Every mutation requires a reason and writes an audit row before the side effect. Operators can inspect users, analyses, portfolio sessions, billing, agents, queues, and markets; run a fail-closed per-user kill switch; pause or terminate sessions; grant credits and plan overrides; requeue or refund analyses; change audited runtime settings; handle support tickets; and compose the newsletter.
+The TradeWizard Operations Portal is the separate internal product built to operate it. A Next.js 16 app with its own admin API, Cognito identity, four-role RBAC, and a hash-chained audit trail. Every mutation requires a reason and writes a hash-chained audit row before the side effect; the portal verifies the chain and names the first broken row. Operators can inspect users, analyses, portfolio sessions, billing, agents, queues, and markets; run a fail-closed per-user kill switch; pause or terminate sessions; grant credits and plan overrides; requeue or refund analyses; change audited runtime settings; handle support tickets; and compose the newsletter.
 
 The portal never holds wallet keys, signs transactions, or calls the CLOB. It is a control surface, not a second business-logic layer.
 
@@ -42,7 +42,7 @@ Paste `docs/devpost-submission.md` into the Devpost description field. It follow
 
 Use [docs/kiro-usage.md](kiro-usage.md) for the full write-up. The short version:
 
-- **Specs.** The portal is specified and documented by two specs: `admin-portal-foundation` (package isolation, auth/MFA, RBAC, audit spine, admin API, read surfaces, shell) and `admin-portal-operations` (mutation envelope, kill switch, session controls, membership, settings, support, newsletter). Each has requirements, a design, and an ordered task list.
+- **Specs.** The portal is specified and documented by three specs: `admin-portal-foundation` (package isolation, auth/MFA, RBAC, audit spine, admin API, read surfaces, shell), `admin-portal-operations` (mutation envelope, kill switch, session controls, membership, settings, support, newsletter), and `audit-chain-integrity` (hash chain, completion hash, backfill, verification, audit UI). Each has requirements, a design, and an ordered task list.
 - **Steering.** Four documents under `.kiro/steering/` encode the product model, package boundaries, technical invariants, and submission rules. The most important rule is negative: deterministic analysis stages contain no model calls.
 - **Agent hooks.** Five hooks, including `admin-typecheck` for the portal, `analysis-gate-guard` for changes that reach into the analysis pipeline, and `spec-task-followthrough` to close tasks and reconcile docs.
 - **MCP.** `.kiro/settings/mcp.json` connects the agent to Magic Link and Polymarket documentation so auth and market contracts are verified, not recalled.
@@ -65,7 +65,7 @@ Platform context: Amazon Bedrock, Strands Agents SDK, Polymarket CLOB and Gamma 
 4. Open **Analyses** to inspect a result, its quality panel, and the payload viewer.
 5. Open **Portfolio** to see a session, its decisions, and the kill-switch control.
 6. Open **Settings** to see runtime settings with their named consumers.
-7. Open **Audit** to see the append-only record of every mutation.
+7. Open **Audit** to see the hash-chained record of every mutation; click **Verify chain** and show the verified/broken badge.
 
 ### Test credentials
 
@@ -92,7 +92,7 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 - Script: [docs/devpost-vo-script.md](devpost-vo-script.md)
 - Metadata: [docs/youtube-description.md](youtube-description.md)
 - Runtime target: 2:45, hard cap 3:00.
-- Show the portal at `https://admin.tradewizard.live`: login/MFA → overview → users → analyses → session and kill switch → settings and audit → support → newsletter → Kiro specs and hooks.
+- Show the portal at `https://admin.tradewizard.live`: login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → newsletter → Kiro specs and hooks.
 - Mention the platform at `https://tradewizard.live` only as the system the portal operates. Do not present the platform as the new build.
 
 ## Bonus prize eligibility

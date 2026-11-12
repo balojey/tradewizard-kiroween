@@ -2,7 +2,7 @@
 
 > **Kiroween 2026 · Frankenstein category**
 >
-> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by two Kiro specs during the submission period.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by three Kiro specs during the submission period.
 
 TradeWizard is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, customer support, and a newsletter.
 
@@ -44,9 +44,9 @@ Admin accounts are dedicated Cognito identities. Sign-in is email + password + T
 
 Every handler re-checks the minimum role. Destructive actions require a token fresher than 10 minutes and a reason. The last owner cannot be removed.
 
-### Append-only audit
+### Hash-chained audit
 
-Every mutation writes an audit row before the side effect, with actor, action, target, reason, before/after state, request id, IP, user agent, and idempotency key. The row starts `pending` and ends `succeeded` or `failed`. Database triggers reject `UPDATE` and `DELETE`, so the log is append-only even from a direct database session.
+Every mutation writes a hash-chained audit row before the side effect, with actor, action, target, reason, before/after state, request id, IP, user agent, and idempotency key. Each row carries `prev_hash` and `row_hash`; terminal rows also carry a `completion_hash`, so a flipped status is detectable. Writes take a transaction-scoped advisory lock, so concurrent mutations cannot fork the chain. The portal verifies the chain in bounded windows, shows **Chain verified** / **Chain broken** / **Not verified**, and names the first broken row. Database triggers reject `UPDATE` and `DELETE`. A broken chain is a finding (`200`, `valid: false`), not a server error.
 
 ### Read surfaces
 
@@ -58,7 +58,7 @@ Every mutation writes an audit row before the side effect, with actor, action, t
 - **Agents** - accuracy leaderboard, calibration, model cost
 - **Ops** - queues, DLQ, Lambda health, alarms, database health
 - **Markets** - analysis pool, schedules, stuck executions
-- **Audit** - append-only event log with filters
+- **Audit** - hash-chained event log with filters, verification, and export
 
 ### Controls
 
@@ -95,11 +95,12 @@ The portal is installable, but the service worker caches only content-hashed sta
 |----------|-------|--------------|
 | [`admin-portal-foundation`](.kiro/specs/admin-portal-foundation/requirements.md) | 1 spec | Package isolation, auth/MFA, RBAC, audit spine, admin API, read surfaces, shell |
 | [`admin-portal-operations`](.kiro/specs/admin-portal-operations/requirements.md) | 1 spec | Mutation envelope, kill switch, session controls, membership, settings, support, newsletter |
+| [`audit-chain-integrity`](.kiro/specs/audit-chain-integrity/requirements.md) | 1 spec | Hash-chained audit rows, completion hashes, backfill, bounded verification, audit UI |
 | [`.kiro/steering/`](.kiro/steering/) | 4 documents | Product, structure, tech, and submission constraints |
 | [`.kiro/hooks/`](.kiro/hooks/) | 5 hooks | Typecheck all packages, guard the analysis gates, close spec tasks |
 | [`.kiro/settings/mcp.json`](.kiro/settings/mcp.json) | 2 active servers | Magic Link and Polymarket documentation |
 
-The repository also contains 31 product specs for the platform. They are context for the system the portal operates; the two portal specs are the submission.
+The repository also contains 31 product specs for the platform. They are context for the system the portal operates; the three portal specs are the submission.
 
 Read [docs/kiro-usage.md](docs/kiro-usage.md) for the judge-facing write-up.
 
@@ -218,7 +219,7 @@ npx cdk diff --all -c env=development
 ```
 tradewizard-kiroween/
 ├── .kiro/                  # Kiro specs, steering, hooks, MCP
-│   ├── specs/             # 34 specs; two are the portal submission
+│   ├── specs/             # 35 specs; three are the portal submission
 │   ├── steering/          # Product, structure, tech, submission rules
 │   ├── hooks/             # Typecheck, gate guard, spec follow-through
 │   └── settings/mcp.json
@@ -235,7 +236,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 2,838 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 2,963 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
@@ -246,6 +247,7 @@ tradewizard-kiroween/
 - [tradewizard-admin/README.md](tradewizard-admin/README.md) - Portal development and deployment
 - [.kiro/specs/admin-portal-foundation](.kiro/specs/admin-portal-foundation/requirements.md) - Foundation spec
 - [.kiro/specs/admin-portal-operations](.kiro/specs/admin-portal-operations/requirements.md) - Operations spec
+- [.kiro/specs/audit-chain-integrity](.kiro/specs/audit-chain-integrity/requirements.md) - Hash-chain integrity spec
 - [docs/admin-portal-architecture.md](docs/admin-portal-architecture.md) - Binding portal architecture
 - [docs/admin-portal-runbook.md](docs/admin-portal-runbook.md) - Operating procedures
 

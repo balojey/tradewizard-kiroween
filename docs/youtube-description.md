@@ -16,9 +16,9 @@ Recommended: option 1.
 
 TradeWizard is live: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. The Operations Portal is the separate internal product built to operate it safely.
 
-It is not a CRUD dashboard. It is a role-gated control plane with its own Next.js app, API, Cognito identity, append-only audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB.
+It is not a CRUD dashboard. It is a role-gated control plane with its own Next.js app, API, Cognito identity, hash-chained audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB.
 
-**Submitted to Kiroween 2026 in the Frankenstein category.** The portal stitches together Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and two Kiro specs.
+**Submitted to Kiroween 2026 in the Frankenstein category.** The portal stitches together Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and three Kiro specs.
 
 - **Operations portal:** https://admin.tradewizard.live
 - **Platform it operates:** https://tradewizard.live
@@ -37,7 +37,7 @@ It is not a CRUD dashboard. It is a role-gated control plane with its own Next.j
 1:25 Runtime settings with real consumers
 1:40 Support inbox
 1:55 Newsletter composer and subscribers
-2:10 Append-only audit and RBAC
+2:10 Hash-chained audit and RBAC
 2:25 PWA cache safety and Kiro artifacts
 2:45 Close
 
@@ -50,11 +50,14 @@ It is not a CRUD dashboard. It is a role-gated control plane with its own Next.j
 • Destructive actions require a token fresher than 10 minutes
 • The last owner cannot be removed (`409 LAST_OWNER`)
 
-📜 APPEND-ONLY AUDIT
+📜 HASH-CHAINED AUDIT
 
 • Audit row written before the side effect
 • Actor, action, target, reason, before/after state, request id, IP, user agent
-• Idempotency key per actor + action
+• `prev_hash` + `row_hash` link every row to its predecessor
+• Terminal rows add `completion_hash`, so a flipped status is detectable
+• Advisory lock prevents a chain fork; unique hash is the backstop
+• `GET /admin/audit/verify` names the first broken row
 • Database triggers reject updates and deletes
 • Pending rows make crashes visible
 
@@ -72,6 +75,7 @@ It is not a CRUD dashboard. It is a role-gated control plane with its own Next.j
 
 • `admin-portal-foundation` spec: package isolation, auth/MFA, RBAC, audit, admin API, read surfaces, shell
 • `admin-portal-operations` spec: mutation envelope, kill switch, session controls, membership, settings, support, newsletter
+• `audit-chain-integrity` spec: canonical hashes, backfill, bounded verification, audit UI
 • 4 steering documents and 5 hooks
 • `fast-check` property tests for RBAC, fresh-auth, and bearer extraction
 • MCP servers for Magic Link and Polymarket documentation

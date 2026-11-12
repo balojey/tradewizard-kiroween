@@ -22,8 +22,8 @@ The video should feel like an incident console, not a marketing site. Open on th
 | 1:25 | Settings | Show a runtime setting with its named consumer, change it with a reason, then show the audit row. |
 | 1:40 | Support | Open a ticket; show context snapshot, claim, reply, internal note. |
 | 1:55 | Newsletter | Compose from a template, preview, show subscriber/suppression list. |
-| 2:10 | Audit + roles | Show the append-only log; switch to an analyst view and show mutations disappear. |
-| 2:25 | PWA + Kiro | Show the install prompt, then the two portal specs, steering, and hooks. |
+| 2:10 | Hash-chained audit + roles | Show the audit log; click **Verify chain**; then switch to an analyst view and show mutations disappear. |
+| 2:25 | PWA + Kiro | Show the install prompt, then the three portal specs, steering, and hooks. |
 | 2:45 | End card | Portal URL + repo URL. |
 
 ---
@@ -46,13 +46,13 @@ Settings is runtime configuration. Every switch names its consumer: pause analys
 
 Support is the customer queue: tickets carry the analysis or session context, a tokenised thread, and an honest SLA. Newsletter adds typed templates, production preview, owner-only send, subscriber suppression, and signed bounce webhooks.
 
-Underneath it all, the audit log: every mutation writes an append-only row before the side effect, with who, what, why, before, after, and request id. Triggers reject edits and deletes.
+Underneath it all, the audit log is hash-chained: every mutation writes a row before the side effect, with who, what, why, before, after, and request id. Each row commits to the previous row, the portal verifies the chain and names the first broken row, and triggers reject edits and deletes.
 
 The PWA caches only content-hashed assets - never a navigation, API data, or a presigned payload - so a shared machine cannot show the previous operator's shell.
 
-We built it from two Kiro specs: foundation and operations. Four steering documents constrain the work, and hooks typecheck the admin app and guard the deterministic analysis stages it can touch.
+We built it from three Kiro specs: foundation, operations, and audit chain. Four steering documents constrain the work, and hooks typecheck the admin app and guard the deterministic analysis stages it can touch.
 
-The platform is the product. This is the control plane. Two Kiro specs, one audited portal - built to let a team operate a live trading system without guessing.
+The platform is the product. This is the control plane. Three Kiro specs, one audited portal - built to let a team operate a live trading system without guessing.
 
 ---
 
@@ -66,6 +66,6 @@ Operators get users, analyses, portfolio sessions, billing, agents, queues, and 
 
 Every switch names the service that reads it. Every destructive action requires a reason and a fresh token. The PWA caches only static assets, never a previous operator's shell.
 
-Two Kiro specs, foundation and operations, define the whole control plane.
+Three Kiro specs, foundation, operations, and audit chain, define the whole control plane.
 
 The platform is the product. This is the control plane.

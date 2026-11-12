@@ -2,7 +2,7 @@
 
 > **Category: Frankenstein**
 >
-> The audited control surface for a live multi-agent prediction-market platform. A separate internal Next.js product, specified and documented by two Kiro specs during the submission period.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal Next.js product, specified and documented by three Kiro specs during the submission period.
 
 ## Why this is the submission
 
@@ -16,13 +16,13 @@ The platform is context. The portal is the submission.
 
 The portal is a role-gated control surface with four jobs: observe, control, configure, and account for what happened.
 
-**Observe.** Overview metrics, users and their credits/analyses/sessions/payments/notes, analyses with quality analytics and presigned payloads, portfolio sessions with trades and decisions, billing, agent calibration and cost, queues and alarms, markets, and the audit log.
+**Observe.** Overview metrics, users and their credits/analyses/sessions/payments/notes, analyses with quality analytics and presigned payloads, portfolio sessions with trades and decisions, billing, agent calibration and cost, queues and alarms, markets, and the hash-chained audit log.
 
 **Control.** A fail-closed per-user kill switch, session pause/resume/terminate, credit grants, plan overrides, account suspension, support notes, member invitations and removal, analysis cache invalidation, refunds, and market requeue.
 
 **Configure.** Audited runtime settings, each with a named consumer: pause new analysis, edit the maintenance message, override the AI provider, pause new Portfolio Manager activations, tune support SLA, or disable newsletter opt-ins. A missing or unreadable setting falls back to the deployed default.
 
-**Account for it.** Every mutation requires a reason and writes an append-only audit row before the side effect, with actor, action, target, before/after state, request id, and idempotency key. Database triggers reject updates and deletes.
+**Account for it.** Every mutation requires a reason and writes a hash-chained audit row before the side effect, with actor, action, target, before/after state, request id, and idempotency key. `row_hash` commits to the previous row; terminal rows add a `completion_hash`, so a flipped status is detectable. The portal verifies the chain and names the first broken row. Database triggers reject updates and deletes.
 
 The portal also carries the support inbox and the newsletter composer. Support tickets keep the analysis or session context that prompted them and use a tokenised customer thread. Newsletter campaigns are composed from typed templates and sent by an owner with fresh auth; bounce and complaint webhooks are signature-verified.
 
@@ -35,7 +35,7 @@ The portal is a chimera of systems that normally do not share a body:
 - A separate Next.js 16 application that never enters the customer bundle
 - Amazon Cognito for email + password + TOTP, admin groups, and a request authorizer
 - A dedicated admin API on API Gateway, backed by Lambda
-- Amazon RDS for PostgreSQL for business state and an append-only audit log
+- Amazon RDS for PostgreSQL for business state and a hash-chained audit log
 - Amazon DynamoDB for kill-switch state, rate limits, and concurrent claims
 - Amazon S3 for analysis payloads behind short-lived presigned URLs
 - EventBridge Scheduler for housekeeping and metrics rollups
@@ -51,8 +51,9 @@ Kiro is the stitching. Two specs define the foundation and the operations layer,
 
 ### Specs
 
-- **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the append-only audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist.
+- **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the hash-chained audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist.
 - **`admin-portal-operations`** - the mutation envelope, per-user kill switch, session controls, account operations, membership and invites, runtime settings, analysis operations, support inbox, newsletter, and verification.
+- **`audit-chain-integrity`** - canonical row and completion hashes, advisory-lock serialization, idempotent backfill, bounded verification, and the audit UI's verified/broken states.
 
 Both have requirements, a design, and an ordered task list. The tasks are checked against shipped code.
 
@@ -123,14 +124,14 @@ A runtime setting is only allowed if a service reads it in the same change. Read
 
 ## Accomplishments
 
-- A real control plane for a live trading system: role-gated, reason-required, append-only.
+- A real control plane for a live trading system: role-gated, reason-required, hash-chained.
 - Four-tier RBAC enforced by the authorizer and re-checked in every handler.
 - An audit spine inserted before the side effect and immutable at the database layer.
 - A fail-closed kill switch with synchronous halt and asynchronous exit.
 - Runtime settings with named consumers.
 - Contextual support tickets and consent-first newsletter campaigns in the same control plane.
 - A PWA that does not leak the previous operator.
-- Two Kiro specs that trace the portal end to end.
+- Three Kiro specs that trace the portal end to end.
 
 ## What we learned
 
@@ -153,7 +154,7 @@ A runtime setting is only allowed if a service reads it in the same change. Read
 
 | Kiro capability | Evidence |
 |-----------------|----------|
-| Spec-driven development | `admin-portal-foundation` and `admin-portal-operations`, each with requirements, design, and completed tasks |
+| Spec-driven development | `admin-portal-foundation`, `admin-portal-operations`, and `audit-chain-integrity`, each with requirements, design, and completed tasks |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
 | Agent hooks | 5 hooks, including `admin-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough` |
 | MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation |
@@ -173,6 +174,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 - **Kiro usage write-up**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
 - **Portal foundation spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-foundation/requirements.md
 - **Portal operations spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-operations/requirements.md
+- **Audit chain spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/audit-chain-integrity/requirements.md
 
 ---
 

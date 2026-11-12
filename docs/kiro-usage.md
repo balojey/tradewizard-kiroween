@@ -44,7 +44,7 @@ Task close-out        # checkbox, targeted tests, doc reconciliation
 
 The loop left artifacts. A new contributor can read the foundation spec, see why the portal is a separate app, read the operations spec, see the mutation envelope and kill-switch state machine, and see which tasks were completed.
 
-## 3. The two specs behind the portal
+## 3. The three specs behind the portal
 
 ### `admin-portal-foundation`
 
@@ -53,7 +53,7 @@ The loop left artifacts. A new contributor can read the foundation spec, see why
 - Why the portal is a separate Next.js package and a separate Amplify app
 - Cognito email + password + TOTP, dedicated admin identities, MFA bootstrap
 - Four roles and the authorizer/handler enforcement contract
-- The append-only audit spine and idempotency
+- The hash-chained audit spine and idempotency
 - The admin API, validation, pagination, and read-path limits
 - Read surfaces: overview, users, analyses, portfolio, billing, agents, ops, markets, audit
 - The UI shell, design primitives, and PWA cache policy
@@ -72,6 +72,18 @@ The loop left artifacts. A new contributor can read the foundation spec, see why
 - Analysis cache invalidation, refunds, and atomic requeue
 - The support inbox and newsletter operations
 - The tests and live-verification rules
+
+### `audit-chain-integrity`
+
+[`.kiro/specs/audit-chain-integrity/`](../.kiro/specs/audit-chain-integrity/requirements.md) defines:
+
+- The canonical row hash over immutable fields and the separate completion hash
+- `hash_version` and the rule that a new hashed field requires a version bump
+- The advisory-lock write path that prevents a chain fork
+- The idempotent backfill for rows written before the chain existed
+- The bounded verification endpoint and its first-broken-row reasons
+- The audit UI's **Chain verified** / **Chain broken** / **Not verified** states
+- The tamper drill and the rule that `--force` is a scratch-database tool
 
 ### What a spec looks like in practice
 
@@ -152,6 +164,7 @@ The portal and its backend use **Vitest**:
 - `services/admin-api/handler.test.ts` covers auth, roles, validation, audit, pagination, and mutations.
 - `services/shared/admin-auth.test.ts` covers token parsing, role ranking, MFA, and fresh-auth failures.
 - `services/shared/admin-auth.property.test.ts` uses `fast-check` for the invariants: role ranking, group-to-role resolution, order independence, `requireRole` across every role pair, the fresh-auth window, and bearer-token extraction. Each property runs 100-300 generated cases.
+- `services/shared/audit-chain.test.ts`, `services/admin-api/lib/audit-chain.test.ts`, and `services/admin-api/lib/audit.integration.test.ts` cover canonical hashing, completion hashes, concurrent inserts, backfill idempotency, and first-broken-row verification.
 - Focused tests cover kill-switch state, session controls, settings fallback/cache, support claim/reply concurrency, newsletter idempotency, and webhook signatures.
 - `npx tsc --noEmit` in `tradewizard-admin/` is the UI safety net; `admin-typecheck` runs it on save.
 
@@ -191,7 +204,9 @@ npm run synth:dev
 | Support inbox | `infra/services/admin-api/routes/support.ts`, `tradewizard-admin/components/support/` |
 | Newsletter | `infra/services/admin-api/routes/newsletter.ts`, `tradewizard-admin/components/newsletter/` |
 | PWA cache policy | `tradewizard-admin/public/sw.js`, `tradewizard-admin/components/pwa/ServiceWorkerRegistrar.tsx` |
-| Testing | `infra/services/shared/admin-auth.property.test.ts` (fast-check) and the focused Vitest suites |
+| Audit chain spec | `.kiro/specs/audit-chain-integrity/` |
+| Audit chain code | `infra/services/shared/audit-chain.ts`, `infra/services/admin-api/lib/audit-chain.ts`, `infra/scripts/backfill-audit-chain.ts` |
+| Testing | `infra/services/shared/admin-auth.property.test.ts` (fast-check), the audit-chain suites, and the focused Vitest suites |
 | License | `LICENSE` |
 
 ## 12. Reproducing the verification

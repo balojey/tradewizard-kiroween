@@ -2,7 +2,7 @@
 
 > **Kiroween 2026 · Frankenstein category**
 >
-> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by two Kiro specs during the submission period.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by three Kiro specs during the submission period.
 
 ---
 
@@ -20,13 +20,13 @@ The portal is the new artifact in this submission. The platform it operates is c
 
 The portal is a role-gated operations console with four jobs: observe, control, configure, and account for what happened.
 
-**Observe.** Overview metrics, users and their credits/analyses/sessions/payments/notes, analyses with quality analytics and presigned payloads, portfolio sessions with trades and decisions, billing, agent calibration and cost, queues and alarms, markets, and the append-only audit log.
+**Observe.** Overview metrics, users and their credits/analyses/sessions/payments/notes, analyses with quality analytics and presigned payloads, portfolio sessions with trades and decisions, billing, agent calibration and cost, queues and alarms, markets, and the hash-chained audit log.
 
 **Control.** A fail-closed per-user kill switch, session pause/resume/terminate, credit grants, plan overrides, account suspension, support notes, member invitations and removal, analysis cache invalidation, refunds, and market requeue.
 
 **Configure.** Audited runtime settings, each with a named consumer: pause new analysis, edit the maintenance message, override the AI provider, pause new Portfolio Manager activations, tune support SLA, or disable newsletter opt-ins. A missing or unreadable setting falls back to the deployed default.
 
-**Account for it.** Every mutation requires a reason and writes an append-only audit row before the side effect. The row records the actor, action, target, before/after state, request id, IP, user agent, and idempotency key. Database triggers reject updates and deletes.
+**Account for it.** Every mutation requires a reason and writes a hash-chained audit row before the side effect. The row records the actor, action, target, before/after state, request id, IP, user agent, and idempotency key. `row_hash` commits to the previous row, and terminal rows also carry a `completion_hash`, so a flipped status is detectable. Database triggers reject updates and deletes.
 
 The portal also carries two customer-facing workflows: the support inbox with contextual ticket snapshots and tokenised threads, and the newsletter composer, subscriber list, and signed delivery webhooks.
 
@@ -39,7 +39,7 @@ The portal is not one framework with a login screen. It is a chimera of systems 
 - **A separate Next.js 16 application** that never enters the customer bundle
 - **Amazon Cognito** for email + password + TOTP, admin groups, and a request authorizer
 - **A dedicated admin API** on API Gateway, backed by Lambda
-- **Amazon RDS for PostgreSQL** for business state and an append-only audit log
+- **Amazon RDS for PostgreSQL** for business state and a hash-chained audit log
 - **Amazon DynamoDB** for kill-switch state, rate limits, and concurrent claims
 - **Amazon S3** for analysis payloads behind short-lived presigned URLs
 - **EventBridge Scheduler** for housekeeping and metrics rollups
@@ -49,16 +49,17 @@ The portal is not one framework with a login screen. It is a chimera of systems 
 
 The unusual part is not any one service. It is the contract between them: the portal can stop a live trading system, but it cannot move money; it can change runtime behavior, but every change names its consumer and lands in an immutable log; it can read sensitive data, but it never holds the keys to act on-chain.
 
-Kiro is the stitching. Two specs define the foundation and the operations layer, four steering documents constrain the work, and hooks verify the parts most likely to drift.
+Kiro is the stitching. Three specs define the foundation, the operations layer, and the audit chain; four steering documents constrain the work, and hooks verify the parts most likely to drift.
 
 ## How we built it with Kiro
 
-### Two specs, one control plane
+### Three specs, one control plane
 
-The portal is specified and documented by two Kiro specs:
+The portal is specified and documented by three Kiro specs:
 
-- **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the append-only audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist. It defines why the portal is a separate app and why the authorizer is the security boundary, not the hidden button.
+- **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the hash-chained audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist. It defines why the portal is a separate app and why the authorizer is the security boundary, not the hidden button.
 - **`admin-portal-operations`** - the mutation envelope, the per-user kill switch, portfolio session controls, user and account operations, portal membership and invites, runtime settings, analysis operations, the support inbox, newsletter operations, and the verification rules.
+- **`audit-chain-integrity`** - the canonical row hash, completion hash, advisory-lock serialization, idempotent backfill, bounded verification endpoint, and the audit UI's verified/broken states.
 
 Each spec has requirements, a design, and an ordered task list. The tasks are checked against shipped code, not against a plan.
 
@@ -132,7 +133,9 @@ Every handler re-checks the minimum role. The UI hides what a role cannot do, bu
 
 ### Audit before the side effect
 
-The audit row is inserted with `pending` status before the mutation runs, then completed as `succeeded` or `failed`. A crash leaves a visible pending row rather than an unrecorded action. Triggers reject `UPDATE` and `DELETE`, so the log is append-only even from a direct database session.
+The audit row is inserted with `pending` status before the mutation runs, then completed as `succeeded` or `failed`. A crash leaves a visible pending row rather than an unrecorded action.
+
+The table is also hash-chained. Each row carries `prev_hash` and `row_hash`; terminal rows also carry `completion_hash` and `completed_at`. The chain is ordered by `(created_at, id)`, and writes take a transaction-scoped advisory lock around read-head + insert so concurrent mutations cannot fork it. The portal verifies a bounded window, names the first broken row with a reason (`row_hash_mismatch`, `prev_hash_mismatch`, `completion_hash_mismatch`, and so on), and treats a break as a finding (`200`, `valid: false`) rather than a server error. Triggers reject `UPDATE` and `DELETE`.
 
 ### The kill switch
 
@@ -203,14 +206,14 @@ The portal is nine CDK stacks, with the platform as its subject:
 
 ## Accomplishments we are proud of
 
-- **A real control plane for a live trading system.** Not a CRUD dashboard: a role-gated, reason-required, append-only operations product.
+- **A real control plane for a live trading system.** Not a CRUD dashboard: a role-gated, reason-required, hash-chained operations product.
 - **Four-tier RBAC enforced twice.** The authorizer computes the role; every handler re-checks the minimum.
-- **An audit spine that cannot be edited.** Inserted before the side effect, append-only at the database layer, with before/after state and idempotency.
+- **An audit spine that proves itself.** Inserted before the side effect, hash-chained, append-only at the database layer, with before/after state and a verifier that names the first broken row.
 - **A fail-closed kill switch.** Synchronous halt, asynchronous exit, explicit failure reporting.
 - **Runtime settings with named consumers.** Pause analysis, pause new Portfolio Manager sessions, or change the provider without a deploy.
 - **Support and newsletter in the same control plane.** Contextual tickets and consent-first campaigns, not bolted-on tools.
 - **A PWA that does not leak the previous operator.** Static assets only; no navigations, API data, RSC payloads, or presigned URLs in the cache.
-- **Two Kiro specs that trace the portal end to end.** Foundation and operations, each with requirements, design, and completed tasks.
+- **Three Kiro specs that trace the portal end to end.** Foundation, operations, and audit chain, each with requirements, design, and completed tasks.
 
 ## What we learned
 
@@ -236,7 +239,7 @@ The portal is nine CDK stacks, with the platform as its subject:
 
 | Kiro capability | Evidence in this repository |
 |-----------------|-----------------------------|
-| Spec-driven development | `admin-portal-foundation` and `admin-portal-operations`, each with requirements, design, and completed tasks |
+| Spec-driven development | `admin-portal-foundation`, `admin-portal-operations`, and `audit-chain-integrity`, each with requirements, design, and completed tasks |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
 | Agent hooks | 5 hooks, including `admin-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough` |
 | MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation |
@@ -259,6 +262,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 - **Kiro usage write-up**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
 - **Portal foundation spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-foundation/requirements.md
 - **Portal operations spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-operations/requirements.md
+- **Audit chain spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/audit-chain-integrity/requirements.md
 
 ---
 

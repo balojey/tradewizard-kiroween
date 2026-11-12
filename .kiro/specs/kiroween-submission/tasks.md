@@ -14,7 +14,7 @@
   - Update `docs/kiroween-submission.md` for the portal.
   - Keep the category rationale and links.
 - [x] 4. Rebuild the Kiro evidence
-  - Focus `docs/kiro-usage.md` on the two portal specs, steering, hooks, MCP, and testing.
+  - Focus `docs/kiro-usage.md` on the three portal specs, steering, hooks, MCP, and testing.
   - Keep the honest-scope section.
 - [x] 5. Rebuild the demo
   - Rewrite the shot list and voiceover around the portal.
