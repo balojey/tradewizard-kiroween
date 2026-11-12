@@ -19,5 +19,9 @@ export function useAdminMe() {
     enabled: Boolean(idToken),
     retry: false,
     staleTime: 60_000,
+    // Identity is a security check, not a data fetch: re-check once a minute so
+    // a member removed mid-session is ejected without waiting for a navigation.
+    // The authorizer is authoritative; this only makes the UI notice sooner.
+    refetchInterval: 60_000,
   });
 }

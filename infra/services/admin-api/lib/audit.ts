@@ -73,6 +73,58 @@ export interface AuditCompletion {
   error?: string | null;
 }
 
+/**
+ * System-actor audit row.
+ *
+ * Some actions are performed by the platform rather than a signed-in operator:
+ * an invite-link registration has no token, and the plan-override expiry job has
+ * no human. `writeAuditLog` takes an `AdminIdentity`, whose role is the four-role
+ * union, so those paths use this writer instead of inventing an admin role.
+ *
+ * The actor stays traceable: `actorSub` names the invite link, `actorEmail` is
+ * the address that registered, and `actorRole` is literally `system`.
+ */
+export interface SystemAuditWriteParams {
+  actorSub: string;
+  actorEmail: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  reason: string;
+  before?: Record<string, unknown> | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+}
+
+export async function writeSystemAuditLog(
+  client: Client,
+  params: SystemAuditWriteParams,
+  options: { inTransaction?: boolean } = {}
+): Promise<string> {
+  const { id } = await insertChainedAuditRow(
+    client,
+    {
+      actorSub: params.actorSub,
+      actorEmail: params.actorEmail,
+      actorRole: 'system',
+      action: params.action,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      reason: params.reason,
+      status: 'pending',
+      before: params.before ?? null,
+      ip: params.ip ?? null,
+      userAgent: params.userAgent ?? null,
+      requestId: params.requestId ?? null,
+      idempotencyKey: null,
+    },
+    options
+  );
+
+  return id;
+}
+
 export async function completeAudit(
   client: Client,
   auditId: string,

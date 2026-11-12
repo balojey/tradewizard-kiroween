@@ -12,7 +12,9 @@ import {
   CognitoIdentityProviderClient,
   InitiateAuthCommand,
   RespondToAuthChallengeCommand,
+  type InitiateAuthCommandOutput,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { previewAdminEmail } from "./admin-email";
 import type { AdminTokens } from "./session";
 
 const REGION = process.env.NEXT_PUBLIC_COGNITO_REGION ?? "us-east-1";
@@ -31,10 +33,10 @@ function getClient(): CognitoIdentityProviderClient {
 }
 
 export type SignInResult =
-  | { kind: "tokens"; tokens: AdminTokens }
-  | { kind: "mfa"; session: string }
+  | { kind: "tokens"; tokens: AdminTokens; email: string }
+  | { kind: "mfa"; session: string; email: string }
   /** Invited account: Cognito requires the person to choose their own password. */
-  | { kind: "newPassword"; session: string };
+  | { kind: "newPassword"; session: string; email: string };
 
 interface AuthenticationResult {
   IdToken?: string;
@@ -59,35 +61,68 @@ function toTokens(result: AuthenticationResult, fallbackRefresh?: string): Admin
 }
 
 export async function signIn(email: string, password: string): Promise<SignInResult> {
-  const response = await getClient().send(
+  const typed = email.trim();
+  const aliased = previewAdminEmail(typed);
+
+  let response: InitiateAuthCommandOutput;
+  let usedEmail = typed;
+
+  try {
+    // Every account created through the portal lives on its +warden alias, so
+    // typing the everyday address should just work.
+    response = await initiateAuth(aliased, password);
+    usedEmail = aliased;
+  } catch (error) {
+    // Accounts created before aliasing exist (the first owner was bootstrapped
+    // with a plain address), so fall back to the address as typed. Only an
+    // identity rejection is a reason to retry — throttling or a malformed
+    // request should surface as itself, not as a second doomed attempt.
+    if (aliased === typed || !isUnknownIdentity(error)) throw error;
+
+    response = await initiateAuth(typed, password);
+    usedEmail = typed;
+  }
+
+  return interpret(response, usedEmail);
+}
+
+function initiateAuth(username: string, password: string): Promise<InitiateAuthCommandOutput> {
+  return getClient().send(
     new InitiateAuthCommand({
       AuthFlow: "USER_PASSWORD_AUTH",
       ClientId: CLIENT_ID,
-      AuthParameters: { USERNAME: email, PASSWORD: password },
+      AuthParameters: { USERNAME: username, PASSWORD: password },
     })
   );
+}
 
-  // An invited admin signs in with the temporary password Cognito emailed, and
+function isUnknownIdentity(error: unknown): boolean {
+  const name = (error as { name?: string })?.name ?? "";
+  return name === "NotAuthorizedException" || name === "UserNotFoundException";
+}
+
+function interpret(response: InitiateAuthCommandOutput, email: string): SignInResult {
+  // An invited admin signs in with the temporary password they were emailed, and
   // must replace it before anything else happens.
   if (response.ChallengeName === "NEW_PASSWORD_REQUIRED") {
     if (!response.Session) {
       throw new Error("Cognito returned a password challenge without a session");
     }
-    return { kind: "newPassword", session: response.Session };
+    return { kind: "newPassword", session: response.Session, email };
   }
 
   if (response.ChallengeName === "SOFTWARE_TOKEN_MFA") {
     if (!response.Session) {
       throw new Error("Cognito returned an MFA challenge without a session");
     }
-    return { kind: "mfa", session: response.Session };
+    return { kind: "mfa", session: response.Session, email };
   }
 
   if (response.ChallengeName) {
     throw new Error(`Unsupported authentication challenge: ${response.ChallengeName}`);
   }
 
-  return { kind: "tokens", tokens: toTokens(response.AuthenticationResult ?? {}) };
+  return { kind: "tokens", tokens: toTokens(response.AuthenticationResult ?? {}), email };
 }
 
 /**
@@ -117,7 +152,7 @@ export async function completeNewPassword(
     if (!response.Session) {
       throw new Error("Cognito returned an MFA challenge without a session");
     }
-    return { kind: "mfa", session: response.Session };
+    return { kind: "mfa", session: response.Session, email };
   }
 
   if (response.ChallengeName) {
@@ -128,7 +163,7 @@ export async function completeNewPassword(
     throw new Error("Password change did not return tokens");
   }
 
-  return { kind: "tokens", tokens: toTokens(response.AuthenticationResult) };
+  return { kind: "tokens", tokens: toTokens(response.AuthenticationResult), email };
 }
 
 export async function completeMfa(

@@ -965,6 +965,57 @@ CREATE TABLE IF NOT EXISTS admin_metrics_daily (
 );
 
 -- ----------------------------------------------------------------------------
+-- Warden invite links
+--
+-- A link is a bearer token that grants one role to whoever registers through it
+-- (docs/warden-invite-links-plan.md). Only the SHA-256 of the token is stored,
+-- so a database read cannot resurrect a live link; the URL is shown once at
+-- creation. `revoked_at` is the only terminal state that has to be stored — the
+-- rest are derived from `expires_at` / `use_count >= max_uses`.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_invite_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL,
+  created_by_sub TEXT NOT NULL,
+  created_by_email TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  max_uses INTEGER NOT NULL DEFAULT 5,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  revoked_at TIMESTAMPTZ,
+  revoked_by TEXT,
+  last_used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DO $$ BEGIN
+  ALTER TABLE admin_invite_links ADD CONSTRAINT chk_admin_invite_link_role
+    CHECK (role IN ('analyst', 'support', 'admin', 'owner'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE admin_invite_links ADD CONSTRAINT chk_admin_invite_link_uses
+    CHECK (max_uses BETWEEN 1 AND 50 AND use_count >= 0 AND use_count <= max_uses);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE INDEX IF NOT EXISTS idx_admin_invite_links_created
+  ON admin_invite_links (created_at DESC);
+
+-- One row per account created through a link. This is how the owner sees who
+-- came through before deciding to revoke and disable unclaimed accounts.
+CREATE TABLE IF NOT EXISTS admin_invite_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  link_id UUID NOT NULL REFERENCES admin_invite_links(id) ON DELETE CASCADE,
+  cognito_sub TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_invite_redemptions_link
+  ON admin_invite_redemptions (link_id, created_at DESC);
+
+-- ----------------------------------------------------------------------------
 -- Existing-table additions
 -- ----------------------------------------------------------------------------
 

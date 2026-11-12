@@ -13,6 +13,8 @@ import { Notice } from "@/components/ui/Notice";
 import { Page, PageHeader } from "@/components/ui/PageHeader";
 import { useAdminMe } from "@/hooks/useAdminMe";
 import { useMemberMutations, useMembers } from "@/hooks/useMembers";
+import { InviteLinksPanel } from "@/components/members/InviteLinksPanel";
+import { previewAdminEmail } from "@/lib/admin-email";
 import { ROLE_DESCRIPTION, ROLE_LABEL, ROLE_RANK, hasRole } from "@/constants/roles";
 import type { AdminMember } from "@/types/admin";
 
@@ -138,7 +140,7 @@ export function MembersView() {
     <Page>
       <PageHeader
         title="Members"
-        description="Who can use this portal, and at what level. Changes apply at the member's next sign-in — tokens carry group membership for up to an hour."
+        description="Who can use this portal, and at what level. Changes take effect on the member's next request — the authorizer reads group membership from Cognito, not from the token."
         actions={
           isOwner && (
             <Button size="sm" onClick={() => open({ kind: "add" })}>
@@ -176,6 +178,8 @@ export function MembersView() {
         emptyMessage="No members yet."
         emptyHint="That should be impossible — check the Cognito group and the API's IAM permissions."
       />
+
+      <InviteLinksPanel isOwner={isOwner} />
 
       <Panel title="Roles" description="Ordered by rank. A role grants everything below it." className="mt-4">
         <ul className="flex flex-col">
@@ -216,7 +220,7 @@ export function MembersView() {
         description={
           dialog?.kind === "remove"
             ? "They lose portal access on their next request. Their TradeWizard account is untouched."
-            : "Membership is a Cognito group. The change is audited and applies at their next sign-in."
+            : "Membership is a Cognito group. The change is audited and applies on their next request."
         }
         footer={
           <>
@@ -249,14 +253,25 @@ export function MembersView() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="person@example.com"
-                  hint="An existing account is added immediately. An unknown address can be invited."
+                  hint="Their real address. A new Warden account is created on its +warden alias; an existing member is added as-is."
                   autoFocus
                 />
-                <p className="text-[10.5px] leading-relaxed text-faint">
-                  Invitees choose their own password and add an authenticator on first sign-in. Use a
-                  dedicated admin address — never a customer account, because portal sign-in would
-                  break its magic-link login.
-                </p>
+
+                {email.includes("@") && previewAdminEmail(email) !== email.trim().toLowerCase() && (
+                  <div className="rounded-[8px] border border-border-strong/50 bg-surface-2 p-3">
+                    <p className="text-[10.5px] uppercase tracking-wide text-faint">
+                      Warden identity
+                    </p>
+                    <p className="mono mt-1 break-all text-[11.5px] text-fg">
+                      {previewAdminEmail(email)}
+                    </p>
+                    <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">
+                      A dedicated account, so their TradeWizard product login is never touched.
+                      Invitations go to this alias, which reaches the same inbox on Gmail, Outlook
+                      and most providers.
+                    </p>
+                  </div>
+                )}
               </>
             )}
 
@@ -287,8 +302,12 @@ export function MembersView() {
                 <div className="rounded-[8px] border border-border-strong/50 bg-surface-2 p-3 text-[11.5px] leading-relaxed text-fg">
                   <p>
                     No account exists for <span className="mono">{email || "that address"}</span>.
-                    Invite them? Cognito emails a temporary password, and they choose their own on
-                    first sign-in — the portal never sets a password.
+                    Invite them on{" "}
+                    <span className="mono">
+                      {previewAdminEmail(email || "person@example.com")}
+                    </span>
+                    ? Resend emails a temporary password, and they choose their own on first
+                    sign-in — the portal never sets a password.
                   </p>
                   <Button
                     type="button"

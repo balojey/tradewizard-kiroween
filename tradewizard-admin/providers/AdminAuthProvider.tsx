@@ -142,10 +142,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (nextEmail: string, password: string) => {
     setError(null);
-    setEmail(nextEmail);
 
     try {
       const result = await signInRequest(nextEmail, password);
+      // The provider may have resolved a plain address to its +warden alias; the
+      // challenge responses must use the identity that actually authenticated.
+      setEmail(result.email);
+
       if (result.kind === "tokens") {
         adopt(result.tokens);
         return;

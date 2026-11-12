@@ -20,6 +20,7 @@ const {
   lambdaMock,
   orderMock,
   memberQueries,
+  inviteLinkQueries,
   supportQueries,
   supportEmailMock,
   supportTokensMock,
@@ -43,6 +44,7 @@ const {
     listUserPayments: vi.fn(),
     listUserNotes: vi.fn(),
     userExists: vi.fn(),
+    isProductUserByCognitoSub: vi.fn(),
   },
   analysisQueries: {
     listAnalyses: vi.fn(),
@@ -140,6 +142,19 @@ const {
     removeFromGroup: vi.fn(),
     countOwners: vi.fn(),
     globalSignOut: vi.fn(),
+    getUserStatus: vi.fn(),
+    disableUser: vi.fn(),
+  },
+  inviteLinkQueries: {
+    createInviteLink: vi.fn(),
+    listInviteLinks: vi.fn(),
+    findInviteLinkById: vi.fn(),
+    findInviteLinkByTokenHash: vi.fn(),
+    revokeInviteLink: vi.fn(),
+    reserveInviteUse: vi.fn(),
+    releaseInviteUse: vi.fn(),
+    recordInviteRedemption: vi.fn(),
+    listInviteRedemptions: vi.fn(),
   },
   supportQueries: {
     listTickets: vi.fn(),
@@ -256,6 +271,8 @@ vi.mock('../shared/portfolio-orders', () => orderMock);
 
 vi.mock('./queries/members', () => memberQueries);
 
+vi.mock('../shared/invite-links', () => inviteLinkQueries);
+
 vi.mock('./queries/support', () => supportQueries);
 vi.mock('../shared/support-email', () => supportEmailMock);
 vi.mock('../shared/support-tickets', () => supportTokensMock);
@@ -333,6 +350,10 @@ const ROUTE_MATRIX: Array<{
   { method: 'POST', path: '/admin/admins', minimumRole: 'owner' },
   { method: 'PUT', path: '/admin/admins/{sub}', minimumRole: 'owner' },
   { method: 'DELETE', path: '/admin/admins/{sub}', minimumRole: 'owner' },
+  { method: 'GET', path: '/admin/invite-links', minimumRole: 'owner' },
+  { method: 'POST', path: '/admin/invite-links', minimumRole: 'owner' },
+  { method: 'GET', path: '/admin/invite-links/{id}/redemptions', minimumRole: 'owner' },
+  { method: 'DELETE', path: '/admin/invite-links/{id}', minimumRole: 'owner' },
   { method: 'POST', path: '/admin/portfolio/sessions/{id}/terminate', minimumRole: 'admin' },
   { method: 'POST', path: '/admin/analyses/requeue', minimumRole: 'admin' },
   { method: 'GET', path: '/admin/settings', minimumRole: 'admin' },
@@ -372,6 +393,7 @@ const QUERY_FNS = [
   ...Object.values(portfolioQueries),
   ...Object.values(supportQueries),
   ...Object.values(newsletterQueries),
+  ...Object.values(inviteLinkQueries),
 ];
 
 function resolvePath(template: string): string {
@@ -443,6 +465,10 @@ function makeEvent(
       return JSON.stringify({ marketId: '0xmarket123', reason: REASON });
     if (routePath.includes('/admins'))
       return JSON.stringify({ email: 'new@example.com', role: 'support', reason: REASON });
+    if (routePath === '/admin/invite-links')
+      return JSON.stringify({ role: 'support', expiresInHours: 168, maxUses: 5, reason: REASON });
+    if (routePath === '/admin/invite-links/{id}')
+      return JSON.stringify({ reason: REASON, disableUnclaimed: true });
     if (routePath.endsWith('/kill-switch'))
       return JSON.stringify({ userId: '725c2005-b3f4-46f3-94ad-083a75593c02', reason: REASON });
     if (
@@ -508,6 +534,7 @@ beforeEach(() => {
   userQueries.listUserPayments.mockResolvedValue([]);
   userQueries.listUserNotes.mockResolvedValue([]);
   userQueries.userExists.mockResolvedValue(true);
+  userQueries.isProductUserByCognitoSub.mockResolvedValue(false);
 
   analysisQueries.listAnalyses.mockResolvedValue([]);
   analysisQueries.getAnalysisMarketId.mockResolvedValue('0xmarket');
@@ -611,17 +638,60 @@ beforeEach(() => {
   supportEmailMock.sendSupportResolved.mockResolvedValue({ provider: 'resend' });
 
   memberQueries.listMembers.mockResolvedValue([]);
-  memberQueries.findUserByEmail.mockResolvedValue({
-    sub: 'new-sub',
-    email: 'new@example.com',
-    status: 'CONFIRMED',
-  });
+  // Default: nobody has the address. Tests that need an existing identity set
+  // their own matcher (the route checks the typed address, then its alias).
+  memberQueries.findUserByEmail.mockResolvedValue(null);
   memberQueries.getGroupsForUser.mockResolvedValue([]);
   memberQueries.createInvitedUser.mockResolvedValue({ sub: 'invited-sub', status: 'FORCE_CHANGE_PASSWORD' });
   memberQueries.addToGroup.mockResolvedValue(undefined);
   memberQueries.removeFromGroup.mockResolvedValue(undefined);
   memberQueries.countOwners.mockResolvedValue(2);
   memberQueries.globalSignOut.mockResolvedValue(undefined);
+  memberQueries.getUserStatus.mockResolvedValue('FORCE_CHANGE_PASSWORD');
+  memberQueries.disableUser.mockResolvedValue(undefined);
+
+  inviteLinkQueries.createInviteLink.mockImplementation(async (_client: unknown, input: Record<string, unknown>) => ({
+    ...input,
+    useCount: 0,
+    revokedAt: null,
+    revokedBy: null,
+    lastUsedAt: null,
+    createdAt: new Date(),
+  }));
+  inviteLinkQueries.listInviteLinks.mockResolvedValue([]);
+  inviteLinkQueries.findInviteLinkById.mockResolvedValue({
+    id: USER_ID,
+    role: 'support',
+    createdBySub: 'sub-1',
+    createdByEmail: 'admin@example.com',
+    reason: 'matrix test reason',
+    expiresAt: new Date(Date.now() + 3_600_000),
+    maxUses: 5,
+    useCount: 1,
+    revokedAt: null,
+    revokedBy: null,
+    lastUsedAt: null,
+    createdAt: new Date(),
+  });
+  inviteLinkQueries.findInviteLinkByTokenHash.mockResolvedValue(null);
+  inviteLinkQueries.revokeInviteLink.mockResolvedValue({
+    id: USER_ID,
+    role: 'support',
+    createdBySub: 'sub-1',
+    createdByEmail: 'admin@example.com',
+    reason: 'matrix test reason',
+    expiresAt: new Date(Date.now() + 3_600_000),
+    maxUses: 5,
+    useCount: 1,
+    revokedAt: new Date(),
+    revokedBy: 'admin@example.com',
+    lastUsedAt: null,
+    createdAt: new Date(),
+  });
+  inviteLinkQueries.reserveInviteUse.mockResolvedValue(null);
+  inviteLinkQueries.releaseInviteUse.mockResolvedValue(undefined);
+  inviteLinkQueries.recordInviteRedemption.mockResolvedValue(undefined);
+  inviteLinkQueries.listInviteRedemptions.mockResolvedValue([]);
 
   killSwitchMock.isHalted.mockResolvedValue(false);
   killSwitchMock.activateUser.mockResolvedValue({ active: true, triggeredAt: '2026-11-02T00:00:00.000Z', reason: 'test', ttl: 1 });
@@ -1066,6 +1136,12 @@ describe('billing and agents', () => {
   });
 
   it('adds a member by email', async () => {
+    memberQueries.findUserByEmail.mockImplementation(async (email: string) =>
+      email === 'new+warden@example.com'
+        ? { sub: 'new-sub', email: 'new+warden@example.com', status: 'CONFIRMED' }
+        : null
+    );
+
     const response = await handler(
       makeEvent({
         httpMethod: 'POST',
@@ -1077,7 +1153,38 @@ describe('billing and agents', () => {
 
     expect(response.statusCode).toBe(201);
     expect(memberQueries.addToGroup).toHaveBeenCalledWith('new-sub', 'tw-support');
-    expect(body(response).data).toMatchObject({ sub: 'new-sub', role: 'support' });
+    expect(body(response).data).toMatchObject({ sub: 'new-sub', role: 'support', aliased: true });
+  });
+
+  it('refuses to attach a group to a customer account', async () => {
+    memberQueries.findUserByEmail.mockImplementation(async (email: string) =>
+      email === 'customer@example.com'
+        ? { sub: 'customer-sub', email: 'customer@example.com', status: 'CONFIRMED' }
+        : null
+    );
+    memberQueries.getGroupsForUser.mockResolvedValue([]);
+    userQueries.isProductUserByCognitoSub.mockResolvedValue(true);
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/admins',
+        role: 'owner',
+        body: JSON.stringify({
+          email: 'customer@example.com',
+          role: 'support',
+          reason: 'wants portal access',
+        }),
+      })
+    );
+
+    // The 2026-11-03 incident: this used to succeed and break product login.
+    expect(response.statusCode).toBe(409);
+    expect(memberQueries.addToGroup).not.toHaveBeenCalled();
+    expect(body(response).error).toMatchObject({
+      code: 'CONFLICT',
+      details: { adminEmail: 'customer+warden@example.com' },
+    });
   });
 
   it('refuses to create an account unless the caller confirms the invite', async () => {
@@ -1115,12 +1222,31 @@ describe('billing and agents', () => {
     );
 
     expect(response.statusCode).toBe(201);
-    expect(memberQueries.createInvitedUser).toHaveBeenCalledWith('new-admin@example.com');
+    expect(memberQueries.createInvitedUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'new-admin+warden@example.com',
+        temporaryPassword: expect.any(String),
+      })
+    );
+    expect(newsletterEmailMock.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'new-admin+warden@example.com' })
+    );
     expect(memberQueries.addToGroup).toHaveBeenCalledWith('invited-sub', 'tw-admin');
-    expect(body(response).data).toMatchObject({ invited: true, role: 'admin' });
+    expect(body(response).data).toMatchObject({
+      invited: true,
+      role: 'admin',
+      adminEmail: 'new-admin+warden@example.com',
+      aliased: true,
+      emailSent: true,
+    });
   });
 
   it('refuses to add someone who is already a member', async () => {
+    memberQueries.findUserByEmail.mockResolvedValue({
+      sub: 'existing-sub',
+      email: 'new@example.com',
+      status: 'CONFIRMED',
+    });
     memberQueries.getGroupsForUser.mockResolvedValue(['tw-support']);
 
     const response = await handler(
@@ -1214,6 +1340,139 @@ describe('billing and agents', () => {
     // A demotion must not wait for the old token to expire.
     expect(memberQueries.globalSignOut).toHaveBeenCalledWith(USER_ID);
     expect(body(response).data).toMatchObject({ role: 'admin', previousRole: 'support' });
+  });
+
+  it('mints an invite link once and never stores the token', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/invite-links',
+        role: 'owner',
+        body: JSON.stringify({
+          role: 'analyst',
+          expiresInHours: 24,
+          maxUses: 3,
+          reason: 'sharing with the research team',
+        }),
+      })
+    );
+
+    expect(response.statusCode).toBe(201);
+    const data = body(response).data as { url: string; role: string };
+    expect(data.role).toBe('analyst');
+    expect(data.url).toMatch(/\/join#t=[A-Za-z0-9_-]{43}$/);
+
+    // Only a hash reaches the database, and the audit row carries no token.
+    const stored = inviteLinkQueries.createInviteLink.mock.calls[0][1] as {
+      tokenHash: string;
+    };
+    expect(stored.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(auditMock.writeAuditLog.mock.calls)).not.toContain('#t=');
+    expect(JSON.stringify(auditMock.completeAudit.mock.calls)).not.toContain('#t=');
+  });
+
+  it('accepts a 365-day lifetime and rejects a longer one', async () => {
+    const accepted = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/invite-links',
+        role: 'owner',
+        body: JSON.stringify({
+          role: 'analyst',
+          expiresInHours: 8760,
+          maxUses: 1,
+          reason: 'long-lived link for the research team',
+        }),
+      })
+    );
+    expect(accepted.statusCode).toBe(201);
+
+    const rejected = await handler(
+      makeEvent({
+        httpMethod: 'POST',
+        path: '/admin/invite-links',
+        role: 'owner',
+        body: JSON.stringify({
+          role: 'analyst',
+          expiresInHours: 8761,
+          maxUses: 1,
+          reason: 'longer than a year',
+        }),
+      })
+    );
+    expect(rejected.statusCode).toBe(400);
+  });
+
+  it('revokes an invite link and disables accounts that never signed in', async () => {
+    inviteLinkQueries.listInviteRedemptions.mockResolvedValue([
+      { id: 'r1', linkId: USER_ID, cognitoSub: 'sub-unclaimed', email: 'a+warden@example.com', createdAt: new Date() },
+      { id: 'r2', linkId: USER_ID, cognitoSub: 'sub-active', email: 'b+warden@example.com', createdAt: new Date() },
+    ]);
+    memberQueries.getUserStatus
+      .mockResolvedValueOnce('FORCE_CHANGE_PASSWORD')
+      .mockResolvedValueOnce('CONFIRMED');
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'DELETE',
+        path: `/admin/invite-links/${USER_ID}`,
+        role: 'owner',
+        body: JSON.stringify({ reason: 'link was shared too widely', disableUnclaimed: true }),
+      })
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(inviteLinkQueries.revokeInviteLink).toHaveBeenCalledWith(
+      expect.anything(),
+      USER_ID,
+      'admin@example.com'
+    );
+    expect(memberQueries.disableUser).toHaveBeenCalledTimes(1);
+    expect(memberQueries.disableUser).toHaveBeenCalledWith('sub-unclaimed');
+    expect(body(response).data).toMatchObject({ revoked: true, disabled: 1 });
+  });
+
+  it('reports an already-revoked link as a conflict', async () => {
+    inviteLinkQueries.findInviteLinkById.mockResolvedValue({
+      id: USER_ID,
+      role: 'support',
+      createdBySub: 'sub-1',
+      createdByEmail: 'admin@example.com',
+      reason: 'old link',
+      expiresAt: new Date(Date.now() + 3_600_000),
+      maxUses: 5,
+      useCount: 1,
+      revokedAt: new Date(),
+      revokedBy: 'admin@example.com',
+      lastUsedAt: null,
+      createdAt: new Date(),
+    });
+
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'DELETE',
+        path: `/admin/invite-links/${USER_ID}`,
+        role: 'owner',
+        body: JSON.stringify({ reason: 'revoking a second time' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(inviteLinkQueries.revokeInviteLink).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed invite link id before touching the database', async () => {
+    const response = await handler(
+      makeEvent({
+        httpMethod: 'DELETE',
+        path: '/admin/invite-links/not-a-uuid',
+        role: 'owner',
+        body: JSON.stringify({ reason: 'bad id on purpose' }),
+      })
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(inviteLinkQueries.findInviteLinkById).not.toHaveBeenCalled();
   });
 
   it('halts trading synchronously and dispatches the exit', async () => {

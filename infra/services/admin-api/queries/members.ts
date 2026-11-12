@@ -10,10 +10,12 @@
 import {
   AdminAddUserToGroupCommand,
   AdminCreateUserCommand,
+  AdminDisableUserCommand,
   AdminGetUserCommand,
   AdminUserGlobalSignOutCommand,
   AdminListGroupsForUserCommand,
   AdminRemoveUserFromGroupCommand,
+  AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
   ListUsersCommand,
   ListUsersInGroupCommand,
@@ -136,31 +138,50 @@ export async function findUserByEmail(
 }
 
 /**
- * Create the Cognito user and let Cognito email the invitation.
+ * Create the Cognito user without letting Cognito email it.
  *
- * Cognito generates a temporary password and sends it with the pool's configured
- * sender; the person must choose their own password at first sign-in
- * (`NEW_PASSWORD_REQUIRED`). The portal never sees or sets a password, which is
- * what keeps a dedicated admin account safe for the product's magic-link path.
+ * `MessageAction: SUPPRESS` plus a temporary password we generate means the
+ * invitation is delivered by `shared/admin-invite-email.ts` (Resend), the same
+ * way the public join flow does it. Cognito still owns the policy: the temporary
+ * password must be replaced at first sign-in (`NEW_PASSWORD_REQUIRED`).
+ *
+ * The portal never sets a *permanent* password, which is what keeps a dedicated
+ * admin account safe for the product's magic-link path.
  */
-export async function createInvitedUser(
-  email: string
-): Promise<{ sub: string; status: string }> {
+export async function createInvitedUser(input: {
+  email: string;
+  temporaryPassword: string;
+}): Promise<{ sub: string; status: string }> {
   const created = await cognito.send(
     new AdminCreateUserCommand({
       UserPoolId: poolId(),
-      Username: email,
+      Username: input.email,
       UserAttributes: [
-        { Name: 'email', Value: email },
+        { Name: 'email', Value: input.email },
         { Name: 'email_verified', Value: 'true' },
       ],
-      // Do NOT suppress the message: the invitation *is* the delivery.
-      DesiredDeliveryMediums: ['EMAIL'],
+      MessageAction: 'SUPPRESS',
+    })
+  );
+
+  const sub = attribute(created.User ?? {}, 'sub') ?? created.User?.Username ?? '';
+
+  if (!sub) {
+    throw new Error('Cognito created a user without a sub');
+  }
+
+  await cognito.send(
+    new AdminSetUserPasswordCommand({
+      UserPoolId: poolId(),
+      Username: sub,
+      Password: input.temporaryPassword,
+      // Temporary: first sign-in must replace it.
+      Permanent: false,
     })
   );
 
   return {
-    sub: attribute(created.User ?? {}, 'sub') ?? created.User?.Username ?? '',
+    sub,
     status: created.User?.UserStatus ?? 'FORCE_CHANGE_PASSWORD',
   };
 }
@@ -195,9 +216,11 @@ export async function removeFromGroup(sub: string, group: string): Promise<void>
 /**
  * Invalidate the user's refresh tokens.
  *
- * Group membership is baked into issued tokens, so without this a demoted or
- * removed member keeps their old privileges until the token expires (up to an
- * hour). Signing out forces re-authentication against current groups.
+ * This does **not** invalidate an already-issued ID token — Cognito has no JWT
+ * revocation list, and the access token/ID token remain valid until they expire.
+ * Access actually ends because the authorizer reads live group membership on
+ * every request (`shared/admin-auth.ts`). This call is still worth making: it
+ * stops the client from silently refreshing a session that no longer has a role.
  */
 export async function globalSignOut(sub: string): Promise<void> {
   try {
@@ -214,4 +237,27 @@ export async function globalSignOut(sub: string): Promise<void> {
 /** How many owners exist — used to refuse removing the last one. */
 export async function countOwners(): Promise<number> {
   return (await listGroupMembers('tw-owner')).length;
+}
+
+/**
+ * Cognito's `UserStatus` for one account.
+ *
+ * Used when a link is revoked: accounts that were created through it but never
+ * signed in are still `FORCE_CHANGE_PASSWORD`, which means a temporary password
+ * is live until it expires. Disabling those is the only way revocation also
+ * closes that window.
+ */
+export async function getUserStatus(sub: string): Promise<string> {
+  const response = await cognito.send(
+    new AdminGetUserCommand({ UserPoolId: poolId(), Username: sub })
+  );
+
+  return response.UserStatus ?? 'UNKNOWN';
+}
+
+/** Best-effort disable, mirroring `globalSignOut`: log, do not undo the revoke. */
+export async function disableUser(sub: string): Promise<void> {
+  await cognito.send(
+    new AdminDisableUserCommand({ UserPoolId: poolId(), Username: sub })
+  );
 }

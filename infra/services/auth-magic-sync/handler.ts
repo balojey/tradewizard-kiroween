@@ -28,6 +28,7 @@ import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from '@aws-sdk/client-secrets-manager';
+import { hasPlusTag, PLUS_TAG_MESSAGE } from '../shared/email-policy';
 import * as crypto from 'crypto';
 
 const cognitoClient = new CognitoIdentityProviderClient({});
@@ -199,6 +200,13 @@ export async function handler(event: ApiGatewayEvent): Promise<ApiResponse> {
 
     if (!email || !email.includes('@')) {
       return response(400, { error: 'Valid email is required' });
+    }
+
+    // Tagged addresses belong to the Warden alias namespace; the product must
+    // never mint a customer identity there (services/shared/email-policy.ts).
+    // Enforced here, not only in the form, because the endpoint is public.
+    if (hasPlusTag(email)) {
+      return response(400, { error: PLUS_TAG_MESSAGE, code: 'PLUS_TAG_NOT_SUPPORTED' });
     }
 
     const password = generateUserPassword(email);

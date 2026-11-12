@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Notice } from "@/components/ui/Notice";
+import { previewAdminEmail } from "@/lib/admin-email";
 import { useAdminAuth } from "@/providers/AdminAuthProvider";
 
 /** Only allow same-origin relative paths, so `?next=` can't become an open redirect. */
@@ -27,7 +29,7 @@ export function LoginForm() {
     clearError,
   } = useAdminAuth();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -35,6 +37,15 @@ export function LoginForm() {
   const [busy, setBusy] = useState(false);
 
   const next = safeNext(params.get("next"));
+
+  // The input is the everyday address; sign-in resolves its +warden alias. Show
+  // the resolved identity so nobody is surprised by which account they entered.
+  const aliasPreview = email.includes("@") ? previewAdminEmail(email) : "";
+  const emailHint = !aliasPreview
+    ? "Type your normal email — the +warden alias is added automatically."
+    : aliasPreview === email.trim().toLowerCase()
+      ? "Signing in with your Warden identity."
+      : `Signs in as ${aliasPreview}`;
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -190,6 +201,13 @@ export function LoginForm() {
 
   return (
     <form onSubmit={onSubmitCredentials} className="flex flex-col gap-4">
+      {params.get("reason") === "access-removed" && (
+        <Notice tone="warning" title="Your access was removed">
+          An owner removed this account from the portal. Ask them to add you again if that was not
+          intended.
+        </Notice>
+      )}
+
       <Input
         label="Email"
         type="email"
@@ -201,6 +219,7 @@ export function LoginForm() {
         autoComplete="username"
         autoFocus
         required
+        hint={emailHint}
       />
 
       <Input

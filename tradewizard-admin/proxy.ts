@@ -17,6 +17,12 @@ export default function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const authed = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
 
+  // `/join` must stay reachable without a session: the invite token is the
+  // credential, and the person registering has no account yet.
+  if (pathname === "/join") {
+    return NextResponse.next();
+  }
+
   if (pathname === "/login") {
     if (authed) {
       return NextResponse.redirect(new URL("/overview", request.url), 307);

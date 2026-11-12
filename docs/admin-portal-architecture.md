@@ -375,8 +375,13 @@ Authorizer steps:
 
 1. `aws-jwt-verify` against the admin app client ID + issuer. ID tokens only —
    access tokens are rejected.
-2. Parse `cognito:groups`; compute the highest rank. No group → `Deny` +
-   `AdminAuthDenied` metric.
+2. Read group membership **live** with `AdminListGroupsForUser` (uncached) and
+   compute the highest rank. No admin group → `Deny` + `AdminAuthDenied` metric.
+   The token's `cognito:groups` claim is a snapshot from issuance; it is used
+   only to log `AdminGroupDrift`, never to authorize. This is what makes a
+   removal or demotion effective on the next request instead of when the ID
+   token expires. `AdminUserGlobalSignOut` alone cannot do it: it revokes refresh
+   tokens, not issued ID tokens.
 3. `AdminGetUser` (cached: 5 min positive, 60 s negative) reads the real factor
    state. If `ADMIN_REQUIRE_MFA=true` and no factor exists, the request is denied —
    **except** on `/admin/bootstrap/*`, the single path used to enrol one. The
@@ -418,6 +423,77 @@ stale context is ignored.
   presence + `exp` (same approach as the product), never authorization.
 - Re-authentication is required for owner-level actions (settings, role changes)
   — enforced by requiring a fresh token (`auth_time` within 10 minutes).
+
+---
+
+### 6.6 Invite links and `+warden` aliasing
+
+**Dedicated identity, by construction.** Every Warden account created by the
+portal is registered on an aliased address: `name@example.com` →
+`name+warden@example.com`. The product's customer identity is never touched, so
+the 2026-11-03 failure mode (§6.1) cannot recur by accident. The rule lives in
+one place, `services/shared/admin-email.ts`, and is used by both the Add-member
+dialog and the public join endpoint.
+
+- Already-aliased input is left alone (idempotent).
+- An existing `+tag` is kept and `+warden` is appended after it: stripping a tag
+  could silently reroute someone's mail on servers where it is meaningful.
+- The UI shows the resolved address **before** submission. Plus addressing is a
+  provider convention; a server that rejects it means the owner falls back to a
+  manual add with an explicit address.
+- **The login form resolves the alias itself.** Typing `name@example.com` signs
+  in as `name+warden@example.com`, and the resolved identity is what the MFA and
+  password challenges use. Accounts created before aliasing exist (the first
+  owner was bootstrapped with a plain address), so a rejected alias identity
+  retries the address as typed once; any other failure surfaces directly. The
+  input shows which identity will be used.
+- Manual Add-member refuses an identity that has a `users` row
+  (`isProductUserByCognitoSub`) — that is the exact test for "customer account",
+  and the refusal names the alias to use instead.
+- **The product refuses any `+tag` address** (`shared/email-policy.ts`, enforced
+  in `auth-magic-sync` and mirrored in the product login form). Without that
+  rule a customer could mint an identity inside the alias namespace, and "is
+  this an admin address?" would become undecidable; it also means a Warden
+  identity can never double as a product account. The message deliberately does
+  not mention the portal.
+
+**Links.** A link is a bearer credential carrying one role
+(`analyst`/`support`/`admin`/`owner`). Owners mint them, and every link has a
+lifetime (≤365 days), a use cap (≤50), and a one-click revoke.
+
+- `admin_invite_links` stores only the **SHA-256** of the token; the URL is
+  returned once at creation and is unrecoverable. Lose it and mint another.
+- The link is `https://admin.tradewizard.live/join#t=<token>`. The token is in
+  the URL **fragment**, so it never reaches API Gateway access logs, CloudWatch,
+  or a `Referer`. The page clears the fragment after reading it and sends the
+  token only in POST bodies.
+- Registration reuses the existing invite machinery: `AdminCreateUser`
+  (message suppressed) → `AdminSetUserPassword(Permanent:false)` → group add →
+  our own Resend email with the one-time password. There is no second auth flow
+  to maintain; the invitee still chooses a password and enrols TOTP.
+- A use is reserved with a conditional `UPDATE … WHERE use_count < max_uses AND
+  revoked_at IS NULL AND expires_at > now()`, so two concurrent registrations
+  cannot take the same last slot. A failure before the account exists releases
+  the use; a delivery failure does **not** (the account exists).
+- Revoking stops new registrations immediately. It does not remove people who
+  already joined — that stays the audited member removal. It *can* disable
+  accounts created by the link that never signed in (still
+  `FORCE_CHANGE_PASSWORD`), which closes the window where a burned link leaves
+  live temporary passwords behind.
+- Registrations are audited as `admin.member.self_register` with a system actor
+  (`invite-link:<id>` + the registered address); the token, its hash, and the
+  temporary password never appear in an audit row or a log line.
+
+**The public surface is deliberately separate.** `admin-join` is its own Lambda
+behind `POST /join/lookup` and `POST /join/register` with **no authorizer**. It
+cannot read portal data, and it has creation-only Cognito IAM. Keeping it out of
+the authenticated router preserves the property the RBAC matrix test enforces:
+every route in that table declares a minimum role.
+
+**Abuse limits.** Per-IP 5 registrations/hour, per-link 10/hour, global 50/day
+(configurable via `JOIN_GLOBAL_DAILY_LIMIT`). The per-IP and per-link counters
+fail open like the portal's; the global cap fails **closed**, because no counter
+means no bound on account creation and email sending.
 
 ---
 
@@ -522,6 +598,17 @@ POST   /admin/subscriptions/{id}/extend-trial    [admin]    { days, reason }
 POST   /admin/payments/{id}/reconcile            [admin]    { reason }
 PUT    /admin/settings/{key}                     [owner]    { value }
 POST   /admin/admins/{sub}/role                  [owner]    { group, action: add|remove }
+GET    /admin/invite-links                        [owner]
+POST   /admin/invite-links                        [owner]    { role, expiresInHours, maxUses, reason } → URL once
+GET    /admin/invite-links/{id}/redemptions       [owner]
+DELETE /admin/invite-links/{id}                   [owner]    { reason, disableUnclaimed? }
+```
+
+Public join surface (no authorizer; separate `admin-join` Lambda, §6.6):
+
+```
+POST   /join/lookup                               { token } → { status, role, expiresAt, remainingUses }
+POST   /join/register                             { token, email, fullName? } → { adminEmail, role, status }
 ```
 
 Copilot endpoints are read-only in effect but use POST because they carry a
@@ -583,6 +670,10 @@ The admin UI always sends one per dialog confirmation.
 | Dedup cache invalidation | `checkDedupCache` / `putDedupCache` only | Add `deleteDedupCache(marketId)` in `shared/dynamo.ts` |
 | Subscription renewal | `subscription-renewal` processes anything not `cancelled` | Add `subscriptions.renewal_paused_at`; skip when set. Required so a comped plan is not overwritten by the renewal job |
 | Runtime settings | Env-var only | New `shared/settings.ts`: typed registry, 60 s cache, defaults, `getSetting(key)` / `setSetting(key, value, actor)` |
+| Admin email aliasing | Manual "use a dedicated address" guidance | New `shared/admin-email.ts` (`toAdminEmail`): one implementation for the invite links and the member dialog; rejects malformed input, never strips an existing `+tag` |
+| Invite-link state | None | New `shared/invite-token.ts` (token, hash, derived status) + `shared/invite-links.ts` (queries, atomic `reserveInviteUse`); shared by `admin-api` and `admin-join` |
+| System-actor auditing | `writeAuditLog` takes an `AdminIdentity` only | `writeSystemAuditLog` in `lib/audit.ts` for actions with no operator token (join registration, expiry jobs); `actorRole='system'` |
+| Role model without AWS deps | `ROLE_RANK`/`ROLE_GROUPS` lived in `admin-auth.ts`, which imports `aws-jwt-verify` | Extracted to `shared/admin-roles.ts`; `admin-auth.ts` re-exports it, so the join Lambda maps roles to groups without bundling the authorizer |
 
 **Rule.** No admin route may write to a table that has a shared module without
 going through that module. If a shared module is missing, create it in the same
@@ -618,13 +709,18 @@ pull request.
 | Permission | Resource |
 |---|---|
 | `secretsmanager:GetSecretValue` | DB secret, Resend secret |
-| `cognito-idp:AdminGetUser`, `AdminUserGlobalSignOut`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup` | user pool ARN |
+| `cognito-idp:AdminGetUser`, `AdminUserGlobalSignOut`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup`, `AdminCreateUser`, `AdminDisableUser`, `ListUsers`, `ListUsersInGroup` | user pool ARN |
 | `s3:GetObject` | analysis bucket |
 | `sqs:SendMessage`, `ReceiveMessage`, `DeleteMessage`, `GetQueueAttributes` | DLQ + analysis queue |
 | `cloudwatch:GetMetricData`, `DescribeAlarms` | `*` (AWS requires it for metrics) |
 | `scheduler:GetSchedule`, `DeleteSchedule`, `CreateSchedule` | schedule ARNs |
 | `events:PutEvents` | event bus |
 | `lambda:InvokeFunction` | `tw-{env}-analysis-orchestrator` (requeue) and `tw-{env}-portfolio-risk-engine` (async halt dispatch) only |
+
+`admin-join` (public, §6.6) gets the smallest creation-only policy:
+`cognito-idp:AdminCreateUser`, `AdminSetUserPassword`, `AdminAddUserToGroup`,
+`ListUsers` on the pool, DB secret read, the rate-limit table, and the Resend
+secret. It cannot read members, analyses, S3, queues, or the risk engine.
 
 If the permission list becomes uncomfortable as ops routes land, split Phase 3
 into `admin-ops` (sensitive IAM) and keep `admin-api` read-mostly. Do not add
@@ -723,6 +819,37 @@ CREATE TABLE IF NOT EXISTS admin_metrics_daily (
   pm_realized_pnl NUMERIC(14, 4) NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Invite links (§6.6). Only the SHA-256 of the token is stored.
+CREATE TABLE IF NOT EXISTS admin_invite_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL CHECK (role IN ('analyst','support','admin','owner')),
+  created_by_sub TEXT NOT NULL,
+  created_by_email TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  max_uses INTEGER NOT NULL DEFAULT 5
+    CHECK (max_uses BETWEEN 1 AND 50),
+  use_count INTEGER NOT NULL DEFAULT 0,
+  revoked_at TIMESTAMPTZ,
+  revoked_by TEXT,
+  last_used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_admin_invite_links_created
+  ON admin_invite_links (created_at DESC);
+
+-- One row per account created through a link.
+CREATE TABLE IF NOT EXISTS admin_invite_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  link_id UUID NOT NULL REFERENCES admin_invite_links(id) ON DELETE CASCADE,
+  cognito_sub TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_admin_invite_redemptions_link
+  ON admin_invite_redemptions (link_id, created_at DESC);
 ```
 
 ### 8.2 Altered existing tables
@@ -858,6 +985,9 @@ portfolio.kill_switch.activate
 market.schedule.pause
 settings.update
 admin.role.add
+admin.invite_link.create
+admin.invite_link.revoke
+admin.member.self_register
 ```
 
 The frontend filter list reads from this closed set. Adding an action requires
@@ -875,6 +1005,7 @@ tradewizard-admin/
 ├── app/
 │   ├── layout.tsx  globals.css
 │   ├── login/page.tsx         # email + password + TOTP
+│   └── join/page.tsx          # PUBLIC invite-link landing (no session)
 │   └── (app)/
 │       ├── layout.tsx         # AdminShell
 │       ├── overview/page.tsx
@@ -895,9 +1026,9 @@ tradewizard-admin/
 │   │             ToggleFilter Pagination
 │   ├── domain/   CopyableId StatusPill PlanBadge Pnl TimeCell KeyValue(Grid)
 │   └── shell/    AdminShell Sidebar Topbar
-├── lib/          admin-api.ts cognito.ts format.ts session.ts
+├── lib/          admin-api.ts admin-email.ts cognito.ts format.ts session.ts
 ├── hooks/        useAdminMe useCursorStack useDashboard useUsers useAnalyses
-│                 usePortfolio useBillingAgents useAudit useMembers
+│                 usePortfolio useBillingAgents useAudit useMembers useInviteLinks
 └── constants/    roles.ts routes.ts
 ```
 
@@ -1021,6 +1152,8 @@ review, not the repo.
 | `ADMIN_API_RATE_LIMIT_RPM` | `60` | Read limit per admin |
 | `ADMIN_API_MUTATION_RPM` | `10` | Mutation limit per admin |
 | `ADMIN_API_RESERVED_CONCURRENCY` | unset | Optional Lambda reservation; leave unset on accounts with a small concurrency quota |
+| `ADMIN_APP_URL` | dev `http://localhost:3001`; prod `https://admin.tradewizard.live` | Base URL used to build invite links |
+| `JOIN_GLOBAL_DAILY_LIMIT` | `50` | Daily cap on self-service registrations (fails closed) |
 
 ---
 
@@ -1071,6 +1204,9 @@ assumed; the evidence column says how to re-check it.
 | 13b | The PWA stores no admin data on the device | ✅ | Worker controlled the page with the server stopped: `/icons/icon-192.png` served from cache, `/login` absent from the cache, and an offline navigation returned the worker's notice instead of any cached page. Manifests/caching rules in §9.4, worker in `public/sw.js` |
 | 13 | Admin bundle contains no wallet, trading or CLOB code | ✅ | Grep of `tradewizard-admin` finds no `magic-sdk`, `@polymarket*`, `ethers`/`viem` imports — only a `clobOrderId` column name |
 | 14 | Optional WAF IP allowlist | ⏸ **deferred** | See below |
+| 15 | Invite-link tokens are hashed at rest and never logged | ⏳ code done, dev check pending | `admin_invite_links.token_hash` only; unit tests assert the URL/token is absent from audit and email payloads; grep the `admin-join` and `admin-api` log groups for `#t=` after the dev run |
+| 16 | The public join surface is bounded and cannot read portal data | ⏳ code done, dev check pending | No authorizer on `/join/*` by design; per-IP 5/h, per-link 10/h, global 50/day (fails closed); IAM is creation-only; flame the endpoint and confirm `429` |
+| 17 | Removal and demotion take effect without waiting for the ID token to expire | ⏳ code done, dev check pending | Authorizer reads `AdminListGroupsForUser` on every request, uncached; regression tests cover "token still claims owner, live groups empty → 403" and "token claims owner, live role support → support". Dev check: remove a member and confirm their next request is 403 and the portal signs them out |
 
 **WAF decision (deferred, deliberate).** The admin API already has an API
 Gateway throttle, a per-admin limit, MFA and a two-tier role model. A WAF adds a
@@ -1207,6 +1343,7 @@ definition of done passes **and** §14.4 is updated.
 | 9 | **Overview + rollup + backfill** | 4–8 | ✅ Done and verified — see §14.4 |
 | 10 | **Mutations**, one PR each, least destructive first: **10a notes ✅** → **10b credits ✅** → **10c suspend ✅** → **10d plan override ✅** → **10e cache invalidation ✅** → **10f refund ✅** (requeue pending) → **10g session pause/resume ✅** → **10h kill switch ✅** → **10i terminate ✅** → **10f-b requeue ✅** → 10g session pause/resume → 10h kill switch → 10i terminate | 5–6, 9, **1b** | Each has: matrix test row, audit row, mandatory reason, idempotency key |
 | 11 | **Hardening** — WAF flag, audit CSV export, slow-query tuning | 10 | §12 checklist fully green |
+| 12 | **Warden invite links** — `shared/admin-email.ts`, link tables + owner API + UI, public `admin-join`, aliasing in the member dialog | 2, 10 | `docs/warden-invite-links-plan.md` §10 definitions of done; §15 there and §14.4 here carry a row per slice |
 
 **Ordering rules, not preferences:**
 
@@ -1307,6 +1444,13 @@ something is reversed, add a new row.
 | 2026-11-12 | Audit chain integrity | **Deployed to dev** (portal click-through pending) | `admin_audit_log` is now hash-chained: every row carries `prev_hash`/`row_hash`/`hash_version`, terminal rows also `completion_hash`/`completed_at`. Canonical form and the chained insert live in `services/shared/audit-chain.ts` so the hourly maintenance job (`user.plan.override.expire`, previously a raw terminal INSERT that would have broken the chain) uses the same writer. The writer generates `id` and `created_at` in Node with millisecond precision — Postgres defaults are microseconds and `created_at` is hashed, so letting the database set it would make every row fail verification on read — and takes `pg_advisory_xact_lock` before reading the head; a unique partial index on `row_hash` backs that up. The trigger now also fires on INSERT and rejects a row without a chain hash, and the completion transition is the only permitted update. `GET /admin/audit/verify` (analyst) walks a bounded window (1,000 default / 5,000 max) and answers 200 with the first broken row and a reason; `GET /admin/audit/export` returns the filtered rows capped at 5,000 with a truncation flag. `scripts/backfill-audit-chain.ts` seals legacy rows idempotently (trigger disabled only inside the update transaction), verifies on exit, and is wired into `deploy.sh` after migrations. Portal: verified/broken/not-verified badge that is keyed to the window it was run against, row dialog with all hashes, date + target-type filters, JSON/CSV export. Tests: 21 hash/verifier unit tests, 7 handler tests, and a DB-gated integration suite for concurrency, completion, tamper detection and trigger enforcement. HMAC anchor deferred. **Dev verification:** migration applied and the deploy-time backfill sealed all 47 pre-existing rows; `backfill-audit-chain.ts --dry-run` reports `chain verified: 47 row(s)`; the tamper drill on a throwaway database on the same RDS instance detects the edited row (`row_hash_mismatch`, exit 1) and `--force` reseals it; the 5 DB-gated integration tests pass there, including two concurrent writers producing one chain. Prod data verified the same way (3 rows sealed, chain valid); the prod portal rebuilt at `dba73d9` with the new UI. Remaining: click Verify chain in the prod portal and record the badge. |
 | 2026-11-12 | Warden Copilot | **Built — dev verification pending** | Read-only copilot in five surfaces (incident, support, analysis, session, risk brief). **Separation is structural:** `admin-copilot` is its own Lambda with read-only IAM (DB secret read, analysis bucket read, Bedrock invoke) and only `admin-api` can invoke it; its model is created with no tools, and `suggestedActions` has no execution variant. Retrieval is deterministic and bounded: audit full-text over 50 rows, 30 messages, 14 agent signals, 10 trades/decisions, 7 settings, 2 metric windows, 60 records / 48k chars per request, 7-day max window. Every citation is validated against the records sent; invented citations are dropped and confidence lowered. Prompt-injection defence: delimited + JSON-encoded records, link/URL/token stripping, explicit untrusted-data rule, and tests with a malicious ticket. Routes: `/admin/copilot/{status,incident,analysis,support,session,risk-brief}` with the documented roles; **not** written to the audit log. Controls: `copilot_enabled` (UI hidden + 503), `copilot_daily_limit` (100/day), 10/min per actor, one model call, 20 s timeout, 1,200-token cap, CloudWatch usage line with latency/tokens/estimated cost. UI: audit timeline panel, ticket summarize/draft (draft fills the existing composer), analysis explainer, session explainer, "Review context" in terminate and kill-switch dialogs. Audit deep link: `GET /admin/audit?id=<rowId>`. 735 infra tests green; `synth:dev` green; admin typecheck + lint clean. Remaining: one real incident question, one drafted support reply, and one NO_TRADE explanation against dev data, plus the demo recording. |
 | 2026-11-12 | Copilot — draft reply defect | Fixed | First manual run of "Draft reply" returned meta-commentary ("Draft a courteous reply…") instead of a reply, and the shared citation rule would have leaked `[ticket:<id>]` into an email. Root cause: the support framing told the model not to address the customer unless drafting (ambiguous), the request carried no mode, and the draft used a meta question. Fix: `mode` is now part of the copilot request and forwarded by the route; `DRAFT_REPLY_INSTRUCTIONS` demand the reply body only, to the customer, with no markers/ids and no invented commitments; the server validates inline citations for grounding and then strips them from the draft; the UI labels it "Model draft. Verify before sending." Tests: prompt directive present only in draft mode, markers stripped while citations survive, route forwards `mode`, plus the existing injection suite. 738 infra tests. |
+| 2026-11-12 | 12a — `+warden` aliasing | Code done | New `services/shared/admin-email.ts` (`toAdminEmail`, `isAdminAlias`) and 27 unit tests: append `+warden`, idempotent, keep an existing `+tag`, lowercase, structural validation, 254-char ceiling. The manual Add-member path now aliases and **refuses** an identity that has a `users` row (`isProductUserByCognitoSub`, keyed by `cognito_sub`, not email), closing the 2026-11-03 vector; existing admins keep working. Dialog shows the resolved address before submission. Both invite paths (dialog and link) now create the account with `MessageAction: SUPPRESS` + a generated temporary password and deliver the email through `shared/admin-invite-email.ts` (Resend), so the copy and sender cannot drift. Slice log: `docs/warden-invite-links-plan.md` §15. |
+| 2026-11-12 | 12b — Invite links (owner API + UI) | Code done | `admin_invite_links` + `admin_invite_redemptions` in `001-schema.sql` (token_hash only; role/uses CHECKs; idempotent). `shared/invite-token.ts` (32-byte token, SHA-256, derived status) and `shared/invite-links.ts` (queries + atomic `reserveInviteUse`). Four owner routes with fresh auth, mandatory reason, and `admin.invite_link.create`/`.revoke` audit rows; revoke can disable accounts that never signed in (`AdminDisableUser`). UI: Members → Invite links panel with one-time URL display, revoke dialog, redemption drill-down. RBAC matrix rows added; 405 admin-api tests. |
+| 2026-11-12 | 12c — Public join | Code done | New `admin-join` Lambda behind unauthenticated `POST /join/lookup` and `/join/register` (own API Gateway resource, no authorizer, creation-only IAM). Registration aliases the email, creates the account via `AdminCreateUser` + `AdminSetUserPassword(Permanent:false)`, adds the role group, records the redemption, and emails the one-time password through `shared/email.ts` (Resend, no Reply-To) — never Cognito's default sender. Uses are reserved atomically; failures before account creation release the use, delivery failures do not. Rate limits 5/h/IP + 10/h/link + 50/day global (global fails closed). `writeSystemAuditLog` adds the `system` actor for `admin.member.self_register`; role model extracted to `shared/admin-roles.ts` so the join bundle avoids `aws-jwt-verify`. `/join` page (token in the fragment, cleared after reading), `proxy.ts` exemption, login prefill. 22 join tests; 817 infra tests; `synth:dev` bundles the function. |
+| 2026-11-12 | 12d — Lifetime + login aliasing | Code done | Invite-link lifetime ceiling raised to **365 days** (`MAX_INVITE_LIFETIME_HOURS = 8760`; the create dialog offers 24 h / 3 d / 7 d / 30 d / 365 d). The login form now resolves the `+warden` alias: typing the everyday address signs in as its alias, the resolved identity is returned with the challenge so MFA and password steps use the correct username, and the field previews which account will be used. A rejected alias identity retries the address as typed once, so admins created before aliasing (including the first owner) keep working; throttling and malformed requests are not retried. |
+| 2026-11-12 | 12e — `+warden` tag + product guard | Code done | Alias tag renamed `+admin` → **`+warden`** across server, UI, tests and docs (no deployed accounts existed, so no migration). New `shared/email-policy.ts`: the **product** rejects any `+tag` address — enforced in `auth-magic-sync` (`400 PLUS_TAG_NOT_SUPPORTED`) and mirrored in the product login form, which validates before Magic sends a code. This keeps the alias namespace disjoint from the customer namespace, so a Warden identity can never double as a product account and a customer can never mint an address that looks like one. The customer-facing message does not mention the portal. |
+| 2026-11-12 | 12f — Removal was not immediate | Fixed | **Reported bug:** an owner removed a member and that member kept full access. Root cause: the authorizer authorized from the `cognito:groups` claim, which is a snapshot from token issuance and valid for up to an hour; `AdminUserGlobalSignOut` only revokes refresh tokens, so it could not close that window (the 2026-11-02 note claiming otherwise was wrong). Fix: `resolveAdminIdentity` now reads **live** membership with `AdminListGroupsForUser` on every request, deliberately uncached, and fails closed if the lookup fails. The token claim is used only to log `AdminGroupDrift`. Promotions and demotions are now immediate too. IAM: the authorizer gained `AdminListGroupsForUser`. Portal: when both `/admin/me` and `/admin/bootstrap/status` return 403, the client signs out and lands on `/login?reason=access-removed` instead of showing a shell; the MFA-enrolment path still passes the bootstrap probe, so it is unaffected. `/admin/me` also re-checks every 60 s so an idle tab is ejected. Tests: stale-owner-token → 403, demotion → live role, promotion → live role, lookup failure → 401. |
+
 | next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
 
 ---

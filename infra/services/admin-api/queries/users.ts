@@ -286,3 +286,21 @@ export async function userExists(client: Client, userId: string): Promise<boolea
   const result = await client.query('SELECT 1 FROM users WHERE id = $1 LIMIT 1', [userId]);
   return (result.rowCount ?? 0) > 0;
 }
+
+/**
+ * Is this Cognito identity also a TradeWizard customer?
+ *
+ * This is the exact test for "never attach an admin group to a customer
+ * account": the product provisions a `users` row on sign-up confirmation, keyed
+ * by `cognito_sub`, and a dedicated admin identity has none. Email is not used —
+ * the aliased address could in principle be either.
+ */
+export async function isProductUserByCognitoSub(
+  client: Client,
+  cognitoSub: string
+): Promise<boolean> {
+  const result = await client.query('SELECT 1 FROM users WHERE cognito_sub = $1 LIMIT 1', [
+    cognitoSub,
+  ]);
+  return (result.rowCount ?? 0) > 0;
+}

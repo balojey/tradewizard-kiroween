@@ -3,6 +3,7 @@
 import { AuthShell } from "@/components/shell/AuthShell";
 import { useAuthContext } from "@/providers/AuthProvider";
 import getMagic from "@/lib/magic";
+import { hasPlusTag, PLUS_TAG_MESSAGE } from "@/lib/email-policy";
 import {
   LoginWithEmailOTPEventOnReceived,
   LoginWithEmailOTPEventEmit,
@@ -30,9 +31,11 @@ function isValidNextPath(path: string): boolean {
 
 /**
  * Sync Magic auth to Cognito by calling the backend magic-sync endpoint.
- * Returns true if tokens were successfully stored.
+ * Returns the tokens on success, or the API's message when it refuses.
  */
-async function syncMagicToCognito(email: string): Promise<boolean> {
+async function syncMagicToCognito(
+  email: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const response = await fetch(`${baseUrl}/auth/magic-sync`, {
     method: "POST",
@@ -41,8 +44,17 @@ async function syncMagicToCognito(email: string): Promise<boolean> {
   });
 
   if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+
     console.error("Magic-Cognito sync failed:", response.status);
-    return false;
+    return {
+      ok: false,
+      error:
+        payload?.error ??
+        "Login succeeded but backend sync failed. Please try again.",
+    };
   }
 
   const tokens = await response.json();
@@ -55,10 +67,10 @@ async function syncMagicToCognito(email: string): Promise<boolean> {
       "tw_expires_at",
       String(Date.now() + (tokens.expiresIn ?? 3600) * 1000)
     );
-    return true;
+    return { ok: true };
   }
 
-  return false;
+  return { ok: false, error: "Login succeeded but no session was returned. Please try again." };
 }
 
 function LoginContent() {
@@ -106,13 +118,24 @@ function LoginContent() {
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    const normalized = email.trim();
+
+    // Tagged addresses belong to the Warden alias namespace, so the product
+    // refuses them before Magic sends a code the backend would reject.
+    if (hasPlusTag(normalized)) {
+      setError(PLUS_TAG_MESSAGE);
+      return;
+    }
+
+    setEmail(normalized);
     setIsSubmitting(true);
 
     try {
       const magic = getMagic();
 
       const handle = magic.auth.loginWithEmailOTP({
-        email,
+        email: normalized,
         showUI: false,
         deviceCheckUI: false,
       });
@@ -134,15 +157,13 @@ function LoginContent() {
         .on("done", async () => {
           // Magic login complete - sync to Cognito
           setIsSubmitting(true);
-          const synced = await syncMagicToCognito(email);
+          const synced = await syncMagicToCognito(normalized);
 
-          if (synced) {
+          if (synced.ok) {
             refreshFromStorage();
             navigateAfterAuth();
           } else {
-            setError(
-              "Login succeeded but backend sync failed. Please try again."
-            );
+            setError(synced.error);
           }
           setIsSubmitting(false);
         })

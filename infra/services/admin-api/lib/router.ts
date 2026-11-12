@@ -24,6 +24,7 @@ import { userMutationRoutes } from '../routes/user-mutations';
 import { portfolioMutationRoutes } from '../routes/portfolio-mutations';
 import { killSwitchRoutes } from '../routes/kill-switch';
 import { memberRoutes } from '../routes/members';
+import { inviteLinkRoutes } from '../routes/invite-links';
 import { settingsRoutes } from '../routes/settings';
 import { bootstrapRoutes } from '../routes/bootstrap';
 import { supportRoutes } from '../routes/support';
@@ -81,6 +82,7 @@ export const ROUTES: AdminRoute[] = [
   ...portfolioMutationRoutes,
   ...killSwitchRoutes,
   ...memberRoutes,
+  ...inviteLinkRoutes,
   ...settingsRoutes,
   ...bootstrapRoutes,
   ...supportRoutes,

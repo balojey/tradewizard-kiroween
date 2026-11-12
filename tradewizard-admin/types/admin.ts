@@ -472,6 +472,42 @@ export interface AdminMember {
   groups: string[];
 }
 
+export type InviteLinkStatus = "active" | "expired" | "revoked" | "exhausted";
+
+export interface AdminInviteLink {
+  id: string;
+  role: AdminMember["role"];
+  createdByEmail: string;
+  reason: string;
+  createdAt: string;
+  expiresAt: string;
+  maxUses: number;
+  useCount: number;
+  redemptionCount: number;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  lastUsedAt: string | null;
+  status: InviteLinkStatus;
+}
+
+export interface AdminInviteRedemption {
+  id: string;
+  cognitoSub: string;
+  email: string;
+  createdAt: string;
+  cognitoStatus: string | null;
+  claimed: boolean | null;
+}
+
+/** Returned exactly once, at creation: the URL is never readable again. */
+export interface CreatedInviteLink {
+  id: string;
+  role: AdminMember["role"];
+  url: string;
+  expiresAt: string;
+  maxUses: number;
+}
+
 export interface SupportTicketRow {
   id: string;
   ref: string;

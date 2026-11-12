@@ -65,18 +65,78 @@ aws cognito-idp admin-get-user --user-pool-id "$POOL" \
 An owner can do all of it: **Members → Add member**, enter the email, role and
 reason. If no account exists, the dialog offers **Send invitation**:
 
-1. Cognito creates the account and emails a temporary password.
-2. They sign in with it and are asked to **choose their own password**.
-3. The portal then shows the QR enrolment screen; they add the authenticator and
-   are in.
+1. The account is created on the **aliased** address: typing
+   `person@example.com` creates `person+warden@example.com`. The dialog shows the
+   exact address before you submit. This is deliberate — a dedicated identity is
+   what keeps the person's product magic-link login working (§6.1).
+2. Resend emails a one-time password (not Cognito's default sender).
+3. They sign in with the aliased address, choose their own password, then add an
+   authenticator.
+
+Typing a customer's address is refused (`409`) with the alias to use instead, so
+the 2026-11-03 failure cannot be repeated accidentally.
 
 The portal never sets a password, which is exactly why this is safe for admin
 identities.
 
-**Caveat:** the copy of §1.1 that runs from the CLI still exists for recovery and
-for accounts the owner does not manage. Note that Cognito sends the invitation
-from its default sender (`no-reply@verificationemail.com`, 50/day); wire the SES
-identity into the pool if invitations need to come from `@tradewizard.live`.
+**Caveat:** plus addressing is a receiving-provider convention. Gmail, Outlook,
+Fastmail, Proton and Yahoo support it; a few corporate servers do not, and the
+invitation would bounce. In that case add the person with an explicit address
+(CLI §1.1), and note it in the audit reason.
+
+### 1.1b Invite someone with a link (when you do not have their email)
+
+Use this when you want to hand access to several people without collecting
+addresses first.
+
+1. **Members → Invite links → Create link.** Choose role, lifetime (24 h–365 d),
+   maximum uses (1–50), and a reason.
+2. The URL is shown **once** (`https://admin.tradewizard.live/join#t=…`) because
+   only its SHA-256 is stored. Copy it before closing the dialog; if it is lost,
+   revoke it and create another.
+3. Share it privately. Anyone holding it can create one account at that role
+   until it expires, runs out of uses, or is revoked. An **owner** link is the
+   keys to the portal — prefer a short lifetime and a small use count.
+4. The invitee opens it, enters their email, sees the exact `+warden` address they
+   will sign in with, and submits. The invitation email arrives with a one-time
+   password; they sign in, choose a password, and enrol TOTP like any other
+   member. On the sign-in form they can type their ordinary address — the form
+   adds `+warden` for them (and shows which identity it will use).
+5. **Revoke** stops new registrations immediately. Leave *"Also disable accounts
+   created by this link that never signed in"* checked if the link was shared
+   more widely than intended — those accounts still hold an unused temporary
+   password. People who already signed in are never touched, and people who
+   already joined stay members until you remove them individually.
+
+**Recovery.**
+- *Wrong email typed:* the account exists on the wrong alias. Disable it in
+  Cognito, then send a new link or a manual invitation. It cannot be retargeted.
+- *No email arrived:* check Resend's log, confirm the Cognito user exists with
+  `FORCE_CHANGE_PASSWORD`, and confirm the provider accepts plus addresses.
+- *Link leaked:* revoke with the disable-unclaimed option, then read
+  `GET /admin/invite-links/{id}/redemptions` and the audit log
+  (`admin.member.self_register` names the link).
+
+> **The product refuses `+tag` addresses.** Warden identities end in
+> `+warden@`, and the customer login rejects any address with a `+` tag in the
+> local part (`shared/email-policy.ts`, enforced in `auth-magic-sync`). That is
+> deliberate: a Warden identity must never become a product account, and nobody
+> should be able to create a customer identity inside the alias namespace. Their
+> product login stays on their plain address.
+>
+> **Before deploying this rule, check for existing plus-tagged customers** — the
+> rule applies at sign-in, so any customer who originally registered with a tag
+> will be refused:
+>
+> ```sql
+> SELECT id, email, created_at FROM users
+> WHERE position('+' in split_part(email, '@', 1)) > 0;
+> ```
+>
+> If rows come back, decide per account before deploying: update the address to
+> the person's primary one (they keep their history and credits), or leave it and
+> accept that they must contact support. New sign-ups are unaffected because the
+> form blocks the tag before Magic sends a code.
 
 ### 1.1 Create the account and add the group (CLI alternative)
 
@@ -264,7 +324,9 @@ aws cognito-idp admin-get-user \
 aws cognito-idp admin-remove-user-from-group \
   --user-pool-id "$POOL" --username someone@example.com --group-name tw-owner
 
-# Force re-authentication everywhere (sessions die at the next token refresh)
+# Force re-authentication everywhere. This revokes refresh tokens; it does not
+# invalidate an already-issued ID token. Access actually ends because the
+# authorizer reads live group membership on every request.
 aws cognito-idp admin-user-global-sign-out \
   --user-pool-id "$POOL" --username someone@example.com
 ```
@@ -420,6 +482,7 @@ rm -f /tmp/pg.env /tmp/dbcreds.json
 | Code always rejected | Code computed from a stale `SECRET` (each `associate` call rotates it) | Use the secret printed by the most recent call |
 | `401 UNAUTHORIZED` from `/admin/me` | Missing/expired/wrong-audience token | Must be the **ID token** from the **admin client**, refreshed within the hour |
 | `403 FORBIDDEN` from `/admin/me` | No admin group, or MFA required but not enrolled | §2. Check the authorizer log for `AdminMfaLookupMiss`, which prints the Cognito view |
+| Removed a member and their browser still shows the portal | Their open tab has not made a request yet. The authorizer denies them on the next one, and the portal signs them out when both `/admin/me` and `/admin/bootstrap/status` return 403 | No action needed; confirm the removal in §2 and look for `AdminGroupDrift` in the authorizer log to see the stale token |
 | `403` on a route that exists, immediately after a deploy | The stage deployment has not finished propagating | Wait 10–20 s and retry. Confirm with `aws apigateway get-deployments --rest-api-id <id>` |
 | Presigned S3 fetch blocked by CORS | Bucket CORS missing an admin origin | Add it in `lib/storage-stack.ts` and redeploy Storage |
 | `{"code":"BAD_REQUEST"}` on an unknown path | API Gateway denial before routing | Not a Lambda error; check the URL |

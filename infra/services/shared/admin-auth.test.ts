@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { verifyMock, cognitoSendMock, verifierCreateMock } = vi.hoisted(() => ({
+const { verifyMock, cognitoSendMock, verifierCreateMock, state } = vi.hoisted(() => ({
   verifyMock: vi.fn(),
   cognitoSendMock: vi.fn(),
   verifierCreateMock: vi.fn(),
+  state: { groups: ['tw-support'] as string[] },
 }));
 
 vi.mock('aws-jwt-verify', () => ({
@@ -14,7 +15,8 @@ vi.mock('aws-jwt-verify', () => ({
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   CognitoIdentityProviderClient: vi.fn(() => ({ send: cognitoSendMock })),
-  AdminGetUserCommand: vi.fn((input: unknown) => ({ input })),
+  AdminGetUserCommand: vi.fn((input: unknown) => ({ kind: 'getUser', input })),
+  AdminListGroupsForUserCommand: vi.fn((input: unknown) => ({ kind: 'listGroups', input })),
 }));
 
 import {
@@ -56,20 +58,39 @@ function eventWithAuthorizer(context: Record<string, unknown> | undefined) {
   return { requestContext: { authorizer: context } };
 }
 
+/** Live Cognito group membership, which is what authorization reads. */
+function setLiveGroups(groups: string[]): void {
+  state.groups = groups;
+}
+
+/** Build the Cognito responses: live groups, plus the factor lookup. */
+function setCognitoUser(overrides: Record<string, unknown> = {}): void {
+  cognitoSendMock.mockImplementation(
+    async (command: { kind?: string }) => {
+      if (command?.kind === 'listGroups') {
+        return { Groups: state.groups.map((group) => ({ GroupName: group })) };
+      }
+
+      return {
+        UserStatus: 'CONFIRMED',
+        UserMFASettingList: ['SOFTWARE_TOKEN_MFA'],
+        ...overrides,
+      };
+    }
+  );
+}
+
 beforeEach(() => {
   setEnv();
   verifyMock.mockReset();
   cognitoSendMock.mockReset();
-  // The factor state is now read on every call (it is reported, not just
-  // enforced), so give the suite a configured user by default.
-  cognitoSendMock.mockResolvedValue({
-    UserStatus: 'CONFIRMED',
-    UserMFASettingList: ['SOFTWARE_TOKEN_MFA'],
-  });
+  setLiveGroups(['tw-support']);
+  setCognitoUser();
   verifierCreateMock.mockReset();
   verifierCreateMock.mockReturnValue({ verify: verifyMock });
   resetAdminAuthCachesForTests();
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -112,6 +133,7 @@ describe('roleFromGroups', () => {
 describe('resolveAdminIdentity', () => {
   it('resolves a valid token to a role with its rank', async () => {
     verifyMock.mockResolvedValue(tokenPayload({ 'cognito:groups': ['tw-admin'] }));
+    setLiveGroups(['tw-admin']);
 
     const identity = await resolveAdminIdentity('token');
 
@@ -128,8 +150,49 @@ describe('resolveAdminIdentity', () => {
     verifyMock.mockResolvedValue(
       tokenPayload({ 'cognito:groups': ['tw-analyst', 'tw-owner'] })
     );
+    setLiveGroups(['tw-analyst', 'tw-owner']);
 
     await expect(resolveAdminIdentity('token')).resolves.toMatchObject({ role: 'owner' });
+  });
+
+  it('denies a token whose admin group was revoked after it was issued', async () => {
+    // The regression test: the token still claims ownership, Cognito says the
+    // person is in no admin group. The token must lose.
+    verifyMock.mockResolvedValue(tokenPayload({ 'cognito:groups': ['tw-owner'] }));
+    setLiveGroups([]);
+
+    await expect(resolveAdminIdentity('token')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+  });
+
+  it('authorizes from the live role, so a demotion applies immediately', async () => {
+    verifyMock.mockResolvedValue(tokenPayload({ 'cognito:groups': ['tw-owner'] }));
+    setLiveGroups(['tw-support']);
+
+    await expect(resolveAdminIdentity('token')).resolves.toMatchObject({
+      role: 'support',
+      roleRank: ROLE_RANK.support,
+    });
+  });
+
+  it('authorizes from the live role, so a promotion applies immediately', async () => {
+    verifyMock.mockResolvedValue(tokenPayload({ 'cognito:groups': ['tw-support'] }));
+    setLiveGroups(['tw-admin']);
+
+    await expect(resolveAdminIdentity('token')).resolves.toMatchObject({ role: 'admin' });
+  });
+
+  it('fails closed when the group lookup fails', async () => {
+    verifyMock.mockResolvedValue(tokenPayload());
+    cognitoSendMock.mockImplementation(async (command: { kind?: string }) => {
+      if (command?.kind === 'listGroups') throw new Error('cognito unavailable');
+      return { UserStatus: 'CONFIRMED', UserMFASettingList: ['SOFTWARE_TOKEN_MFA'] };
+    });
+
+    await expect(resolveAdminIdentity('token')).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
   });
 
   it('creates the verifier once and reuses it', async () => {
@@ -164,6 +227,7 @@ describe('resolveAdminIdentity', () => {
 
   it('rejects an authenticated user with no admin group', async () => {
     verifyMock.mockResolvedValue(tokenPayload({ 'cognito:groups': ['customers'] }));
+    setLiveGroups(['customers']);
 
     await expect(resolveAdminIdentity('token')).rejects.toMatchObject({
       code: 'FORBIDDEN',
@@ -173,10 +237,7 @@ describe('resolveAdminIdentity', () => {
   it('rejects an admin without a TOTP factor when MFA is required', async () => {
     setEnv({ ADMIN_REQUIRE_MFA: 'true' });
     verifyMock.mockResolvedValue(tokenPayload());
-    cognitoSendMock.mockResolvedValue({
-      UserStatus: 'CONFIRMED',
-      UserMFASettingList: [],
-    });
+    setCognitoUser({ UserStatus: 'CONFIRMED', UserMFASettingList: [] });
 
     await expect(resolveAdminIdentity('token')).rejects.toMatchObject({
       code: 'MFA_REQUIRED',
@@ -186,7 +247,7 @@ describe('resolveAdminIdentity', () => {
   it('accepts an admin with TOTP configured and caches the lookup', async () => {
     setEnv({ ADMIN_REQUIRE_MFA: 'true' });
     verifyMock.mockResolvedValue(tokenPayload());
-    cognitoSendMock.mockResolvedValue({
+    setCognitoUser({
       UserStatus: 'CONFIRMED',
       // Cognito returns the factor name uppercased — this is the real shape.
       UserMFASettingList: ['SOFTWARE_TOKEN_MFA'],
@@ -197,13 +258,23 @@ describe('resolveAdminIdentity', () => {
 
     expect(first.mfa).toBe(true);
     expect(second.mfa).toBe(true);
-    expect(cognitoSendMock).toHaveBeenCalledTimes(1);
+
+    // Group membership is deliberately uncached (two calls); the factor lookup is.
+    const userCalls = cognitoSendMock.mock.calls.filter(
+      ([command]) => (command as { kind?: string }).kind === 'getUser'
+    );
+    expect(userCalls).toHaveLength(1);
   });
 
   it('fails closed when the MFA lookup errors', async () => {
     setEnv({ ADMIN_REQUIRE_MFA: 'true' });
     verifyMock.mockResolvedValue(tokenPayload());
-    cognitoSendMock.mockRejectedValue(new Error('throttled'));
+    cognitoSendMock.mockImplementation(async (command: { kind?: string }) => {
+      if (command?.kind === 'listGroups') {
+        return { Groups: [{ GroupName: 'tw-support' }] };
+      }
+      throw new Error('throttled');
+    });
 
     await expect(resolveAdminIdentity('token')).rejects.toMatchObject({
       code: 'UNAUTHORIZED',
@@ -213,7 +284,7 @@ describe('resolveAdminIdentity', () => {
   it('matches the factor name case-insensitively', async () => {
     setEnv({ ADMIN_REQUIRE_MFA: 'true' });
     verifyMock.mockResolvedValue(tokenPayload());
-    cognitoSendMock.mockResolvedValue({
+    setCognitoUser({
       UserStatus: 'CONFIRMED',
       UserMFASettingList: ['Software_Token_Mfa'],
     });
@@ -224,7 +295,7 @@ describe('resolveAdminIdentity', () => {
   it('rejects a confirmed user whose only factor is SMS', async () => {
     setEnv({ ADMIN_REQUIRE_MFA: 'true' });
     verifyMock.mockResolvedValue(tokenPayload());
-    cognitoSendMock.mockResolvedValue({
+    setCognitoUser({
       UserStatus: 'CONFIRMED',
       UserMFASettingList: ['SMS_MFA'],
     });

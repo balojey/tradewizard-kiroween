@@ -22,34 +22,15 @@ import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import {
   CognitoIdentityProviderClient,
   AdminGetUserCommand,
+  AdminListGroupsForUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { ROLE_GROUPS, ROLE_RANK, type AdminRole } from './admin-roles';
 
-export type AdminRole = 'analyst' | 'support' | 'admin' | 'owner';
-
-/** Higher rank may do everything a lower rank may do. */
-export const ROLE_RANK: Record<AdminRole, number> = {
-  analyst: 10,
-  support: 20,
-  admin: 30,
-  owner: 40,
-};
-
-/** Cognito group name → role. Anything not listed grants nothing. */
-export const ROLE_GROUPS: Record<string, AdminRole> = {
-  'tw-analyst': 'analyst',
-  'tw-support': 'support',
-  'tw-admin': 'admin',
-  'tw-owner': 'owner',
-};
-
-/** Reverse of ROLE_GROUPS: the Cognito group that confers a role. */
-export function groupForRole(role: AdminRole): string {
-  const entry = Object.entries(ROLE_GROUPS).find(([, value]) => value === role);
-  if (!entry) {
-    throw new Error(`No Cognito group maps to role "${role}"`);
-  }
-  return entry[0];
-}
+// The role model lives in `admin-roles.ts` (no AWS imports) so the public join
+// Lambda can use it without pulling the authorizer's dependencies into its
+// bundle. Re-exported here so callers keep importing from the auth module.
+export { ROLE_GROUPS, ROLE_RANK, groupForRole } from './admin-roles';
+export type { AdminRole } from './admin-roles';
 
 export type AdminAuthErrorCode =
   | 'UNAUTHORIZED'
@@ -191,6 +172,39 @@ function hasSoftwareToken(factors: readonly string[] | undefined): boolean {
   );
 }
 
+/**
+ * Group membership straight from Cognito.
+ *
+ * Deliberately **uncached**. The `cognito:groups` claim in an ID token is a
+ * snapshot from issuance and stays valid for the token's lifetime (1 hour), and
+ * `AdminUserGlobalSignOut` revokes refresh tokens only — it cannot invalidate an
+ * issued ID token. Trusting the claim therefore means a removed or demoted admin
+ * keeps their old role until the token expires. The portal has a handful of
+ * operators, so one extra Cognito read per request is the cheapest correct
+ * answer; a cache, even a short one, re-introduces the window.
+ */
+async function liveGroups(sub: string): Promise<string[]> {
+  try {
+    const response = await cognitoClient.send(
+      new AdminListGroupsForUserCommand({
+        UserPoolId: requireEnv('USER_POOL_ID'),
+        Username: sub,
+      })
+    );
+
+    return (response.Groups ?? [])
+      .map((group) => group.GroupName ?? '')
+      .filter(Boolean);
+  } catch (error) {
+    // Fail closed: without the live view we cannot prove the caller is still a
+    // member, and the token's claim is exactly what we no longer trust.
+    throw new AdminAuthError(
+      'UNAUTHORIZED',
+      `Unable to verify group membership: ${(error as Error).message}`
+    );
+  }
+}
+
 async function isMfaConfigured(sub: string): Promise<boolean> {
   const cached = mfaCache.get(sub);
   if (cached && cached.expiresAt > Date.now()) {
@@ -278,9 +292,30 @@ export async function resolveAdminIdentity(
     throw new AdminAuthError('UNAUTHORIZED', 'Token is missing an email claim');
   }
 
-  const role = roleFromGroups(groupsFromClaim(payload['cognito:groups']));
+  // Authorization comes from Cognito *now*, never from the token snapshot: a
+  // removed or demoted admin's ID token still carries the old groups until it
+  // expires (see liveGroups above).
+  const claimedGroups = groupsFromClaim(payload['cognito:groups']);
+  const groups = await liveGroups(payload.sub);
+  const role = roleFromGroups(groups);
+
   if (!role) {
     throw new AdminAuthError('FORBIDDEN', 'Account is not a member of any admin group');
+  }
+
+  // Visibility into a token that is out of date. The request is already
+  // authorized against the live role; this line is what makes "why was I
+  // denied?" answerable in CloudWatch.
+  const tokenRole = roleFromGroups(claimedGroups);
+  if (tokenRole !== role) {
+    console.warn(
+      JSON.stringify({
+        metric: 'AdminGroupDrift',
+        subPrefix: payload.sub.slice(0, 8),
+        tokenRole,
+        liveRole: role,
+      })
+    );
   }
 
   // Always read the real factor state: callers (and the enrolment route) need

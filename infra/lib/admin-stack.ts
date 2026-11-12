@@ -116,7 +116,9 @@ export class AdminStack extends cdk.Stack {
 
     this.authorizerHandler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['cognito-idp:AdminGetUser'],
+        // Authorization reads live group membership; the token's claim is a
+        // snapshot and must not outlive a removal (docs §6.3).
+        actions: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminListGroupsForUser'],
         resources: [userPool.userPoolArn],
       })
     );
@@ -184,6 +186,10 @@ export class AdminStack extends cdk.Stack {
         RESEND_REPLY_TO: '',
         SES_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
         APP_URL: process.env.APP_URL || (isProd ? 'https://tradewizard.live' : 'http://localhost:3000'),
+        // Base URL used to build the one-time invite link (`/join#t=…`).
+        ADMIN_APP_URL:
+          process.env.ADMIN_APP_URL ||
+          (isProd ? 'https://admin.tradewizard.live' : 'http://localhost:3001'),
       },
       bundling: {
         minify: isProd,
@@ -205,6 +211,10 @@ export class AdminStack extends cdk.Stack {
           'cognito-idp:AdminAddUserToGroup',
           'cognito-idp:AdminRemoveUserFromGroup',
           'cognito-idp:AdminUserGlobalSignOut',
+          // Invitations set a temporary password that we deliver ourselves.
+          'cognito-idp:AdminSetUserPassword',
+          // Revoking a link disables accounts that never signed in.
+          'cognito-idp:AdminDisableUser',
           'cognito-idp:ListUsersInGroup',
           'cognito-idp:ListUsers',
         ],
@@ -333,6 +343,60 @@ export class AdminStack extends cdk.Stack {
 
     this.adminApiHandler.addEnvironment('COPILOT_FUNCTION_NAME', copilotHandler.functionName);
     copilotHandler.grantInvoke(this.adminApiHandler);
+
+    // ─── Public join Lambda ───────────────────────────────────────────────────
+    //
+    // The only unauthenticated surface in the Warden (docs/warden-invite-links-plan.md
+    // §2.8). It is a separate function on purpose:
+    // - its IAM is creation-only (create user, set temp password, add group) plus
+    //   the rate-limit table and the Resend key;
+    // - it cannot read the portal's data, so a bug there cannot leak it;
+    // - a registration flood cannot consume the admin API's concurrency.
+    const joinHandler = new lambdaNode.NodejsFunction(this, 'AdminJoinHandler', {
+      functionName: resourceName(config.envName, 'admin-join'),
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: 'services/admin-join/handler.ts',
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(20),
+      memorySize: 512,
+      environment: {
+        ENVIRONMENT: config.envName,
+        DB_SECRET_ARN: dbSecret.secretArn,
+        DB_HOST: dbEndpoint,
+        DB_NAME: 'tradewizard',
+        USER_POOL_ID: userPool.userPoolId,
+        RATE_LIMIT_TABLE: rateLimitTable.tableName,
+        ADMIN_ALLOWED_ORIGINS: allowedOrigins.join(','),
+        ADMIN_APP_URL:
+          process.env.ADMIN_APP_URL ||
+          (isProd ? 'https://admin.tradewizard.live' : 'http://localhost:3001'),
+        EMAIL_PROVIDER: process.env.EMAIL_PROVIDER || 'resend',
+        RESEND_API_KEY_SECRET_ARN: supportResendSecret.secretArn,
+        RESEND_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
+        RESEND_REPLY_TO: '',
+        SES_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',
+        JOIN_GLOBAL_DAILY_LIMIT: process.env.JOIN_GLOBAL_DAILY_LIMIT || '50',
+      },
+      bundling: { minify: isProd, sourceMap: !isProd },
+      description: 'Public invite-link lookup + self-service Warden registration',
+    });
+
+    dbSecret.grantRead(joinHandler);
+    supportResendSecret.grantRead(joinHandler);
+    rateLimitTable.grantReadWriteData(joinHandler);
+
+    joinHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'cognito-idp:AdminCreateUser',
+          'cognito-idp:AdminSetUserPassword',
+          'cognito-idp:AdminAddUserToGroup',
+          // Existence check before creating a duplicate identity.
+          'cognito-idp:ListUsers',
+        ],
+        resources: [userPool.userPoolArn],
+      })
+    );
 
     // ─── REST API ─────────────────────────────────────────────────────────────
 
@@ -464,6 +528,17 @@ export class AdminStack extends cdk.Stack {
     // `defaultCorsPreflightOptions` on the RestApi.
 
     adminProxy.addMethod('ANY', integration, authOptions);
+
+    // Public registration. Deliberately no authorizer: the link token is the
+    // credential, and the Lambda validates it against a hashed row. A separate
+    // resource keeps the authenticated `/{proxy+}` route (and its RBAC matrix
+    // guarantee) untouched.
+    const join = this.restApi.root.addResource('join');
+    const joinProxy = join.addResource('{proxy+}');
+    joinProxy.addMethod(
+      'ANY',
+      new apigateway.LambdaIntegration(joinHandler, { proxy: true })
+    );
 
     // ─── Metrics rollup ───────────────────────────────────────────────────────
     //

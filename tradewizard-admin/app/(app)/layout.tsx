@@ -32,13 +32,31 @@ function AccessProblem({ error }: { error: AdminApiError }) {
 
   // API Gateway replaces the authorizer's error with a generic 403, so the code
   // never reaches us. Ask the one endpoint an MFA-less admin can reach.
-  const { data: status } = useQuery<{ mfa: boolean }>({
+  const { data: status, error: statusError } = useQuery<{ mfa: boolean }>({
     queryKey: ["admin", "bootstrap-status"],
     queryFn: () => adminFetch<{ mfa: boolean }>("admin/bootstrap/status", { token: idToken }),
     enabled: isForbidden && Boolean(idToken),
     retry: false,
     staleTime: 0,
   });
+
+  // Both probes denied: the account is not in an admin group any more, so this
+  // session is not rescuable. Sign out rather than leaving a shell that looks
+  // logged in but cannot do anything. An MFA-less admin still passes the
+  // bootstrap probe, so enrolment is unaffected.
+  const accessRemoved =
+    isForbidden && (statusError as { status?: number } | null)?.status === 403;
+
+  useEffect(() => {
+    if (!accessRemoved) return;
+
+    const timer = window.setTimeout(() => {
+      signOut();
+      window.location.assign("/login?reason=access-removed");
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [accessRemoved, signOut]);
 
   // A missing factor is not a dead end: the account is valid, it just has to
   // enrol. Anything else (no admin group) stays a denial.
@@ -56,12 +74,21 @@ function AccessProblem({ error }: { error: AdminApiError }) {
     <FullScreen>
       <div className="rounded-[10px] border border-border bg-surface p-5">
         <h1 className="text-[14px] font-medium text-fg">
-          {isAuth ? "Session expired" : isForbidden ? "Access denied" : "Admin API error"}
+          {isAuth
+            ? "Session expired"
+            : accessRemoved
+              ? "Access removed"
+              : isForbidden
+                ? "Access denied"
+                : "Admin API error"}
         </h1>
 
         <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
           {isAuth && "Your token is no longer accepted. Sign in again to continue."}
+          {accessRemoved &&
+            "This account is no longer in an admin group. Signing you out — ask an owner if you need access again."}
           {isForbidden &&
+            !accessRemoved &&
             "The API rejected this account. Either it is not in an admin group, or it has no TOTP factor while ADMIN_REQUIRE_MFA is enabled. See the runbook §1 and §2."}
           {!isAuth && !isForbidden && error.message}
         </p>
@@ -71,13 +98,15 @@ function AccessProblem({ error }: { error: AdminApiError }) {
         )}
 
         <div className="mt-5 flex gap-2">
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="h-8 rounded-[6px] border border-border-strong/60 bg-surface-2 px-3 text-[11.5px] text-fg transition-colors hover:bg-surface-elevated"
-          >
-            Retry
-          </button>
+          {!accessRemoved && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="h-8 rounded-[6px] border border-border-strong/60 bg-surface-2 px-3 text-[11.5px] text-fg transition-colors hover:bg-surface-elevated"
+            >
+              Retry
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
