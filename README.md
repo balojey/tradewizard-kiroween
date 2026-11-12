@@ -1,12 +1,12 @@
-# TradeWizard Operations Portal
+# TradeWizard Warden
 
 > **Kiroween 2026 · Frankenstein category**
 >
-> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by three Kiro specs during the submission period.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by four Kiro specs during the submission period.
 
 TradeWizard is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, customer support, and a newsletter.
 
-Operating that from the AWS console is unsafe and slow. The **TradeWizard Operations Portal** is the product built to do it: a separate internal Next.js application with its own API, Cognito identity, four-role RBAC, append-only audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB. It asks the platform to act, and records who asked, why, and what changed.
+Operating that from the AWS console is unsafe and slow. The **TradeWizard Warden** is the product built to do it: a separate internal Next.js application with its own API, Cognito identity, four-role RBAC, hash-chained audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB. It asks the platform to act, and records who asked, why, and what changed.
 
 The portal is the Kiroween submission. The platform is the system it operates.
 
@@ -71,6 +71,16 @@ Every mutation writes a hash-chained audit row before the side effect, with acto
 - **Support** - ticket inbox with context snapshots, claim/reply, tokenised threads
 - **Newsletter** - typed templates, preview, test send, owner-only send, subscriber suppression
 
+### Ask Warden (read-only AI copilot)
+
+- Ask about an incident, a support ticket, an analysis, a session, or a risky action.
+- Deterministic retrieval from audit rows, tickets, analyses, sessions, settings, and metrics.
+- Every factual claim cites the exact record; the UI opens the citation.
+- One tool-less model call per request. No mutation route, no autonomous tool loop.
+- Role-scoped: analyst, support, admin, and owner see different context.
+- Suggested actions are links to existing controls, never executions.
+- `copilot_enabled` is its own kill switch; `copilot_daily_limit` caps spend per operator.
+
 ### Runtime settings
 
 | Setting | Consumer | Effect |
@@ -82,6 +92,8 @@ Every mutation writes a hash-chained audit row before the side effect, with acto
 | `support_enabled` | `support-api` | Refuse new tickets; unsubscribe still works |
 | `support_first_response_target_hours` | support inbox | SLA and overdue flags |
 | `newsletter_enabled` | `newsletter-api` | Hide opt-in; unsubscribe always works |
+| `copilot_enabled` | `admin-api` + `admin-copilot` | Hide Ask Warden and refuse requests |
+| `copilot_daily_limit` | `admin-api` | Per-operator daily request cap |
 
 Reads are cached for 60 seconds per container. Synchronous consumers read a warmed cache; a missing row falls back to the default. Writes are owner-only, fresh-auth, reason-required, and audited.
 
@@ -96,11 +108,12 @@ The portal is installable, but the service worker caches only content-hashed sta
 | [`admin-portal-foundation`](.kiro/specs/admin-portal-foundation/requirements.md) | 1 spec | Package isolation, auth/MFA, RBAC, audit spine, admin API, read surfaces, shell |
 | [`admin-portal-operations`](.kiro/specs/admin-portal-operations/requirements.md) | 1 spec | Mutation envelope, kill switch, session controls, membership, settings, support, newsletter |
 | [`audit-chain-integrity`](.kiro/specs/audit-chain-integrity/requirements.md) | 1 spec | Hash-chained audit rows, completion hashes, backfill, bounded verification, audit UI |
+| [`admin-copilot`](.kiro/specs/admin-copilot/requirements.md) | 1 spec | Read-only AI copilot: retrieval, citations, role scoping, no execution path |
 | [`.kiro/steering/`](.kiro/steering/) | 4 documents | Product, structure, tech, and submission constraints |
 | [`.kiro/hooks/`](.kiro/hooks/) | 5 hooks | Typecheck all packages, guard the analysis gates, close spec tasks |
 | [`.kiro/settings/mcp.json`](.kiro/settings/mcp.json) | 2 active servers | Magic Link and Polymarket documentation |
 
-The repository also contains 31 product specs for the platform. They are context for the system the portal operates; the three portal specs are the submission.
+The repository also contains 31 product specs for the platform. They are context for the system the portal operates; the four portal specs are the submission.
 
 Read [docs/kiro-usage.md](docs/kiro-usage.md) for the judge-facing write-up.
 
@@ -121,17 +134,18 @@ admin-api  (API Gateway REST + Cognito REQUEST authorizer)
   │  requireRole + requireFreshAuth at the handler
   ▼
 shared modules → RDS PostgreSQL / DynamoDB / S3 / CloudWatch
-                → Lambda invoke for support and newsletter workers
+                → Lambda invoke for support, newsletter, and copilot
+                → admin-copilot (read-only) → RDS / S3 / Bedrock
 ```
 
-The portal is deployed as a separate Amplify app at `admin.tradewizard.live`. It is never linked from the customer product and is excluded from search indexing.
+Warden is deployed as a separate Amplify app at `admin.tradewizard.live`. It is never linked from the customer product and is excluded from search indexing.
 
 ## AWS services used by the portal
 
 | Service | Role |
 |---------|------|
 | AWS CDK + CloudFormation | Nine stacks; no console drift |
-| AWS Lambda (Node.js 20) | Admin API, authorizer, metrics rollup, support housekeeping, newsletter sender |
+| AWS Lambda (Node.js 20) | Admin API, authorizer, copilot, metrics rollup, support housekeeping, newsletter sender |
 | Amazon API Gateway | Admin REST API with Cognito request authorizer and access logs |
 | Amazon Cognito | Admin app client, four groups, TOTP, authorizer |
 | Amazon RDS for PostgreSQL 18.3 | Users, credits, analyses, sessions, audit, settings, support, newsletter; single-AZ `db.t4g.micro`, encrypted 20-50 GB, SSL, 7-day production backups |
@@ -142,7 +156,7 @@ The portal is deployed as a separate Amplify app at `admin.tradewizard.live`. It
 | Amazon CloudWatch | Logs, metrics, dashboards, alarms |
 | AWS Secrets Manager + IAM | Database, email, CLOB, wallet, webhook, newsletter secrets; scoped handler roles |
 | AWS Amplify Hosting | Separate admin app and domain |
-| Amazon Bedrock | Inference layer of the platform the portal operates |
+| Amazon Bedrock | Read-only copilot generation, and the inference layer of the platform the portal operates |
 
 ## The platform it operates
 
@@ -154,7 +168,7 @@ The portal is how a team operates that system: users, analyses, sessions, money,
 
 | Component | Purpose | Tech stack |
 |-----------|---------|------------|
-| [tradewizard-admin/](tradewizard-admin/README.md) | **The Kiroween submission**: internal operations portal | Next.js 16, React 19, TypeScript |
+| [tradewizard-admin/](tradewizard-admin/README.md) | **The Kiroween submission**: internal operations control plane | Next.js 16, React 19, TypeScript |
 | [infra/](infra/README.md) | Admin API, authorizer, portal Lambdas, and the platform substrate | TypeScript, AWS CDK, Lambda, RDS, DynamoDB |
 | [tradewizard-frontend/](tradewizard-frontend/README.md) | The customer product the portal operates | Next.js 16, React 19, Tailwind CSS 4 |
 | [remotion/](remotion/) | Demo video compositions | Remotion, React |
@@ -171,7 +185,7 @@ npm install
 cp .env.example .env.dev
 ./deploy.sh up dev
 
-# 2. Start the operations portal
+# 2. Start Warden
 cd ../tradewizard-admin
 npm install
 cp .env.example .env.local
@@ -219,11 +233,11 @@ npx cdk diff --all -c env=development
 ```
 tradewizard-kiroween/
 ├── .kiro/                  # Kiro specs, steering, hooks, MCP
-│   ├── specs/             # 35 specs; three are the portal submission
+│   ├── specs/             # 36 specs; four are the portal submission
 │   ├── steering/          # Product, structure, tech, submission rules
 │   ├── hooks/             # Typecheck, gate guard, spec follow-through
 │   └── settings/mcp.json
-├── tradewizard-admin/      # The submission: operations portal
+├── tradewizard-admin/      # The submission: TradeWizard Warden
 ├── infra/                  # CDK stacks + Lambda services
 │   ├── lib/               # Network, database, auth, queue, compute, admin, monitoring
 │   ├── services/          # admin-api, admin-authorizer, support, newsletter, analysis, portfolio
@@ -236,7 +250,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 2,963 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,324 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
@@ -248,6 +262,7 @@ tradewizard-kiroween/
 - [.kiro/specs/admin-portal-foundation](.kiro/specs/admin-portal-foundation/requirements.md) - Foundation spec
 - [.kiro/specs/admin-portal-operations](.kiro/specs/admin-portal-operations/requirements.md) - Operations spec
 - [.kiro/specs/audit-chain-integrity](.kiro/specs/audit-chain-integrity/requirements.md) - Hash-chain integrity spec
+- [.kiro/specs/admin-copilot](.kiro/specs/admin-copilot/requirements.md) - Read-only AI copilot spec
 - [docs/admin-portal-architecture.md](docs/admin-portal-architecture.md) - Binding portal architecture
 - [docs/admin-portal-runbook.md](docs/admin-portal-runbook.md) - Operating procedures
 
@@ -289,4 +304,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Note**: The Operations Portal is an internal control surface and is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.
+**Note**: Warden is an internal control surface and is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.

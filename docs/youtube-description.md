@@ -2,9 +2,9 @@
 
 ## Title options
 
-1. **TradeWizard Operations Portal - The Audited Control Plane for a Live AI Trading System | Kiroween 2026**
+1. **TradeWizard Warden - The Audited Control Plane + Read-Only AI Copilot | Kiroween 2026**
 2. **I Built the Control Plane for a Live Prediction-Market Platform | Kiroween 2026**
-3. **TradeWizard Operations Portal: Kill Switch, Audit Log, and 4-Role RBAC | Kiroween 2026**
+3. **TradeWizard Warden: Kill Switch, Audit Log, and 4-Role RBAC | Kiroween 2026**
 
 Recommended: option 1.
 
@@ -14,11 +14,13 @@ Recommended: option 1.
 
 **The audited control surface for a live multi-agent prediction-market platform.**
 
-TradeWizard is live: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. The Operations Portal is the separate internal product built to operate it safely.
+TradeWizard is live: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. Warden is the separate internal product built to operate it safely.
 
 It is not a CRUD dashboard. It is a role-gated control plane with its own Next.js app, API, Cognito identity, hash-chained audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB.
 
-**Submitted to Kiroween 2026 in the Frankenstein category.** The portal stitches together Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and three Kiro specs.
+It also has **Ask Warden**, a read-only AI copilot. It answers incident, support, analysis, session, and risk questions with citations to the exact record — and every suggestion is a link, never an action.
+
+**Submitted to Kiroween 2026 in the Frankenstein category.** The portal stitches together Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and four Kiro specs.
 
 - **Operations portal:** https://admin.tradewizard.live
 - **Platform it operates:** https://tradewizard.live
@@ -36,9 +38,10 @@ It is not a CRUD dashboard. It is a role-gated control plane with its own Next.j
 1:10 The fail-closed kill switch
 1:25 Runtime settings with real consumers
 1:40 Support inbox
-1:55 Newsletter composer and subscribers
-2:10 Hash-chained audit and RBAC
-2:25 PWA cache safety and Kiro artifacts
+1:55 Ask Warden with citations
+2:10 Newsletter composer and subscribers
+2:20 Hash-chained audit and RBAC
+2:30 PWA cache safety and Kiro artifacts
 2:45 Close
 
 🔐 AUTHENTICATION AND AUTHORIZATION
@@ -71,21 +74,32 @@ It is not a CRUD dashboard. It is a role-gated control plane with its own Next.j
 • Support ticket inbox with context snapshots
 • Newsletter campaigns, subscribers, and suppression
 
+🤖 ASK WARDEN (READ-ONLY)
+
+• Incident, support, analysis, session, and risk questions
+• Deterministic retrieval; one tool-less model call
+• Every factual claim cites the exact record
+• Role-scoped: analyst, support, admin, owner
+• Suggested actions are links, never executions
+• No mutation route, no tool loop, no `execute`
+• `copilot_enabled` kill switch and per-operator daily cap
+
 🧵 BUILT WITH KIRO
 
 • `admin-portal-foundation` spec: package isolation, auth/MFA, RBAC, audit, admin API, read surfaces, shell
 • `admin-portal-operations` spec: mutation envelope, kill switch, session controls, membership, settings, support, newsletter
 • `audit-chain-integrity` spec: canonical hashes, backfill, bounded verification, audit UI
+• `admin-copilot` spec: read-only retrieval, citations, role scoping, no execution path
 • 4 steering documents and 5 hooks
 • `fast-check` property tests for RBAC, fresh-auth, and bearer extraction
 • MCP servers for Magic Link and Polymarket documentation
 
 🏗️ BUILT WITH
 
-Kiro · TypeScript · Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query · Amazon Cognito · API Gateway · AWS Lambda · Amazon RDS for PostgreSQL · Amazon DynamoDB · Amazon S3 · Amazon EventBridge · Amazon SNS · Amazon CloudWatch · AWS Secrets Manager · AWS IAM · AWS Amplify Hosting · AWS CDK · Zod · Vitest · Remotion
+Kiro · TypeScript · Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query · Amazon Cognito · API Gateway · AWS Lambda · Amazon RDS for PostgreSQL · Amazon DynamoDB · Amazon S3 · Amazon EventBridge · Amazon SNS · Amazon CloudWatch · AWS Secrets Manager · AWS IAM · AWS Amplify Hosting · AWS CDK · Amazon Bedrock · Zod · Vitest · Remotion
 
-Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Gamma APIs · viem · Safe · USDC.e on Polygon · Resend · NewsData.io · Serper
+Platform context: Strands Agents SDK · Polymarket CLOB and Gamma APIs · viem · Safe · USDC.e on Polygon · Resend · NewsData.io · Serper
 
 ---
 
-#KiroweenHackathon26 #Kiroween2026 #Kiro #OperationsPortal #AdminPortal #RBAC #AuditLog #AWS #Serverless #NextJS #TypeScript #Hackathon #Frankenstein
+#KiroweenHackathon26 #Kiroween2026 #Kiro #OperationsPortal #AdminPortal #AICopilot #ReadOnlyAI #RBAC #AuditLog #AWS #Serverless #NextJS #TypeScript #Hackathon #Frankenstein

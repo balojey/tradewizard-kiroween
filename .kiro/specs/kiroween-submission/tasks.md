@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [x] 1. Re-center the submission on the Operations Portal
+- [x] 1. Re-center the submission on the Warden
   - Name the portal as the submitted project.
   - Keep the platform as context only.
   - Remove the old beta site from the public narrative.
@@ -14,7 +14,7 @@
   - Update `docs/kiroween-submission.md` for the portal.
   - Keep the category rationale and links.
 - [x] 4. Rebuild the Kiro evidence
-  - Focus `docs/kiro-usage.md` on the three portal specs, steering, hooks, MCP, and testing.
+  - Focus `docs/kiro-usage.md` on the four portal specs, steering, hooks, MCP, and testing.
   - Keep the honest-scope section.
 - [x] 5. Rebuild the demo
   - Rewrite the shot list and voiceover around the portal.
@@ -36,3 +36,8 @@
   - Word count under 5,000.
   - Video under three minutes.
   - No old beta link in the public docs.
+- [x] 11. Add the Warden brand and read-only copilot
+  - Use the shipped **TradeWizard Warden** name in the submission docs.
+  - Describe Ask Warden: read-only retrieval, citations, role scoping, no execution path.
+  - Add `admin-copilot` as the fourth portal spec.
+  - Show Ask Warden and Verify chain in the demo.

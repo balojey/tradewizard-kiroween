@@ -1,14 +1,14 @@
-# TradeWizard Operations Portal - Kiroween 2026
+# TradeWizard Warden - Kiroween 2026
 
 > **Category: Frankenstein**
 >
-> The audited control surface for a live multi-agent prediction-market platform. A separate internal Next.js product, specified and documented by three Kiro specs during the submission period.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal Next.js product, specified and documented by four Kiro specs during the submission period.
 
 ## Why this is the submission
 
 TradeWizard itself is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, credits, on-chain billing, support, and a newsletter.
 
-The new thing built during Kiroween is the **Operations Portal**: the product that lets a team operate that platform safely. It is not a rebrand of the platform and not a CRUD dashboard. It is a separate application with its own API, identity, roles, audit trail, runtime controls, and deployment.
+The new thing built during Kiroween is the **Warden**: the product that lets a team operate that platform safely. It is not a rebrand of the platform and not a CRUD dashboard. It is a separate application with its own API, identity, roles, audit trail, runtime controls, and deployment.
 
 The platform is context. The portal is the submission.
 
@@ -26,6 +26,8 @@ The portal is a role-gated control surface with four jobs: observe, control, con
 
 The portal also carries the support inbox and the newsletter composer. Support tickets keep the analysis or session context that prompted them and use a tokenised customer thread. Newsletter campaigns are composed from typed templates and sent by an owner with fresh auth; bounce and complaint webhooks are signature-verified.
 
+**Ask Warden.** A read-only AI copilot answers operational questions over audit rows, tickets, analyses, sessions, settings, and metrics. Retrieval is deterministic and role-scoped; one tool-less model call writes an answer with citations to the exact record. Every suggested action is a link to an existing human control. There is no mutation route, no tool loop, and its own `copilot_enabled` kill switch.
+
 It is installable as a PWA, but the service worker caches only content-hashed static assets. Navigations, API responses, RSC payloads, and presigned S3 URLs are never cached, so a shared machine cannot show a previous operator's shell.
 
 ## Why this is a Frankenstein
@@ -38,6 +40,7 @@ The portal is a chimera of systems that normally do not share a body:
 - Amazon RDS for PostgreSQL for business state and a hash-chained audit log
 - Amazon DynamoDB for kill-switch state, rate limits, and concurrent claims
 - Amazon S3 for analysis payloads behind short-lived presigned URLs
+- A read-only AI copilot with deterministic retrieval, grounded citations, and no mutation path
 - EventBridge Scheduler for housekeeping and metrics rollups
 - SNS and CloudWatch for alarms and operational visibility
 - AWS Amplify Hosting for a separate admin domain
@@ -54,8 +57,9 @@ Kiro is the stitching. Two specs define the foundation and the operations layer,
 - **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the hash-chained audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist.
 - **`admin-portal-operations`** - the mutation envelope, per-user kill switch, session controls, account operations, membership and invites, runtime settings, analysis operations, support inbox, newsletter, and verification.
 - **`audit-chain-integrity`** - canonical row and completion hashes, advisory-lock serialization, idempotent backfill, bounded verification, and the audit UI's verified/broken states.
+- **`admin-copilot`** - the read-only boundary, deterministic retrieval, citation validation, role scoping, one tool-less model call, and the evidence that no mutation path exists.
 
-Both have requirements, a design, and an ordered task list. The tasks are checked against shipped code.
+Each has requirements, a design, and an ordered task list. The tasks are checked against shipped code.
 
 ### Steering
 
@@ -130,8 +134,9 @@ A runtime setting is only allowed if a service reads it in the same change. Read
 - A fail-closed kill switch with synchronous halt and asynchronous exit.
 - Runtime settings with named consumers.
 - Contextual support tickets and consent-first newsletter campaigns in the same control plane.
+- A read-only AI copilot with citations and no mutation path.
 - A PWA that does not leak the previous operator.
-- Three Kiro specs that trace the portal end to end.
+- Four Kiro specs that trace the portal end to end.
 
 ## What we learned
 
@@ -154,7 +159,7 @@ A runtime setting is only allowed if a service reads it in the same change. Read
 
 | Kiro capability | Evidence |
 |-----------------|----------|
-| Spec-driven development | `admin-portal-foundation`, `admin-portal-operations`, and `audit-chain-integrity`, each with requirements, design, and completed tasks |
+| Spec-driven development | `admin-portal-foundation`, `admin-portal-operations`, `audit-chain-integrity`, and `admin-copilot`, each with requirements, design, and completed tasks |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
 | Agent hooks | 5 hooks, including `admin-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough` |
 | MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation |
@@ -175,7 +180,8 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 - **Portal foundation spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-foundation/requirements.md
 - **Portal operations spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-operations/requirements.md
 - **Audit chain spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/audit-chain-integrity/requirements.md
+- **Admin copilot spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-copilot/requirements.md
 
 ---
 
-**Note**: The Operations Portal is internal and is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.
+**Note**: Warden is internal and is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.

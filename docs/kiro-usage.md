@@ -1,8 +1,8 @@
-# How the TradeWizard Operations Portal Was Built With Kiro
+# How TradeWizard Warden Was Built With Kiro
 
 This is the judge-facing write-up for the Kiroween 2026 submission. It describes only what is present in the repository. There are no claims about Kiro surfaces or techniques that a judge cannot verify by opening a file.
 
-- **Project:** TradeWizard Operations Portal
+- **Project:** TradeWizard Warden
 - **Category:** Frankenstein
 - **Repository:** https://github.com/balojey/tradewizard-kiroween
 - **Live portal:** https://admin.tradewizard.live
@@ -44,7 +44,7 @@ Task close-out        # checkbox, targeted tests, doc reconciliation
 
 The loop left artifacts. A new contributor can read the foundation spec, see why the portal is a separate app, read the operations spec, see the mutation envelope and kill-switch state machine, and see which tasks were completed.
 
-## 3. The three specs behind the portal
+## 3. The four specs behind the portal
 
 ### `admin-portal-foundation`
 
@@ -84,6 +84,18 @@ The loop left artifacts. A new contributor can read the foundation spec, see why
 - The bounded verification endpoint and its first-broken-row reasons
 - The audit UI's **Chain verified** / **Chain broken** / **Not verified** states
 - The tamper drill and the rule that `--force` is a scratch-database tool
+
+### `admin-copilot`
+
+[`.kiro/specs/admin-copilot/`](../.kiro/specs/admin-copilot/requirements.md) defines:
+
+- The hard boundary: no mutation route, no tool loop, no `execute` suggestion
+- Deterministic, parameterised retrieval from audit, support, analyses, sessions, settings, metrics, impact, and runbook
+- Citation validation against the records actually sent
+- Role scoping through the existing `AdminRole` model
+- One model call, bounded context, timeout, token cap, and cost metric
+- The `copilot_enabled` kill switch and `copilot_daily_limit`
+- Tests for prompt injection, role leakage, invented citations, and the no-execution invariant
 
 ### What a spec looks like in practice
 
@@ -165,6 +177,7 @@ The portal and its backend use **Vitest**:
 - `services/shared/admin-auth.test.ts` covers token parsing, role ranking, MFA, and fresh-auth failures.
 - `services/shared/admin-auth.property.test.ts` uses `fast-check` for the invariants: role ranking, group-to-role resolution, order independence, `requireRole` across every role pair, the fresh-auth window, and bearer-token extraction. Each property runs 100-300 generated cases.
 - `services/shared/audit-chain.test.ts`, `services/admin-api/lib/audit-chain.test.ts`, and `services/admin-api/lib/audit.integration.test.ts` cover canonical hashing, completion hashes, concurrent inserts, backfill idempotency, and first-broken-row verification.
+- `services/admin-api/routes/copilot.test.ts` and `services/admin-copilot/lib/*.test.ts` cover role scoping, citation validation, prompt construction, redaction, context building, and the no-execution boundary.
 - Focused tests cover kill-switch state, session controls, settings fallback/cache, support claim/reply concurrency, newsletter idempotency, and webhook signatures.
 - `npx tsc --noEmit` in `tradewizard-admin/` is the UI safety net; `admin-typecheck` runs it on save.
 
@@ -177,7 +190,7 @@ npm run synth:dev
 
 ## 9. What Kiro changed about the process
 
-1. **Specs made the portal reviewable.** A control plane has too many cross-cutting rules for one prompt. Foundation and operations split the work into safety boundaries with acceptance criteria.
+1. **Specs made the portal reviewable.** A control plane has too many cross-cutting rules for one prompt. Foundation, operations, audit chain, and copilot split the work into safety boundaries with acceptance criteria.
 2. **Steering made invariants durable.** "Audit before the side effect" and "the portal never holds wallet keys" survived multiple slices because they were written down.
 3. **Hooks made verification automatic.** The admin typecheck removed the most common broken-commit class; the gate guard turned a written invariant into a check at the moment it is most likely to be violated.
 
@@ -198,7 +211,7 @@ npm run synth:dev
 | Hooks | `.kiro/hooks/*.json` |
 | MCP | `.kiro/settings/mcp.json` |
 | Four-role RBAC | `infra/services/shared/admin-auth.ts`, `tradewizard-admin/constants/roles.ts` |
-| Append-only audit | `infra/services/admin-api/lib/audit.ts`, `infra/sql/001-schema.sql` |
+| Hash-chained audit | `infra/services/admin-api/lib/audit.ts`, `infra/services/shared/audit-chain.ts`, `infra/sql/001-schema.sql` |
 | Kill switch | `infra/services/admin-api/routes/kill-switch.ts`, `tradewizard-admin/components/users/KillSwitchControl.tsx` |
 | Runtime settings | `infra/services/shared/settings.ts`, `tradewizard-admin/app/(app)/settings/page.tsx` |
 | Support inbox | `infra/services/admin-api/routes/support.ts`, `tradewizard-admin/components/support/` |
@@ -206,7 +219,9 @@ npm run synth:dev
 | PWA cache policy | `tradewizard-admin/public/sw.js`, `tradewizard-admin/components/pwa/ServiceWorkerRegistrar.tsx` |
 | Audit chain spec | `.kiro/specs/audit-chain-integrity/` |
 | Audit chain code | `infra/services/shared/audit-chain.ts`, `infra/services/admin-api/lib/audit-chain.ts`, `infra/scripts/backfill-audit-chain.ts` |
-| Testing | `infra/services/shared/admin-auth.property.test.ts` (fast-check), the audit-chain suites, and the focused Vitest suites |
+| Admin copilot spec | `.kiro/specs/admin-copilot/` |
+| Admin copilot code | `infra/services/admin-copilot/`, `infra/services/admin-api/routes/copilot.ts`, `tradewizard-admin/components/copilot/` |
+| Testing | `infra/services/shared/admin-auth.property.test.ts` (fast-check), the audit-chain suites, the copilot suites, and the focused Vitest suites |
 | License | `LICENSE` |
 
 ## 12. Reproducing the verification

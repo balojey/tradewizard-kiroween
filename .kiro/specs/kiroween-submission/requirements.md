@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Kiroween 2026 submission is the **TradeWizard Operations Portal**, a separate internal control plane for a live multi-agent prediction-market platform. The platform predates the submission and is context only; the portal is the new artifact built during the submission period.
+The Kiroween 2026 submission is the **TradeWizard Warden**, a separate internal control plane for a live multi-agent prediction-market platform. The platform predates the submission and is context only; the portal is the new artifact built during the submission period.
 
 This spec covers the submission packaging: the repository eligibility, the portal-first narrative, the Devpost entry, the demo, the Kiro evidence, and consistency across the documents.
 
@@ -22,10 +22,10 @@ This spec covers the submission packaging: the repository eligibility, the porta
 
 #### Acceptance Criteria
 
-1. THE README SHALL name **TradeWizard Operations Portal** as the submitted project.
+1. THE README SHALL name **TradeWizard Warden** as the submitted project.
 2. THE Submission SHALL describe the platform as context, not as new work.
 3. THE Submission SHALL NOT claim the fourteen-agent platform, the customer frontend, or the billing rail as built during the submission period.
-4. THE Submission SHALL identify the three portal specs as the primary Kiro artifacts.
+4. THE Submission SHALL identify the four portal specs as the primary Kiro artifacts.
 5. THE Submission SHALL link the live portal at `https://admin.tradewizard.live` and the platform at `https://tradewizard.live`.
 
 ### Requirement 2: Repository eligibility
@@ -63,7 +63,8 @@ This spec covers the submission packaging: the repository eligibility, the porta
 2. THE Demo SHALL open on the portal, not the platform or the old beta site.
 3. THE Demo SHALL show login/TOTP, overview, users, analyses, a portfolio session, the kill switch, runtime settings, audit, support, and newsletter.
 4. THE Demo SHALL mention the platform only as the system the portal operates.
-5. THE Demo SHALL show the three Kiro specs, steering, and hooks.
+5. THE Demo SHALL show the four Kiro specs, steering, and hooks.
+6. THE Demo SHALL show the read-only Ask Warden copilot and its citations.
 6. THE Voiceover script and YouTube description SHALL match the recorded demo.
 
 ### Requirement 5: Kiro evidence
@@ -84,7 +85,7 @@ This spec covers the submission packaging: the repository eligibility, the porta
 
 #### Acceptance Criteria
 
-1. THE README SHALL link the portal docs, the three portal specs, and the Kiro write-up.
+1. THE README SHALL link the portal docs, the four portal specs, and the Kiro write-up.
 2. THE Devpost form pack SHALL name the portal, provide the live URL, and list demo credentials as `TODO`.
 3. THE Video script, YouTube description, and form pack SHALL use the same portal narrative.
 4. THE Word count in the README and form pack SHALL match `docs/devpost-submission.md`.

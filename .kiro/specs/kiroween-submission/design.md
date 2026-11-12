@@ -2,7 +2,7 @@
 
 ## Overview
 
-The submission is a documentation and packaging layer around the existing Operations Portal. No product or portal behavior changes. The design has five parts:
+The submission is a documentation and packaging layer around the existing Warden. No product or portal behavior changes. The design has five parts:
 
 1. **Framing** - the portal is the new artifact; the platform is context.
 2. **Canonical documents** - one Devpost entry, one internal write-up, one Kiro evidence document.
@@ -37,7 +37,7 @@ docs/
 - Runtime settings with named consumers
 - The support inbox and newsletter operations
 - The PWA cache policy
-- The three Kiro specs that define the portal
+- The four Kiro specs that define the portal
 
 ### What is context
 
@@ -55,7 +55,7 @@ The entry must not imply the platform was built during the submission period.
 - The problem: operating a live trading platform from the console is unsafe
 - The portal: observe, control, configure, account
 - Why Frankenstein: the stitched technologies and the contract between them
-- How Kiro built it: the three specs, steering, hooks, MCP
+- How Kiro built it: the four specs, steering, hooks, MCP
 - How it works: auth, RBAC, audit, kill switch, settings, support, newsletter, PWA, AWS map
 - Challenges, accomplishments, lessons, next steps
 - Kiro usage summary, built-with list, links

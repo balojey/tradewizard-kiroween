@@ -2,7 +2,7 @@
 
 **The intelligence layer for real-world prediction markets.**
 
-> This document describes the platform that the submission's **Operations Portal** operates. The Kiroween entry is the portal itself: see [kiroween-submission.md](kiroween-submission.md) and [kiro-usage.md](kiro-usage.md).
+> This document describes the platform that the submission's **Warden** operates. The Kiroween entry is the portal itself: see [kiroween-submission.md](kiroween-submission.md) and [kiro-usage.md](kiro-usage.md).
 
 TradeWizard is an AI-powered platform that turns prediction markets on Polymarket into a guided, probability-driven trading experience. It pairs a multi-agent analysis engine - 14 specialized AI agents that debate every market and produce explainable recommendations - with an optional autonomous Portfolio Manager that can execute trades inside hard, user-defined risk limits.
 

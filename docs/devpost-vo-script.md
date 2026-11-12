@@ -1,8 +1,8 @@
-# TradeWizard Operations Portal - Kiroween 2026 Demo Script
+# TradeWizard Warden - Kiroween 2026 Demo Script
 
 **Target runtime:** 2:45 · **Hard cap:** 3:00
 **Category:** Frankenstein
-**Subject:** the Operations Portal, not the platform it operates.
+**Subject:** Warden, not the platform it operates.
 
 The video should feel like an incident console, not a marketing site. Open on the portal, show real controls, and let the product appear only as the thing being operated.
 
@@ -12,7 +12,7 @@ The video should feel like an incident console, not a marketing site. Open on th
 
 | Time | On screen | Action |
 |------|-----------|--------|
-| 0:00 | `admin.tradewizard.live` login | Hold on the “Operations portal” copy. Lower third: **TradeWizard Operations Portal**. |
+| 0:00 | `admin.tradewizard.live` login | Hold on the “Operations portal” copy. Lower third: **TradeWizard Warden**. |
 | 0:08 | Sign-in | Email → password → TOTP. Show the error path for a protected action without a fresh token, then recover. |
 | 0:20 | Overview | Metrics: signups, analyses, revenue, active PM sessions, realized P&L, error trend. |
 | 0:32 | Users | Search a user; show credits, analyses, sessions, payments, notes, plan, status. |
@@ -21,10 +21,11 @@ The video should feel like an incident console, not a marketing site. Open on th
 | 1:10 | Kill switch | Show the confirmation, the synchronous halt, and the asynchronous exit result. Do not execute unless using a demo account. |
 | 1:25 | Settings | Show a runtime setting with its named consumer, change it with a reason, then show the audit row. |
 | 1:40 | Support | Open a ticket; show context snapshot, claim, reply, internal note. |
-| 1:55 | Newsletter | Compose from a template, preview, show subscriber/suppression list. |
-| 2:10 | Hash-chained audit + roles | Show the audit log; click **Verify chain**; then switch to an analyst view and show mutations disappear. |
-| 2:25 | PWA + Kiro | Show the install prompt, then the three portal specs, steering, and hooks. |
-| 2:45 | End card | Portal URL + repo URL. |
+| 1:52 | Ask Warden | Ask “What changed in the last hour?” or “Summarize this ticket”; show the answer, citations, and read-only notice. |
+| 2:05 | Newsletter | Compose from a template, preview, show subscriber/suppression list. |
+| 2:15 | Hash-chained audit + roles | Show the audit log; click **Verify chain**; then switch to an analyst view and show mutations disappear. |
+| 2:30 | PWA + Kiro | Show the install prompt, then the four portal specs, steering, and hooks. |
+| 2:50 | End card | Portal URL + repo URL. |
 
 ---
 
@@ -32,40 +33,42 @@ The video should feel like an incident console, not a marketing site. Open on th
 
 This is TradeWizard: a live prediction-market platform with fourteen AI agents, autonomous execution, on-chain billing, support, and a newsletter.
 
-But a live trading system is only as safe as the people operating it. This is the product built to do that: the TradeWizard Operations Portal.
+But a live trading system is only as safe as the people operating it. This is the product built to do that: the TradeWizard Warden.
 
 A separate internal Next.js app with its own API, identity, audit trail, and deployment. Sign-in is Cognito email, password, and TOTP on a dedicated admin client. Four roles - analyst, support, admin, owner - are enforced by the API on every request. Hiding a button is not the security boundary.
 
-The overview shows signups, analyses, revenue, active sessions, realized P&L, and error trend. Users gives support credits, analyses, sessions, payments, notes, plan, and status without a database session.
+The overview shows signups, analyses, revenue, active sessions, realized P&L, and error trend. Users covers credits, analyses, sessions, payments, notes, plan, and status without a database session.
 
-Analyses shows the full payload, no-trade reason, live-versus-shadow performance, and controls to invalidate a cache, refund every recipient, or requeue a market. Requeue clears the in-flight state atomically, so a concurrent request cannot create a duplicate run.
+Analyses shows the full payload, no-trade reason, live-versus-shadow performance, and controls to invalidate a cache, refund every recipient, or requeue a market. Requeue clears the in-flight state atomically.
 
-Portfolio shows sessions, trades, decisions, and P&L. The kill switch is per-user and two-phase: a synchronous halt stops new entries before the response, then an asynchronous exit. If the exit fails, the halt remains and the response says so. The safe direction is stopping.
+Portfolio shows sessions, trades, decisions, and P&L. The kill switch is per-user and two-phase: a synchronous halt stops new entries before the response, then an asynchronous exit. If the exit fails, the halt remains.
 
 Settings is runtime configuration. Every switch names its consumer: pause analysis, edit the maintenance message, override the AI provider, or pause new Portfolio Manager activations. Changes are owner-only, fresh-auth, reason-required, and audited.
 
-Support is the customer queue: tickets carry the analysis or session context, a tokenised thread, and an honest SLA. Newsletter adds typed templates, production preview, owner-only send, subscriber suppression, and signed bounce webhooks.
+Support is the customer queue: tickets carry the analysis or session context, a tokenised thread, and an honest SLA. Ask Warden is the read-only copilot: it answers incident, support, analysis, and session questions with citations to the exact record, and every suggestion is a link, never an action. Newsletter adds typed templates, owner-only send, and signed bounce webhooks.
 
-Underneath it all, the audit log is hash-chained: every mutation writes a row before the side effect, with who, what, why, before, after, and request id. Each row commits to the previous row, the portal verifies the chain and names the first broken row, and triggers reject edits and deletes.
+The audit log is hash-chained: every mutation writes a row before the side effect, with who, what, why, before, after, and request id. Each row commits to the previous; the portal verifies the chain and names the first broken row.
 
 The PWA caches only content-hashed assets - never a navigation, API data, or a presigned payload - so a shared machine cannot show the previous operator's shell.
 
-We built it from three Kiro specs: foundation, operations, and audit chain. Four steering documents constrain the work, and hooks typecheck the admin app and guard the deterministic analysis stages it can touch.
+We built it from four Kiro specs: foundation, operations, audit chain, and admin copilot. Four steering documents constrain the work, and hooks typecheck the admin app and guard the analysis gates.
 
-The platform is the product. This is the control plane. Three Kiro specs, one audited portal - built to let a team operate a live trading system without guessing.
+The platform is the product. This is the control plane. Four Kiro specs, one audited portal - built to let a team operate a live trading system without guessing.
 
 ---
 
 ## Short version (≈ 75s)
 
-TradeWizard is a live prediction-market platform. This is the product built to operate it: the TradeWizard Operations Portal.
+TradeWizard is a live prediction-market platform. This is the product built to operate it: the TradeWizard Warden.
 
-A separate internal Next.js app with Cognito email, password, and TOTP; four roles enforced by the API; and an append-only audit row before every mutation.
+A separate internal Next.js app with Cognito email, password, and TOTP; four roles enforced by the API; and a hash-chained audit row before every mutation.
 
 Operators get users, analyses, portfolio sessions, billing, agents, queues, and markets. They can run a fail-closed per-user kill switch, pause or terminate a session, grant credits, requeue an analysis, change audited runtime settings, answer support tickets, and send the newsletter.
 
+Ask Warden answers incident and support questions with citations to the exact record, and every suggestion is a link, never an action.
+
 Every switch names the service that reads it. Every destructive action requires a reason and a fresh token. The PWA caches only static assets, never a previous operator's shell.
 
-Three Kiro specs, foundation, operations, and audit chain, define the whole control plane.
+Four Kiro specs, foundation, operations, audit chain, and admin copilot, define the whole control plane.
 
 The platform is the product. This is the control plane.

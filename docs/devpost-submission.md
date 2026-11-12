@@ -1,8 +1,8 @@
-# TradeWizard Operations Portal
+# TradeWizard Warden
 
 > **Kiroween 2026 · Frankenstein category**
 >
-> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by three Kiro specs during the submission period.
+> The audited control surface for a live multi-agent prediction-market platform. A separate internal product, specified and documented by four Kiro specs during the submission period.
 
 ---
 
@@ -12,7 +12,7 @@ TradeWizard is a live platform. Fourteen AI agents analyze Polymarket markets, a
 
 Operating that from the AWS console is possible, but unsafe and slow. Every action becomes a manual runbook: raw SQL for a refund, a Lambda invocation for a queue, a console click for a kill switch, a spreadsheet for who changed what. There is no role boundary between an analyst and an owner, no reason attached to a destructive action, and no durable record that the action happened.
 
-We built the Operations Portal because a live trading platform needs a control plane, not a collection of console tabs. It is a separate internal product: its own Next.js application, its own API, its own Cognito client, its own audit trail, and its own deployment. It never holds wallet keys, never signs transactions, and never calls the CLOB. It asks the platform to act, and records who asked, why, and what changed.
+We built Warden because a live trading platform needs a control plane, not a collection of console tabs. It is a separate internal product: its own Next.js application, its own API, its own Cognito client, its own audit trail, and its own deployment. It never holds wallet keys, never signs transactions, and never calls the CLOB. It asks the platform to act, and records who asked, why, and what changed.
 
 The portal is the new artifact in this submission. The platform it operates is context.
 
@@ -27,6 +27,8 @@ The portal is a role-gated operations console with four jobs: observe, control, 
 **Configure.** Audited runtime settings, each with a named consumer: pause new analysis, edit the maintenance message, override the AI provider, pause new Portfolio Manager activations, tune support SLA, or disable newsletter opt-ins. A missing or unreadable setting falls back to the deployed default.
 
 **Account for it.** Every mutation requires a reason and writes a hash-chained audit row before the side effect. The row records the actor, action, target, before/after state, request id, IP, user agent, and idempotency key. `row_hash` commits to the previous row, and terminal rows also carry a `completion_hash`, so a flipped status is detectable. Database triggers reject updates and deletes.
+
+**Ask Warden.** A read-only AI copilot answers operational questions over the same data: “What changed in the last hour?”, “Summarize this ticket and draft a reply”, “Why did this analysis return NO_TRADE?”, or “What is the blast radius of resetting this kill switch?” Retrieval is deterministic and role-scoped; every factual claim cites the exact audit row, ticket, analysis, or session; and every suggested action is a link to an existing human control. The copilot has no mutation route, no tool loop, and its own `copilot_enabled` kill switch.
 
 The portal also carries two customer-facing workflows: the support inbox with contextual ticket snapshots and tokenised threads, and the newsletter composer, subscriber list, and signed delivery webhooks.
 
@@ -45,21 +47,23 @@ The portal is not one framework with a login screen. It is a chimera of systems 
 - **EventBridge Scheduler** for housekeeping and metrics rollups
 - **SNS and CloudWatch** for alarms and operational visibility
 - **AWS Amplify Hosting** for a separate admin domain
+- **A read-only AI copilot** with deterministic retrieval, grounded citations, no tool loop, and no mutation path
 - **A conservative PWA service worker** that treats browser caching as a security decision
 
 The unusual part is not any one service. It is the contract between them: the portal can stop a live trading system, but it cannot move money; it can change runtime behavior, but every change names its consumer and lands in an immutable log; it can read sensitive data, but it never holds the keys to act on-chain.
 
-Kiro is the stitching. Three specs define the foundation, the operations layer, and the audit chain; four steering documents constrain the work, and hooks verify the parts most likely to drift.
+Kiro is the stitching. Four specs define the foundation, the operations layer, the audit chain, and the read-only copilot; four steering documents constrain the work, and hooks verify the parts most likely to drift.
 
 ## How we built it with Kiro
 
-### Three specs, one control plane
+### Four specs, one control plane
 
-The portal is specified and documented by three Kiro specs:
+The portal is specified and documented by four Kiro specs:
 
 - **`admin-portal-foundation`** - package isolation, Cognito authentication, MFA bootstrap, four-tier RBAC, the hash-chained audit spine, the admin API contract, read surfaces, the UI shell, and the security checklist. It defines why the portal is a separate app and why the authorizer is the security boundary, not the hidden button.
 - **`admin-portal-operations`** - the mutation envelope, the per-user kill switch, portfolio session controls, user and account operations, portal membership and invites, runtime settings, analysis operations, the support inbox, newsletter operations, and the verification rules.
 - **`audit-chain-integrity`** - the canonical row hash, completion hash, advisory-lock serialization, idempotent backfill, bounded verification endpoint, and the audit UI's verified/broken states.
+- **`admin-copilot`** - the read-only boundary, deterministic retrieval, citation validation, role scoping, one tool-less model call, and the evidence that no mutation path exists.
 
 Each spec has requirements, a design, and an ordered task list. The tasks are checked against shipped code, not against a plan.
 
@@ -159,6 +163,8 @@ A setting is only allowed if a service reads it in the same change:
 | `support_enabled` | `support-api` | Refuse new tickets; unsubscribe still works |
 | `support_first_response_target_hours` | support inbox | SLA and overdue flags |
 | `newsletter_enabled` | `newsletter-api` | Hide opt-in; unsubscribe always works |
+| `copilot_enabled` | `admin-api` + `admin-copilot` | Hide Ask Warden and refuse requests |
+| `copilot_daily_limit` | `admin-api` | Per-operator daily request cap |
 
 Reads are cached for 60 seconds per container. Synchronous consumers read a warmed cache; a missing row falls back to the declared default. Writes are owner-only, fresh-auth, reason-required, and audited.
 
@@ -168,12 +174,18 @@ Support is a portal-only queue. Customers submit from the analysis or session th
 
 Newsletter is a separate marketing channel. Campaigns are composed from typed templates, rendered with the production renderer, previewed in a sandboxed iframe, and sent only by an owner with fresh auth and a reason. The send claim is idempotent, the audience is snapshotted, deliveries are per-recipient unique, and the sender stops at a 5% failure ratio. Bounce and complaint webhooks verify the Svix signature over the raw body before suppressing an address.
 
+### Ask Warden (read-only AI copilot)
+
+The copilot answers operational questions over the same data: “What changed in the last hour?”, “Summarize this ticket and draft a reply”, “Why did this analysis return NO_TRADE?”, or “What is the blast radius of resetting this kill switch?”
+
+The safety design is the feature. Retrieval is deterministic and parameterised, not natural-language-to-SQL. The model gets one tool-less call, a bounded context, and a 20-second timeout. Each record is wrapped as untrusted data; instructions inside a ticket or audit reason are ignored. Citations are validated against the records actually sent, so an invented citation is dropped and confidence is lowered. Role scoping reuses the same four-tier model. A suggested action is always a link to an existing human control; there is no `execute` variant, no mutation route, and no tool loop. `copilot_enabled` is a runtime kill switch, and `copilot_daily_limit` caps spend per operator. Questions are not audited as mutations; usage is a CloudWatch line with latency, tokens, cost, and citation count — never question text or record content.
+
 ### AWS service map
 
 The portal is nine CDK stacks, with the platform as its subject:
 
 - **AWS CDK + CloudFormation** - network, database, auth, storage, queues, notifications, compute, monitoring, and admin.
-- **AWS Lambda (Node.js 20)** - admin API, authorizer, metrics rollup, support housekeeping, newsletter sender.
+- **AWS Lambda (Node.js 20)** - admin API, authorizer, copilot, metrics rollup, support housekeeping, newsletter sender.
 - **Amazon API Gateway** - the admin REST API with a Cognito request authorizer and access logs.
 - **Amazon Cognito** - the admin app client, four groups, TOTP, and the authorizer.
 - **Amazon RDS for PostgreSQL 18.3** - users, credits, analyses, portfolio sessions, audit, settings, support, newsletter. Single-AZ `db.t4g.micro`, encrypted 20-50 GB, SSL enforced, 7-day production backups.
@@ -184,7 +196,7 @@ The portal is nine CDK stacks, with the platform as its subject:
 - **Amazon CloudWatch** - logs, metrics, dashboards, and alarms.
 - **AWS Secrets Manager + IAM** - database, email, CLOB, wallet, webhook, and newsletter secrets; scoped handler roles.
 - **AWS Amplify Hosting** - the admin portal on its own domain.
-- **Amazon Bedrock** - the inference layer of the platform the portal operates.
+- **Amazon Bedrock** - read-only copilot generation, and the inference layer of the platform the portal operates.
 
 ## Challenges we ran into
 
@@ -212,8 +224,9 @@ The portal is nine CDK stacks, with the platform as its subject:
 - **A fail-closed kill switch.** Synchronous halt, asynchronous exit, explicit failure reporting.
 - **Runtime settings with named consumers.** Pause analysis, pause new Portfolio Manager sessions, or change the provider without a deploy.
 - **Support and newsletter in the same control plane.** Contextual tickets and consent-first campaigns, not bolted-on tools.
+- **A read-only AI copilot with citations.** Ask Warden explains incidents, tickets, analyses, sessions, and risky actions, cites the exact record, and has no mutation path.
 - **A PWA that does not leak the previous operator.** Static assets only; no navigations, API data, RSC payloads, or presigned URLs in the cache.
-- **Three Kiro specs that trace the portal end to end.** Foundation, operations, and audit chain, each with requirements, design, and completed tasks.
+- **Four Kiro specs that trace the portal end to end.** Foundation, operations, audit chain, and admin copilot, each with requirements, design, and completed tasks.
 
 ## What we learned
 
@@ -224,7 +237,7 @@ The portal is nine CDK stacks, with the platform as its subject:
 - **Caching is a security boundary.** The PWA rules are part of the threat model, not a performance tweak.
 - **Specs keep a control plane coherent.** The portal has too many cross-cutting rules for prompt-only development.
 
-## What's next for TradeWizard Operations Portal
+## What's next for TradeWizard Warden
 
 - **Portfolio Manager session-cap override** as a runtime setting with a real consumer.
 - **Maintenance banner** coordinated with the product frontend.
@@ -239,7 +252,7 @@ The portal is nine CDK stacks, with the platform as its subject:
 
 | Kiro capability | Evidence in this repository |
 |-----------------|-----------------------------|
-| Spec-driven development | `admin-portal-foundation`, `admin-portal-operations`, and `audit-chain-integrity`, each with requirements, design, and completed tasks |
+| Spec-driven development | `admin-portal-foundation`, `admin-portal-operations`, `audit-chain-integrity`, and `admin-copilot`, each with requirements, design, and completed tasks |
 | Steering | `.kiro/steering/product.md`, `structure.md`, `tech.md`, `kiroween.md` |
 | Agent hooks | 5 hooks, including `admin-typecheck`, `analysis-gate-guard`, and `spec-task-followthrough` |
 | MCP | `.kiro/settings/mcp.json` with Magic Link and Polymarket documentation |
@@ -263,7 +276,8 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 - **Portal foundation spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-foundation/requirements.md
 - **Portal operations spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-operations/requirements.md
 - **Audit chain spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/audit-chain-integrity/requirements.md
+- **Admin copilot spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-copilot/requirements.md
 
 ---
 
-**Note**: The Operations Portal is an internal control surface. It is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.
+**Note**: Warden is an internal control surface. It is not linked from the customer product. TradeWizard's market analysis is provided for educational and informational purposes; all trading involves risk.
