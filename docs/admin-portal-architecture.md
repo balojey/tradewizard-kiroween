@@ -103,7 +103,7 @@ this document in the same pull request.
 ### D1 — Separate third package: `tradewizard-admin/`
 
 **Decision.** Build the portal as a new Next.js 16 App Router package at
-`tradewizard-admin/`, deployed as its own Amplify app on `admin.tradewizard.live`.
+`tradewizard-admin/`, deployed as its own Amplify app on `warden.tradewizard.live`.
 Do **not** add `app/admin/*` to `tradewizard-frontend`.
 
 **Rationale.**
@@ -217,7 +217,7 @@ invocation time, and API Gateway payload budget, and makes log redaction harder.
 appear in the audit `before`/`after` JSON.
 
 **Infrastructure requirement.** The analysis bucket's CORS must allow the admin
-origins (`https://admin.tradewizard.live`, and `http://localhost:3001` in dev).
+origins (`https://warden.tradewizard.live`, and `http://localhost:3001` in dev).
 A valid signature is not enough — the browser blocks the response without it.
 This is configured in `lib/storage-stack.ts`.
 
@@ -271,7 +271,7 @@ compensated). Never return success with a missing audit row.
 ## 5. Topology
 
 ```
- admin.tradewizard.live
+ warden.tradewizard.live
         │
         ▼
  ┌───────────────────────────────┐
@@ -463,7 +463,7 @@ lifetime (≤365 days), a use cap (≤50), and a one-click revoke.
 
 - `admin_invite_links` stores only the **SHA-256** of the token; the URL is
   returned once at creation and is unrecoverable. Lose it and mint another.
-- The link is `https://admin.tradewizard.live/join#t=<token>`. The token is in
+- The link is `https://warden.tradewizard.live/join#t=<token>`. The token is in
   the URL **fragment**, so it never reaches API Gateway access logs, CloudWatch,
   or a `Referer`. The page clears the fragment after reading it and sends the
   token only in POST bodies.
@@ -1134,7 +1134,7 @@ review, not the repo.
 | File | Change |
 |---|---|
 | `lib/auth-stack.ts` | Admin app client (`userSrp` only, 1 h ID / 8 h refresh); four `CfnUserPoolGroup`s; export `AdminClientId` |
-| `lib/admin-stack.ts` *(new)* | Authorizer + `admin-api` + route definition + `admin-metrics-rollup` + EventBridge rule; REST API with CORS allowlist (`https://admin.tradewizard.live`, `http://localhost:3001` in dev), throttle 20 rps / 40 burst, access logs |
+| `lib/admin-stack.ts` *(new)* | Authorizer + `admin-api` + route definition + `admin-metrics-rollup` + EventBridge rule; REST API with CORS allowlist (`https://warden.tradewizard.live`, `http://localhost:3001` in dev), throttle 20 rps / 40 burst, access logs |
 | `bin/tradewizard.ts` | Instantiate `AdminStack` after `ComputeStack`; pass `userPool`, `dbSecret`, `dbEndpoint`, `analysisBucket`, `rateLimitTable`, `eventBus`, `analysisQueue` |
 | `lib/monitoring-stack.ts` | Alarms: `AdminApi5xx`, `AdminAuthDenied`, `AdminRollupFailed`, `AdminAuditWriteFailed` |
 | `deploy.sh` | Env wiring for the admin stack (slice 2). Admin seeding stays a **manual** `scripts/seed-admin.ts` run — creating accounts as a side effect of deploys would be surprising and unauditable |
@@ -1152,7 +1152,7 @@ review, not the repo.
 | `ADMIN_API_RATE_LIMIT_RPM` | `60` | Read limit per admin |
 | `ADMIN_API_MUTATION_RPM` | `10` | Mutation limit per admin |
 | `ADMIN_API_RESERVED_CONCURRENCY` | unset | Optional Lambda reservation; leave unset on accounts with a small concurrency quota |
-| `ADMIN_APP_URL` | dev `http://localhost:3001`; prod `https://admin.tradewizard.live` | Base URL used to build invite links |
+| `ADMIN_APP_URL` | dev `http://localhost:3001`; prod `https://warden.tradewizard.live` | Base URL used to build invite links |
 | `JOIN_GLOBAL_DAILY_LIMIT` | `50` | Daily cap on self-service registrations (fails closed) |
 
 ---
@@ -1250,7 +1250,7 @@ Cognito groups + admin app client, `shared/admin-auth.ts`, authorizer,
 `/admin/me`, admin frontend shell + login + role-aware nav, seed script,
 Amplify app, alarms.
 
-**Exit criteria:** an owner logs in at `admin.tradewizard.live` and sees an empty
+**Exit criteria:** an owner logs in at `warden.tradewizard.live` and sees an empty
 overview; an analyst sees no mutation UI; a non-group user gets 403 and the
 denial is alarmed.
 
@@ -1333,7 +1333,7 @@ definition of done passes **and** §14.4 is updated.
 | 1 | **Kill-switch state extraction** — `shared/kill-switch.ts`, both call sites rewired, dead duplicate removed, 20 tests | 0 | ✅ Done — see §14.4 |
 | 1b | **Kill-switch teardown reachability** — the risk engine accepts `{action:'halt_sessions'}`, so a halt can be dispatched from the portal | 1 | ✅ Done — see §14.4 |
 | 2 | **Schema + auth spine** — migration, `shared/admin-auth.ts`, authorizer, `admin-stack.ts`, `admin-api` router + `/admin/me`, RBAC matrix test | 1 | ✅ Done incl. dev deployment — see §14.4 |
-| 3 | **Admin app shell + login** — package, password+TOTP, route guard, `AdminShell`, `/overview` | 2 | ✅ Code done and built — see §14.4. Remaining: Amplify app + `admin.tradewizard.live` + env vars |
+| 3 | **Admin app shell + login** — package, password+TOTP, route guard, `AdminShell`, `/overview` | 2 | ✅ Code done and built — see §14.4. Remaining: Amplify app + `warden.tradewizard.live` + env vars |
 | 4 | **Users read** — list + detail + sub-resources | 2, 3 | ✅ Done and verified against the dev API — see §14.4 |
 | 5 | **Analyses read** — list, detail, presigned payload, quality aggregates | 4 | ✅ Done and verified — see §14.4 |
 | 6 | **Portfolio read** — sessions, trades, decisions, exposure | 4 | ✅ Done and verified — see §14.4 |
@@ -1451,7 +1451,7 @@ something is reversed, add a new row.
 | 2026-11-12 | 12e — `+warden` tag + product guard | Code done | Alias tag renamed `+admin` → **`+warden`** across server, UI, tests and docs (no deployed accounts existed, so no migration). New `shared/email-policy.ts`: the **product** rejects any `+tag` address — enforced in `auth-magic-sync` (`400 PLUS_TAG_NOT_SUPPORTED`) and mirrored in the product login form, which validates before Magic sends a code. This keeps the alias namespace disjoint from the customer namespace, so a Warden identity can never double as a product account and a customer can never mint an address that looks like one. The customer-facing message does not mention the portal. |
 | 2026-11-12 | 12f — Removal was not immediate | Fixed | **Reported bug:** an owner removed a member and that member kept full access. Root cause: the authorizer authorized from the `cognito:groups` claim, which is a snapshot from token issuance and valid for up to an hour; `AdminUserGlobalSignOut` only revokes refresh tokens, so it could not close that window (the 2026-11-02 note claiming otherwise was wrong). Fix: `resolveAdminIdentity` now reads **live** membership with `AdminListGroupsForUser` on every request, deliberately uncached, and fails closed if the lookup fails. The token claim is used only to log `AdminGroupDrift`. Promotions and demotions are now immediate too. IAM: the authorizer gained `AdminListGroupsForUser`. Portal: when both `/admin/me` and `/admin/bootstrap/status` return 403, the client signs out and lands on `/login?reason=access-removed` instead of showing a shell; the MFA-enrolment path still passes the bootstrap probe, so it is unaffected. `/admin/me` also re-checks every 60 s so an idle tab is ejected. Tests: stale-owner-token → 403, demotion → live role, promotion → live role, lookup failure → 401. |
 
-| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `admin.tradewizard.live`. |
+| next | Remaining | — | Phase 4 has three of its four planned settings. Still open: PM session-cap override, maintenance banner (needs the product frontend), and the `/admin/agents/models` routing view (needs a config source). Operational: the admin app still needs its Amplify app and `warden.tradewizard.live`. |
 
 ---
 
@@ -1481,7 +1481,7 @@ of this document and the sections it cascades into.
 | 2 | Admin login | **Email + password (SRP) + TOTP** (D7) | Privileged access needs a real second factor; retrofitting MFA into the magic-link flow would touch the auth path of 100% of customers to serve ~5 people |
 | 3 | API topology | **New `admin-stack.ts`, own REST API + Lambda authorizer** (D2) | Isolated throttling, CORS, WAF, logs; keeps `compute-stack.ts` reviewable |
 | 4 | Role model | **Four roles: `owner` > `admin` > `support` > `analyst`** | The four tiers map to genuinely different blast radii; a rank map costs nothing to implement and avoids re-cutting roles later. Two roles would force "support can do everything" within a month |
-| 5 | Domain | **`admin.tradewizard.live`** | Matches the operative `APP_URL` / CORS origin used by the running product |
+| 5 | Domain | **`warden.tradewizard.live`** | Matches the operative `APP_URL` / CORS origin used by the running product |
 | 6 | Delivery cut | **All reads first (Phase 1), then core mutations (Phase 2)**; MVP = 0+1+2 | You must be able to observe a surface before you are allowed to mutate it; it also means every read panel doubles as the diagnostic tool for the next phase |
 
 ### 16.1 Consequences we are accepting
@@ -1517,10 +1517,10 @@ Remaining follow-ups outside the code:
    `https://tradewizard.live/auth/callback`. The current frontend signs in via
    `InitiateAuth`, not the hosted UI, so these are not on the critical path —
    but they must be correct for any future hosted-UI or OAuth use.
-3. **Amplify**: attach `admin.tradewizard.live` to the new admin app and add it to
+3. **Amplify**: attach `warden.tradewizard.live` to the new admin app and add it to
    `ADMIN_ALLOWED_ORIGINS`.
 
-The admin hostname is therefore `admin.tradewizard.live`, and the dev counterpart
+The admin hostname is therefore `warden.tradewizard.live`, and the dev counterpart
 `dev.tradewizard.live`.
 
 ---

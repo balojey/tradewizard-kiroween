@@ -22,7 +22,7 @@ It also has **Ask Warden**, a read-only AI copilot. It answers incident, support
 
 **Submitted to Kiroween 2026 in the Frankenstein category.** The portal stitches together Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and four Kiro specs.
 
-- **Operations portal:** https://admin.tradewizard.live
+- **Operations portal:** https://warden.tradewizard.live
 - **Platform it operates:** https://tradewizard.live
 - **Repository:** https://github.com/balojey/tradewizard-kiroween
 - **Kiro usage write-up:** https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md

@@ -77,7 +77,7 @@ export class AdminStack extends cdk.Stack {
 
     const allowedOrigins = (
       process.env.ADMIN_ALLOWED_ORIGINS ??
-      (isProd ? 'https://admin.tradewizard.live' : 'http://localhost:3001')
+      (isProd ? 'https://warden.tradewizard.live' : 'http://localhost:3001')
     )
       .split(',')
       .map((origin) => origin.trim())
@@ -189,7 +189,7 @@ export class AdminStack extends cdk.Stack {
         // Base URL used to build the one-time invite link (`/join#t=…`).
         ADMIN_APP_URL:
           process.env.ADMIN_APP_URL ||
-          (isProd ? 'https://admin.tradewizard.live' : 'http://localhost:3001'),
+          (isProd ? 'https://warden.tradewizard.live' : 'http://localhost:3001'),
       },
       bundling: {
         minify: isProd,
@@ -369,7 +369,7 @@ export class AdminStack extends cdk.Stack {
         ADMIN_ALLOWED_ORIGINS: allowedOrigins.join(','),
         ADMIN_APP_URL:
           process.env.ADMIN_APP_URL ||
-          (isProd ? 'https://admin.tradewizard.live' : 'http://localhost:3001'),
+          (isProd ? 'https://warden.tradewizard.live' : 'http://localhost:3001'),
         EMAIL_PROVIDER: process.env.EMAIL_PROVIDER || 'resend',
         RESEND_API_KEY_SECRET_ARN: supportResendSecret.secretArn,
         RESEND_FROM_EMAIL: process.env.SUPPORT_FROM_EMAIL || 'support@tradewizard.live',

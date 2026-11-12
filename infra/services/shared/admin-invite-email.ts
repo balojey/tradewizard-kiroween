@@ -15,7 +15,7 @@ import { sendEmail, type EmailSendResult } from './email';
 export const WARDEN_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'support@tradewizard.live';
 
 function appUrl(): string {
-  return (process.env.ADMIN_APP_URL || 'https://admin.tradewizard.live').replace(/\/+$/, '');
+  return (process.env.ADMIN_APP_URL || 'https://warden.tradewizard.live').replace(/\/+$/, '');
 }
 
 export interface AdminInvitationInput {

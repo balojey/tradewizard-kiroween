@@ -155,7 +155,7 @@ A runtime setting is only allowed if a service reads it in the same change. Read
 - Portfolio Manager session-cap override as a runtime setting.
 - Maintenance banner coordinated with the product frontend.
 - Model routing view once a configuration source exists.
-- Hosted production portal on its own Amplify app and `admin.tradewizard.live` domain.
+- Hosted production portal on its own Amplify app and `warden.tradewizard.live` domain.
 - Audit export and retention policy for compliance reviews.
 
 ## Kiro usage summary
@@ -177,7 +177,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 ## Links
 
 - **Repository**: https://github.com/balojey/tradewizard-kiroween
-- **Operations portal**: https://admin.tradewizard.live
+- **Operations portal**: https://warden.tradewizard.live
 - **Platform it operates**: https://tradewizard.live
 - **Kiro usage write-up**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
 - **Portal foundation spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-foundation/requirements.md

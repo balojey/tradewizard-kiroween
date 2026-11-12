@@ -58,7 +58,7 @@ export class StorageStack extends cdk.Stack {
           // (docs/admin-portal-architecture.md D6). Without them the browser
           // blocks the GET even though the signature is valid.
           allowedOrigins: isProd
-            ? ['https://tradewizard.live', 'https://admin.tradewizard.live']
+            ? ['https://tradewizard.live', 'https://warden.tradewizard.live']
             : [
                 'http://localhost:3000',
                 'http://localhost:3001',

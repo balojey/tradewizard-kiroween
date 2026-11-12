@@ -20,7 +20,7 @@ applications:
           - node_modules/**/*
           - .next/cache/**/*
   # Internal management portal. Separate Amplify app, separate domain
-  # (admin.tradewizard.live). See docs/admin-portal-architecture.md D1.
+  # (warden.tradewizard.live). See docs/admin-portal-architecture.md D1.
   - appRoot: tradewizard-admin
     frontend:
       phases:

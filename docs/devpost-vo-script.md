@@ -12,7 +12,7 @@ The video should feel like an incident console, not a marketing site. Open on th
 
 | Time | On screen | Action |
 |------|-----------|--------|
-| 0:00 | `admin.tradewizard.live` login | Hold on the “Operations portal” copy. Lower third: **TradeWizard Warden**. |
+| 0:00 | `warden.tradewizard.live` login | Hold on the “Operations portal” copy. Lower third: **TradeWizard Warden**. |
 | 0:08 | Sign-in | Email → password → TOTP. Show the error path for a protected action without a fresh token, then recover. |
 | 0:20 | Overview | Metrics: signups, analyses, revenue, active PM sessions, realized P&L, error trend. |
 | 0:32 | Users | Search a user; show credits, analyses, sessions, payments, notes, plan, status. |

@@ -294,7 +294,7 @@ import type { AdminApiEvent, ApiResponse } from './lib/types';
 
 const ORIGINAL_ENV = { ...process.env };
 
-const ALLOWED_ORIGIN = 'https://admin.tradewizard.live';
+const ALLOWED_ORIGIN = 'https://warden.tradewizard.live';
 const OTHER_ORIGIN = 'https://evil.example.com';
 const USER_ID = '725c2005-b3f4-46f3-94ad-083a75593c02';
 

@@ -92,7 +92,7 @@ applications:
 
 Then set `NEXT_PUBLIC_ADMIN_API_BASE_URL`, `NEXT_PUBLIC_ADMIN_CLIENT_ID`,
 `NEXT_PUBLIC_COGNITO_REGION` and `NEXT_PUBLIC_PRODUCT_BASE_URL` in the Amplify
-environment, and attach `admin.tradewizard.live`. Finally add that origin to
+environment, and attach `warden.tradewizard.live`. Finally add that origin to
 `ADMIN_ALLOWED_ORIGINS` in the Admin stack and redeploy.
 
 ### Local production build

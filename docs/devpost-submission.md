@@ -245,7 +245,7 @@ The portal is nine CDK stacks, with the platform as its subject:
 - **Portfolio Manager session-cap override** as a runtime setting with a real consumer.
 - **Maintenance banner** coordinated with the product frontend.
 - **Model routing view** once a configuration source exists.
-- **Hosted production portal** on its own Amplify app and `admin.tradewizard.live` domain.
+- **Hosted production portal** on its own Amplify app and `warden.tradewizard.live` domain.
 - **Audit export and retention policy** for compliance reviews.
 - **More read surfaces** for customer health and incident timelines.
 
@@ -272,7 +272,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 ## Links
 
 - **Repository**: https://github.com/balojey/tradewizard-kiroween
-- **Operations portal**: https://admin.tradewizard.live
+- **Operations portal**: https://warden.tradewizard.live
 - **Judge access**: a role-carrying invite link provided in the Devpost form
 - **Platform it operates**: https://tradewizard.live
 - **Demo video**: _add the public YouTube URL to the Devpost submission form_

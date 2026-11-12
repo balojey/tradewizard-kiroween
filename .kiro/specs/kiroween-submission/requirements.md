@@ -26,7 +26,7 @@ This spec covers the submission packaging: the repository eligibility, the porta
 2. THE Submission SHALL describe the platform as context, not as new work.
 3. THE Submission SHALL NOT claim the fourteen-agent platform, the customer frontend, or the billing rail as built during the submission period.
 4. THE Submission SHALL identify the four portal specs as the primary Kiro artifacts.
-5. THE Submission SHALL link the live portal at `https://admin.tradewizard.live` and the platform at `https://tradewizard.live`.
+5. THE Submission SHALL link the live portal at `https://warden.tradewizard.live` and the platform at `https://tradewizard.live`.
 
 ### Requirement 2: Repository eligibility
 

@@ -140,7 +140,7 @@ shared modules → RDS PostgreSQL / DynamoDB / S3 / CloudWatch
                 → admin-copilot (read-only) → RDS / S3 / Bedrock
 ```
 
-Warden is deployed as a separate Amplify app at `admin.tradewizard.live`. It is never linked from the customer product and is excluded from search indexing.
+Warden is deployed as a separate Amplify app at `warden.tradewizard.live`. It is never linked from the customer product and is excluded from search indexing.
 
 ## AWS services used by the portal
 

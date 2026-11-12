@@ -91,7 +91,7 @@ addresses first.
 
 1. **Members → Invite links → Create link.** Choose role, lifetime (24 h–365 d),
    maximum uses (1–50), and a reason.
-2. The URL is shown **once** (`https://admin.tradewizard.live/join#t=…`) because
+2. The URL is shown **once** (`https://warden.tradewizard.live/join#t=…`) because
    only its SHA-256 is stored. Copy it before closing the dialog; if it is lost,
    revoke it and create another.
 3. Share it privately. Anyone holding it can create one account at that role

@@ -72,7 +72,7 @@ function makeEvent(
   return {
     httpMethod: 'POST',
     path: '/join/lookup',
-    headers: { origin: 'https://admin.tradewizard.live' },
+    headers: { origin: 'https://warden.tradewizard.live' },
     body: body === undefined ? JSON.stringify({ token: TOKEN }) : JSON.stringify(body),
     requestContext: {
       requestId: 'req-join-1',
@@ -87,8 +87,8 @@ function body(response: ApiResponse): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  process.env.ADMIN_ALLOWED_ORIGINS = 'https://admin.tradewizard.live';
-  process.env.ADMIN_APP_URL = 'https://admin.tradewizard.live';
+  process.env.ADMIN_ALLOWED_ORIGINS = 'https://warden.tradewizard.live';
+  process.env.ADMIN_APP_URL = 'https://warden.tradewizard.live';
   process.env.RESEND_FROM_EMAIL = 'support@tradewizard.live';
 
   withClientMock.mockReset();

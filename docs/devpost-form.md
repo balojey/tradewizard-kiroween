@@ -21,8 +21,8 @@ The audited control plane for a live AI prediction-market platform: four-role RB
 | Field | Value |
 |-------|-------|
 | Public GitHub repository | https://github.com/balojey/tradewizard-kiroween |
-| Live app URL | https://admin.tradewizard.live |
-| Judge invite link | `TODO: https://admin.tradewizard.live/join#t=...` (owner/admin, 1–25 uses, short expiry, revoke after judging) |
+| Live app URL | https://warden.tradewizard.live |
+| Judge invite link | `TODO: https://warden.tradewizard.live/join#t=...` (owner/admin, 1–25 uses, short expiry, revoke after judging) |
 | Demo video (YouTube, public) | `TODO: https://youtu.be/...` |
 | Blog post (optional bonus) | `TODO` |
 | Social post (optional bonus) | `TODO` |
@@ -62,7 +62,7 @@ Platform context: Amazon Bedrock, Strands Agents SDK, Polymarket CLOB and Gamma 
 
 **Primary access is the invite link above.** It is a role-carrying Warden link; no shared password is needed.
 
-1. Open the judge invite link from this form. It lands on `https://admin.tradewizard.live/join#t=…`.
+1. Open the judge invite link from this form. It lands on `https://warden.tradewizard.live/join#t=…`.
 2. Enter an email address you can access. The page shows the exact `+warden` address you will sign in with.
 3. Check that inbox for the one-time password from Resend.
 4. Sign in with the `+warden` address, choose your own password, then enrol an authenticator (TOTP).
@@ -98,7 +98,7 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 - Script: [docs/devpost-vo-script.md](devpost-vo-script.md)
 - Metadata: [docs/youtube-description.md](youtube-description.md)
 - Runtime target: 2:45, hard cap 3:00.
-- Show the portal at `https://admin.tradewizard.live`: login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → Ask Warden with citations → newsletter → Kiro specs and hooks.
+- Show the portal at `https://warden.tradewizard.live`: login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → Ask Warden with citations → newsletter → Kiro specs and hooks.
 - Mention the platform at `https://tradewizard.live` only as the system the portal operates. Do not present the platform as the new build.
 
 ## Bonus prize eligibility

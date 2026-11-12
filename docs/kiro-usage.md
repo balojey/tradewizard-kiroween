@@ -5,7 +5,7 @@ This is the judge-facing write-up for the Kiroween 2026 submission. It describes
 - **Project:** TradeWizard Warden
 - **Category:** Frankenstein
 - **Repository:** https://github.com/balojey/tradewizard-kiroween
-- **Live portal:** https://admin.tradewizard.live
+- **Live portal:** https://warden.tradewizard.live
 
 The platform the portal operates is context. The new artifact in this submission is the portal.
 
@@ -242,4 +242,4 @@ npm run build
 npm test
 ```
 
-The portal is live at https://admin.tradewizard.live; the Devpost form carries the demo credentials.
+The portal is live at https://warden.tradewizard.live; the Devpost form carries the demo credentials.
