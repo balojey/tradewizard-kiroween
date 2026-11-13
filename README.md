@@ -123,6 +123,8 @@ Property-based tests cover the portal's authorization invariants with `fast-chec
 
 ## Architecture
 
+![TradeWizard Warden architecture](docs/warden-architecture.png)
+
 ```
 Operator browser
   │  Cognito email + password + TOTP
@@ -252,7 +254,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,415 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,422 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
@@ -265,6 +267,7 @@ tradewizard-kiroween/
 - [.kiro/specs/admin-portal-operations](.kiro/specs/admin-portal-operations/requirements.md) - Operations spec
 - [.kiro/specs/audit-chain-integrity](.kiro/specs/audit-chain-integrity/requirements.md) - Hash-chain integrity spec
 - [.kiro/specs/admin-copilot](.kiro/specs/admin-copilot/requirements.md) - Read-only AI copilot spec
+- [docs/warden-architecture.md](docs/warden-architecture.md) - Warden architecture diagram and flows
 - [docs/admin-portal-architecture.md](docs/admin-portal-architecture.md) - Binding portal architecture
 - [docs/admin-portal-runbook.md](docs/admin-portal-runbook.md) - Operating procedures
 

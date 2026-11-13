@@ -184,6 +184,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 - **Portal operations spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-portal-operations/requirements.md
 - **Audit chain spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/audit-chain-integrity/requirements.md
 - **Admin copilot spec**: https://github.com/balojey/tradewizard-kiroween/blob/main/.kiro/specs/admin-copilot/requirements.md
+- **Architecture diagram**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/warden-architecture.png
 
 ---
 
