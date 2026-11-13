@@ -280,18 +280,6 @@ tradewizard-kiroween/
 - [infra/README.md](infra/README.md) - Infrastructure guide
 - [tradewizard-frontend/README.md](tradewizard-frontend/README.md) - Customer app guide
 
-## Kiroween Checklist
-
-- [x] Public repository with all source, assets, and instructions
-- [x] MIT license at the root, detectable by GitHub
-- [x] `/.kiro` directory tracked with specs, steering, and hooks
-- [x] Frankenstein category rationale
-- [x] Kiro usage write-up with file-level references
-- [ ] Operations portal URL added to the Devpost form
-- [ ] Judge invite link created, tested through first-sign-in TOTP, and revocable
-- [ ] Demo video uploaded to YouTube (under three minutes, public)
-- [ ] Devpost form completed with category and bonus prizes
-
 ## Contributing
 
 1. Fork the repository
