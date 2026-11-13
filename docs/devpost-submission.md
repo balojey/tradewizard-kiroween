@@ -245,9 +245,7 @@ The portal is nine CDK stacks, with the platform as its subject:
 - **Portfolio Manager session-cap override** as a runtime setting with a real consumer.
 - **Maintenance banner** coordinated with the product frontend.
 - **Model routing view** once a configuration source exists.
-- **Hosted production portal** on its own Amplify app and `warden.tradewizard.live` domain.
-- **Audit export and retention policy** for compliance reviews.
-- **More read surfaces** for customer health and incident timelines.
+- **HMAC key anchor for the audit chain**, so a database-only actor cannot re-seal a break.
 
 ---
 
