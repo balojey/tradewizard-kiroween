@@ -16,6 +16,8 @@ We built Warden because a live trading platform needs a control plane, not a col
 
 The portal is the new artifact in this submission. The platform it operates is context.
 
+Both matter, asymmetrically. Warden is the artifact to judge: its design, its controls, its audit chain, its copilot, and its Kiro build. TradeWizard is the evidence that the problem is real and that Warden's controls have something at stake. The platform is not claimed as new work; it is the reason the portal exists.
+
 ## What it does
 
 The portal is a role-gated operations console with four jobs: observe, control, configure, and account for what happened.

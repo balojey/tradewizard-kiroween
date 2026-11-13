@@ -10,6 +10,8 @@ Operating that from the AWS console is unsafe and slow. The **TradeWizard Warden
 
 The portal is the Kiroween submission. The platform is the system it operates.
 
+Both matter, asymmetrically. Warden is the artifact to judge; TradeWizard is the evidence that the problem is real and that the controls have something at stake. The platform is not claimed as new work.
+
 ## Why this is a Frankenstein
 
 The portal is a chimera of systems that normally do not share a body:
@@ -254,7 +256,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,422 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,476 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
