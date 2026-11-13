@@ -252,7 +252,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,455 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,430 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
