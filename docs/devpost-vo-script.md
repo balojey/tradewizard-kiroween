@@ -35,7 +35,7 @@ This is TradeWizard: a live prediction-market platform with fourteen AI agents, 
 
 But a live trading system is only as safe as the people operating it. This is the product built to do that: the TradeWizard Warden.
 
-A separate internal Next.js app with its own API, identity, audit trail, and deployment. Sign-in is Cognito email, password, and TOTP. Accounts live on `+warden` aliases, owners mint role-carrying invite links with a use cap and expiry, and the API reads live group membership on every request. Four roles - analyst, support, admin, owner - are enforced by the API.
+A separate internal Next.js app with its own API, identity, audit trail, and deployment. Sign-in is Cognito email, password, and TOTP. Accounts live on `+warden` aliases, owners mint role-carrying invite links with a use cap and expiry, and the API reads live group membership on every request. Four roles - analyst, support, administrator, owner - are enforced by the API.
 
 The overview shows the operational pulse. Users covers credits, analyses, sessions, payments, notes, plan, and status.
 
@@ -51,7 +51,7 @@ The audit log is hash-chained: every mutation writes a row before the side effec
 
 The PWA caches only static assets, never a previous operator's shell on a shared machine.
 
-We built it from four Kiro specs: foundation, operations, audit chain, and admin copilot. Four steering documents constrain the work, and hooks typecheck the admin app and guard the analysis gates.
+We built it from four Kiro specs: foundation, operations, audit chain, and copilot. Four steering documents constrain the work, and hooks typecheck the Warden app and guard the analysis gates.
 
 The platform is the product. This is the control plane. Four Kiro specs, one audited portal - built to let a team operate a live trading system without guessing.
 
@@ -69,6 +69,6 @@ Ask Warden answers incident and support questions with citations to the exact re
 
 Every switch names the service that reads it. Every destructive action requires a reason and a fresh token. The PWA caches only static assets, never a previous operator's shell.
 
-Four Kiro specs, foundation, operations, audit chain, and admin copilot, define the whole control plane.
+Four Kiro specs, foundation, operations, audit chain, and copilot, define the whole control plane.
 
 The platform is the product. This is the control plane.
