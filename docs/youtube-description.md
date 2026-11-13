@@ -38,11 +38,11 @@ It also has **Ask Warden**, a read-only AI copilot. It answers incident, support
 1:10 The fail-closed kill switch
 1:25 Runtime settings with real consumers
 1:40 Support inbox
-1:55 Ask Warden with citations
-2:10 Newsletter composer and subscribers
-2:20 Hash-chained audit and RBAC
+1:52 Ask Warden with citations
+2:05 Members, invite links, and +warden aliases
+2:15 Hash-chained audit and RBAC
 2:30 PWA cache safety and Kiro artifacts
-2:45 Close
+2:50 Close
 
 🔐 AUTHENTICATION AND AUTHORIZATION
 
