@@ -10,7 +10,9 @@ Copy-paste fields for the Devpost submission form. Replace every `TODO` before s
 
 ## Elevator pitch (≤ 200 characters)
 
-The audited control plane for a live AI prediction-market platform: four-role RBAC, hash-chained audit, a read-only AI copilot with citations, kill switch, runtime settings, support, and newsletter. Built with Kiro.
+The audited control plane for a live AI prediction-market platform: 4-role access, a hash-chained audit log, a fail-closed kill switch, and a read-only copilot with citations. Built with Kiro.
+
+192 characters, single line, plain text. If you edit it, keep it under 200.
 
 ## Category
 
