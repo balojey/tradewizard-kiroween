@@ -29,20 +29,22 @@ It also has **Ask Warden**, a read-only AI copilot. It answers incident, support
 
 ⏱️ CHAPTERS
 
-0:00 The portal and the problem
-0:08 Sign-in, TOTP, and role enforcement
-0:20 Operational overview
-0:32 Users, credits, plans, and notes
-0:45 Analysis quality, requeue, and refunds
-1:00 Portfolio sessions and decisions
-1:10 The fail-closed kill switch
-1:25 Runtime settings with real consumers
-1:40 Support inbox
-1:52 Ask Warden with citations
+0:00 What a prediction market is
+0:08 Analysis and the Portfolio Manager
+0:18 The portal and the problem
+0:24 Sign-in, TOTP, and role enforcement
+0:32 Operational overview
+0:42 Users, credits, plans, and notes
+0:53 Analysis quality, requeue, and refunds
+1:05 Portfolio sessions and decisions
+1:15 The fail-closed kill switch
+1:29 Runtime settings with real consumers
+1:42 Support inbox
+1:53 Ask Warden with citations
 2:05 Members, invite links, and +warden aliases
 2:15 Hash-chained audit and RBAC
-2:30 PWA cache safety and Kiro artifacts
-2:50 Close
+2:29 PWA cache safety and Kiro artifacts
+2:44 Close
 
 🔐 AUTHENTICATION AND AUTHORIZATION
 

@@ -6,9 +6,41 @@
 
 ---
 
+## What TradeWizard is
+
+Most people have never used a prediction market, so start here.
+
+A **prediction market** turns a question into a price. On "Will X happen?", YES shares trade between 0 and 100 cents and pay $1 if X happens. The price is the crowd's probability: 64 cents means the market thinks there is a 64% chance. Buying NO is buying the other side of the same question.
+
+**TradeWizard** is a live product built on **Polymarket**, the largest prediction-market exchange. Orders are matched on Polymarket's central limit order book (the **CLOB**, which is also the API that places orders) and settled in USDC on Polygon. Customers reach it at `tradewizard.live`.
+
+Customers use it in two ways:
+
+1. **Analysis.** Fourteen AI agents read the news, polling, order books, and price history for a market. A deterministic pipeline fuses their answers into one probability, compares it with the market price, and returns either a **recommendation** (a direction, an entry zone, a target, a stop, and the reasoning) or **NO_TRADE** with a named reason. The result is delivered by email, in-app, or webhook. **Credits** meter usage, and plans refill them monthly.
+2. **Portfolio Manager.** A customer can start a **session**: pick a market, a risk **persona**, and a budget. A deterministic risk pipeline decides each entry and exit inside that budget, tracks the position and P&L, and stops at the limits. These are real orders with real money, not a paper-trading view.
+
+That is the system Warden operates: live customers, real balances, open positions, and orders that cannot be un-sent. A wrong click is not a bad dashboard state. It is money moved, a strategy stopped, or a change nobody can explain afterwards.
+
+### The words this entry uses
+
+| Term | What it means here |
+|------|--------------------|
+| Prediction market | An exchange on yes/no questions. Shares cost 0-100 cents and pay $1 if correct, so the price reads as a probability. |
+| Polymarket | The exchange TradeWizard trades on. |
+| CLOB | Central limit order book: the queue that matches orders, and the API that places them. |
+| Analysis | One run of the fourteen-agent pipeline over one market. |
+| Recommendation / NO_TRADE | A direction with entry, target, and stop, or a decision not to trade with a machine-readable reason. |
+| Edge | The fused probability minus the market price. Positive edge is the reason to trade. |
+| Credits | Prepaid units that pay for analyses; plans refill them each cycle. |
+| Persona | A risk profile (scalper, sniper, contrarian, and so on) that shapes how a session enters and exits. |
+| Session | One Portfolio Manager run: a market, a persona, a budget, positions, trades, and P&L. |
+| Kill switch | A per-user halt. New entries stop synchronously, then open positions are exited asynchronously. |
+| Shadow consensus | A second, agent-voted decision recorded beside the live one so the two can be graded later. |
+| On-chain billing | Subscription payments in USDC on Polygon, verified by transaction hash. |
+
 ## Inspiration
 
-TradeWizard is a live platform. Fourteen AI agents analyze Polymarket markets, a deterministic pipeline decides whether to trade, and an autonomous Portfolio Manager can place real CLOB orders inside user-approved limits. It also has credits, on-chain billing, customer support, and a newsletter.
+Warden exists because of what the platform does: it holds customer balances, opens positions with real orders, and runs unattended between analyses. Every operator action can move money, stop a strategy, or change what thousands of analyses do next.
 
 Operating that from the AWS console is possible, but unsafe and slow. Every action becomes a manual runbook: raw SQL for a refund, a Lambda invocation for a queue, a console click for a kill switch, a spreadsheet for who changed what. There is no role boundary between an analyst and an owner, no reason attached to a destructive action, and no durable record that the action happened.
 

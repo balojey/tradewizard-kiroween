@@ -8,6 +8,8 @@
 
 TradeWizard itself is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, credits, on-chain billing, support, and a newsletter.
 
+In plain terms: a prediction market is an exchange on a yes/no question, where shares cost 0-100 cents and pay $1 if correct, so the price is the crowd's probability. TradeWizard runs on Polymarket, sells analyses for credits, and can trade a customer's budget autonomously inside limits they set — with real orders.
+
 The new thing built during Kiroween is the **Warden**: the product that lets a team operate that platform safely. It is not a rebrand of the platform and not a CRUD dashboard. It is a separate application with its own API, identity, roles, audit trail, runtime controls, and deployment.
 
 The platform is context. The portal is the submission.

@@ -6,6 +6,8 @@
 
 TradeWizard is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, customer support, and a newsletter.
 
+Concretely: a prediction market is an exchange on a yes/no question. Shares trade between 0 and 100 cents and pay $1 if correct, so the price reads as public probability. TradeWizard runs on Polymarket, sells analyses for credits, and can trade a user's budget autonomously inside limits they approve — with real orders and real money.
+
 Operating that from the AWS console is unsafe and slow. The **TradeWizard Warden** is the product built to do it: a separate internal Next.js application with its own API, Cognito identity, four-role RBAC, hash-chained audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB. It asks the platform to act, and records who asked, why, and what changed.
 
 The portal is the Kiroween submission. The platform is the system it operates.
@@ -256,7 +258,7 @@ tradewizard-kiroween/
 ## Documentation
 
 ### Kiroween submission
-- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,476 words, absolute links
+- [docs/devpost-submission.md](docs/devpost-submission.md) - Devpost submission, 3,986 words, absolute links
 - [docs/kiroween-submission.md](docs/kiroween-submission.md) - Internal category write-up
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist

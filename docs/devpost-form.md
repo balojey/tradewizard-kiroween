@@ -31,6 +31,8 @@ The audited control plane for a live AI prediction-market platform: four-role RB
 
 TradeWizard is a live prediction-market platform: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. Operating that from the AWS console is unsafe and slow.
 
+For readers new to the space: a prediction market is an exchange on a yes/no question. Shares trade between 0 and 100 cents and pay $1 if correct, so the price reads as a probability. TradeWizard runs on Polymarket, where orders are matched on the central limit order book and settled in USDC on Polygon. Its customers buy analyses with credits, and can let a Portfolio Manager trade inside a budget they approve — with real orders and real money.
+
 The TradeWizard Warden is the separate internal product built to operate it. A Next.js 16 app with its own admin API, Cognito identity, four-role RBAC, and a hash-chained audit trail. Every mutation requires a reason and writes a hash-chained audit row before the side effect; the portal verifies the chain and names the first broken row. Operators can inspect users, analyses, portfolio sessions, billing, agents, queues, and markets; run a fail-closed per-user kill switch; pause or terminate sessions; grant credits and plan overrides; requeue or refund analyses; change audited runtime settings; handle support tickets; and compose the newsletter. A read-only AI copilot, Ask Warden, answers operational questions with citations to the exact audit row, ticket, analysis, or session — and every suggestion is a link, never an action. Access is built for separation too: Warden-only `+warden` aliases, revocable role-carrying invite links, and live Cognito group checks on every request.
 
 The portal never holds wallet keys, signs transactions, or calls the CLOB. It is a control surface, not a second business-logic layer.
@@ -98,7 +100,7 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 - Script: [docs/devpost-vo-script.md](devpost-vo-script.md)
 - Metadata: [docs/youtube-description.md](youtube-description.md)
 - Runtime target: 2:50, hard cap 3:00.
-- Show the portal at `https://warden.tradewizard.live`: login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → Ask Warden with citations → Members and invite links → newsletter → Kiro specs and hooks.
+- Show the platform in ten seconds, then the portal at `https://warden.tradewizard.live`: market and analysis → login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → Ask Warden with citations → Members and invite links → newsletter → Kiro specs and hooks.
 - Mention the platform at `https://tradewizard.live` only as the system the portal operates. Do not present the platform as the new build.
 
 ## Bonus prize eligibility
