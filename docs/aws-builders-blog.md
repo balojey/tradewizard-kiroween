@@ -1,10 +1,14 @@
 #KiroweenHackathon26
 
+# Building an Auditable Control Plane for a Live Trading Platform on AWS
+
+*How I built TradeWizard Warden, the operations portal for a live prediction-market platform: four roles checked against live Cognito groups, an audit chain that names the first broken row, a kill switch that fails closed, and a read-only copilot that cannot act.*
+
 <iframe width="100%" height="420" src="https://www.youtube.com/embed/XHgp7Q_Y1kE" title="TradeWizard Warden Demo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
 **Demo (2:50): the portal end to end.** If the embed does not render, watch it at https://youtu.be/XHgp7Q_Y1kE.
 
-> **Kiroween 2026 · Frankenstein category.** This post is about the submitted project: **TradeWizard Warden**, the audited operations portal for the TradeWizard prediction-market platform. The platform is context; the portal is the new artifact.
+> **Kiroween 2026 · Frankenstein category.** The submitted project is TradeWizard Warden. The platform is context; the portal is the new artifact.
 
 A live trading product has a problem that a demo never does: someone has to operate it. Refunds, halted strategies, role changes, paused features, and incident questions all happen while the system holds customer balances and open orders. On a real platform that work ends up in the AWS console: raw SQL for a credit, a Lambda invocation for a queue, a console click for a kill switch, and a spreadsheet for who changed what.
 
