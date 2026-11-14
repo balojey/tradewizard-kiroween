@@ -216,7 +216,7 @@ Steering: https://github.com/balojey/tradewizard-kiroween/tree/main/.kiro/steeri
 
 - **Portal:** https://warden.tradewizard.live
 - **Repository:** https://github.com/balojey/tradewizard-kiroween
-- **Demo video:** `<YOUTUBE URL>`
+- **Demo video:** https://youtu.be/XHgp7Q_Y1kE
 - **Platform the portal operates:** https://tradewizard.live
 
 *Built with Next.js 16, TypeScript, Amazon Cognito, API Gateway, AWS Lambda, Amazon RDS for PostgreSQL, Amazon DynamoDB, Amazon S3, EventBridge, SNS, CloudWatch, Amplify Hosting, AWS CDK, and Kiro.*

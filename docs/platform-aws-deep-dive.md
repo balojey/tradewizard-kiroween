@@ -465,7 +465,7 @@ Steering: https://github.com/balojey/tradewizard-kiroween/tree/main/.kiro/steeri
 - **Portal**: https://warden.tradewizard.live
 - **GitHub**: https://github.com/balojey/tradewizard-kiroween
 - **Platform**: https://tradewizard.live
-- **Demo video**: `<YOUTUBE URL>`
+- **Demo video**: https://youtu.be/XHgp7Q_Y1kE
 - **Strands Agents SDK**: https://github.com/strands-agents/sdk-typescript
 
 ---

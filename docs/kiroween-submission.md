@@ -179,6 +179,7 @@ Platform context: Amazon Bedrock · Strands Agents SDK · Polymarket CLOB and Ga
 ## Links
 
 - **Repository**: https://github.com/balojey/tradewizard-kiroween
+- **Demo video**: https://youtu.be/XHgp7Q_Y1kE
 - **Operations portal**: https://warden.tradewizard.live
 - **Platform it operates**: https://tradewizard.live
 - **Kiro usage write-up**: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md

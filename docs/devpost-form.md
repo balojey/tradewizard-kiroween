@@ -25,7 +25,7 @@ The audited control plane for a live AI prediction-market platform: 4-role acces
 | Public GitHub repository | https://github.com/balojey/tradewizard-kiroween |
 | Live app URL | https://warden.tradewizard.live |
 | Judge invite link | `TODO: https://warden.tradewizard.live/join#t=...` (owner/admin, 1–25 uses, short expiry, revoke after judging) |
-| Demo video (YouTube, public) | `TODO: https://youtu.be/...` |
+| Demo video (YouTube, public) | https://youtu.be/XHgp7Q_Y1kE |
 | Blog post (optional bonus) | `TODO: https://builder.aws.com/content/...` - draft in [docs/aws-builders-blog.md](aws-builders-blog.md), publish on AWS Builder Center |
 | Social post (optional bonus) | `TODO` |
 
