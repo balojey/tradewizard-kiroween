@@ -263,7 +263,7 @@ tradewizard-kiroween/
 - [docs/kiro-usage.md](docs/kiro-usage.md) - How Kiro was used
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
 - [docs/devpost-vo-script.md](docs/devpost-vo-script.md) - Demo voiceover and shot list
-- [docs/youtube-description.md](docs/youtube-description.md) - Video metadata
+- [docs/youtube-description.txt](docs/youtube-description.txt) - YouTube description, plain text, paste-ready
 
 ### Portal
 - [tradewizard-admin/README.md](tradewizard-admin/README.md) - Portal development and deployment

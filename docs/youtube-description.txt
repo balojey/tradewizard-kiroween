@@ -1,0 +1,77 @@
+The audited control surface for a live multi-agent prediction-market platform.
+
+TradeWizard is live: fourteen AI agents, a deterministic analysis pipeline, an autonomous Portfolio Manager, on-chain billing, support, and a newsletter. Warden is the separate internal product built to operate it safely.
+
+New to prediction markets? A market is an exchange on a yes/no question. Shares cost 0-100 cents and pay $1 if correct, so the price reads as the crowd's probability. TradeWizard runs on Polymarket, sells analyses for credits, and can trade a customer's budget autonomously inside limits they approve.
+
+Warden is not a CRUD dashboard. It is a role-gated control plane with its own Next.js app, API, Cognito identity, hash-chained audit trail, runtime settings, and deployment. It never holds wallet keys, signs transactions, or calls the CLOB.
+
+Ask Warden is a read-only AI copilot. It answers incident, support, analysis, session, and risk questions with citations to the exact record, and every suggestion is a link, never an action.
+
+Submitted to Kiroween 2026 (Frankenstein category): Next.js, Cognito, API Gateway, Lambda, RDS PostgreSQL, DynamoDB, S3, EventBridge, SNS, CloudWatch, Amplify, a conservative PWA, and four Kiro specs.
+
+Operations portal: https://warden.tradewizard.live
+Platform it operates: https://tradewizard.live
+Repository: https://github.com/balojey/tradewizard-kiroween
+Kiro usage write-up: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
+
+CHAPTERS
+0:00 What a prediction market is
+0:08 Analysis and the Portfolio Manager
+0:18 The portal and the problem
+0:24 Sign-in, TOTP, and role enforcement
+0:32 Operational overview
+0:42 Users, credits, plans, and notes
+0:53 Analysis quality, requeue, and refunds
+1:05 Portfolio sessions and decisions
+1:15 The fail-closed kill switch
+1:29 Runtime settings with real consumers
+1:42 Support inbox
+1:53 Ask Warden with citations
+2:05 Members, invite links, and +warden aliases
+2:15 Hash-chained audit and RBAC
+2:29 PWA cache safety and Kiro artifacts
+2:44 Close
+
+AUTHENTICATION AND AUTHORIZATION
+- Separate Cognito admin client: email + password + TOTP
+- Self-service MFA enrolment with a QR code
+- Four cumulative roles: analyst, support, admin, owner
+- Authorizer reads live Cognito groups, not the token snapshot
+- Warden-only +warden aliases, and role-carrying invite links with expiry and use caps
+
+HASH-CHAINED AUDIT
+- Audit row written before the side effect
+- Actor, action, target, reason, before/after state, request id, IP, user agent
+- prev_hash plus row_hash chain every row to its predecessor
+- completion_hash makes a flipped status detectable
+- Verify names the first broken row; triggers reject updates and deletes
+- Pending rows make a crash visible instead of silent
+
+OPERATIONAL CONTROLS
+- Fail-closed per-user kill switch: synchronous halt, asynchronous exit
+- Session pause, resume, terminate
+- Credits, plan overrides, account status, support notes
+- Analysis cache invalidation, refunds, market requeue
+- Runtime settings, each with a named consumer
+
+ASK WARDEN (READ-ONLY)
+- Incident, support, analysis, session, and risk questions
+- Deterministic retrieval; one tool-less model call
+- Every claim cites the exact record; answers are role-scoped
+- Suggestions are links, never executions; no mutation route
+- copilot_enabled kill switch and a per-operator daily cap
+
+BUILT WITH KIRO
+- admin-portal-foundation: package isolation, auth and MFA, RBAC, audit, admin API
+- admin-portal-operations: mutation envelope, kill switch, sessions, membership, settings, support
+- audit-chain-integrity: canonical hashes, idempotent backfill, bounded verification
+- admin-copilot: read-only retrieval, citation validation, role scoping
+- 4 steering documents, 5 hooks, fast-check property tests, MCP docs for Magic Link and Polymarket
+
+BUILT WITH
+Kiro, TypeScript, Next.js 16, React 19, Tailwind CSS 4, TanStack Query, Amazon Cognito, API Gateway, AWS Lambda, Amazon RDS for PostgreSQL, Amazon DynamoDB, Amazon S3, Amazon EventBridge, Amazon SNS, Amazon CloudWatch, AWS Secrets Manager, AWS IAM, AWS Amplify Hosting, AWS CDK, Amazon Bedrock, Zod, Vitest, Remotion
+
+Platform context: Strands Agents SDK, Polymarket CLOB and Gamma APIs, viem, Safe, USDC.e on Polygon, Resend, NewsData.io, Serper
+
+#KiroweenHackathon26 #Kiroween2026 #Kiro #OperationsPortal #AdminPortal #AICopilot #ReadOnlyAI #RBAC #AuditLog #AWS #Serverless #NextJS #TypeScript #Hackathon #Frankenstein
