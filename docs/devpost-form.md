@@ -26,7 +26,7 @@ The audited control plane for a live AI prediction-market platform: 4-role acces
 | Live app URL | https://warden.tradewizard.live |
 | Judge invite link | `TODO: https://warden.tradewizard.live/join#t=...` (owner/admin, 1–25 uses, short expiry, revoke after judging) |
 | Demo video (YouTube, public) | https://youtu.be/XHgp7Q_Y1kE |
-| Blog post (optional bonus) | `TODO: https://builder.aws.com/content/...` - draft in [docs/aws-builders-blog.md](aws-builders-blog.md), publish on AWS Builder Center |
+| Blog post (optional bonus) | `TODO: https://builder.aws.com/...` - title "Building an Auditable Control Plane for a Live Trading Platform on AWS"; body in [docs/aws-builders-blog.md](aws-builders-blog.md) and starts with `#KiroweenHackathon26` |
 | Social post (optional bonus) | `TODO` |
 
 ## Short description
@@ -106,6 +106,13 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 - Title: `TradeWizard Warden - The Audited Control Plane + Read-Only AI Copilot | Kiroween 2026` (85 chars, under YouTube's 100).
 - Show the platform in ten seconds, then the portal at `https://warden.tradewizard.live`: market and analysis → login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → Ask Warden with citations → Members and invite links → newsletter → Kiro specs and hooks.
 - Mention the platform at `https://tradewizard.live` only as the system the portal operates. Do not present the platform as the new build.
+
+## Blog post (AWS Builder Center)
+
+- Title for the Builder Center field: `Building an Auditable Control Plane for a Live Trading Platform on AWS`
+- Body: [docs/aws-builders-blog.md](aws-builders-blog.md). It must start with `#KiroweenHackathon26` — the first line of the file is that hashtag, so paste from line 1.
+- Cover image: [docs/warden-thumbnail.png](warden-thumbnail.png). Tags: Cognito, API Gateway, Lambda, RDS, DynamoDB, Security.
+- Publish on `builder.aws.com`, wait for the moderation scan, then open the URL logged out. Only then paste it into the Devpost blog field.
 
 ## Bonus prize eligibility
 

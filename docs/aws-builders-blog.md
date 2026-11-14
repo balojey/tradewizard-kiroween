@@ -1,4 +1,4 @@
-# Building an Auditable Control Plane for a Live Trading Platform on AWS
+#KiroweenHackathon26
 
 > **Kiroween 2026 · Frankenstein category.** This post is about the submitted project: **TradeWizard Warden**, the audited operations portal for the TradeWizard prediction-market platform. The platform is context; the portal is the new artifact.
 
