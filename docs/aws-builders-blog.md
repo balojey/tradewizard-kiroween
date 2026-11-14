@@ -6,7 +6,9 @@
 
 <iframe width="100%" height="420" src="https://www.youtube.com/embed/XHgp7Q_Y1kE" title="TradeWizard Warden Demo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
-**Demo (2:50): the portal end to end.** If the embed does not render, watch it at https://youtu.be/XHgp7Q_Y1kE.
+**Demo (2:50): the portal end to end.**
+
+[![Watch the 2:50 demo](https://i.ytimg.com/vi/XHgp7Q_Y1kE/maxresdefault.jpg)](https://youtu.be/XHgp7Q_Y1kE)
 
 > **Kiroween 2026 · Frankenstein category.** The submitted project is TradeWizard Warden. The platform is context; the portal is the new artifact.
 
