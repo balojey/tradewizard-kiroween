@@ -110,7 +110,7 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 ## Blog post (AWS Builder Center)
 
 - Title for the Builder Center field: `Building an Auditable Control Plane for a Live Trading Platform on AWS`
-- Description for the Builder Center field: `Four roles, a hash-chained audit log, a fail-closed kill switch, and a read-only copilot: how we built the operations portal for a live prediction-market platform.` (159 characters)
+- Description for the Builder Center field: `Four roles, a hash-chained audit log, a fail-closed kill switch, and a read-only copilot: how we built the operations portal for a live prediction-market platform.` (163 characters)
 - Body: [docs/aws-builders-blog.md](aws-builders-blog.md). It must start with `#KiroweenHackathon26` — the first line of the file is that hashtag, so paste from line 1. The title, a one-line description, and the YouTube embed follow it, with a markdown thumbnail link as the fallback for editors that strip iframes.
 - Cover image: [docs/warden-thumbnail.png](warden-thumbnail.png). Tags: Cognito, API Gateway, Lambda, RDS, DynamoDB, Security.
 - Publish on `builder.aws.com`, wait for the moderation scan, then open the URL logged out. Only then paste it into the Devpost blog field.
