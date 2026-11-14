@@ -2,7 +2,7 @@
 
 # Building an Auditable Control Plane for a Live Trading Platform on AWS
 
-*How I built TradeWizard Warden, the operations portal for a live prediction-market platform: four roles checked against live Cognito groups, an audit chain that names the first broken row, a kill switch that fails closed, and a read-only copilot that cannot act.*
+*How we built TradeWizard Warden, the operations portal for a live prediction-market platform: four roles checked against live Cognito groups, an audit chain that names the first broken row, a kill switch that fails closed, and a read-only copilot that cannot act.*
 
 <iframe width="100%" height="420" src="https://www.youtube.com/embed/XHgp7Q_Y1kE" title="TradeWizard Warden Demo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
@@ -208,7 +208,7 @@ Steering: https://github.com/balojey/tradewizard-kiroween/tree/main/.kiro/steeri
 
 ---
 
-## What I would do differently
+## What we would do differently
 
 **Write the audit row before the action, always.** An append-after-success model loses the record exactly when it matters: when the process dies mid-mutation.
 
