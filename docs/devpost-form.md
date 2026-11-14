@@ -99,6 +99,7 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 
 - Script: [docs/devpost-vo-script.md](devpost-vo-script.md)
 - Description (plain text, paste into YouTube): [docs/youtube-description.txt](youtube-description.txt)
+- Thumbnail: [docs/warden-thumbnail.png](warden-thumbnail.png) (1280×720, 100 KB; regenerate with `python3 docs/warden-thumbnail.py`)
 - Runtime target: 2:50, hard cap 3:00.
 - Title: `TradeWizard Warden - The Audited Control Plane + Read-Only AI Copilot | Kiroween 2026` (85 chars, under YouTube's 100).
 - Show the platform in ten seconds, then the portal at `https://warden.tradewizard.live`: market and analysis → login/MFA → overview → users → analyses → session and kill switch → settings and audit (Verify chain) → support → Ask Warden with citations → Members and invite links → newsletter → Kiro specs and hooks.

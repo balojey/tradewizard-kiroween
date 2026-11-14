@@ -264,6 +264,7 @@ tradewizard-kiroween/
 - [docs/devpost-form.md](docs/devpost-form.md) - Form fields, test instructions, checklist
 - [docs/devpost-vo-script.md](docs/devpost-vo-script.md) - Demo voiceover and shot list
 - [docs/youtube-description.txt](docs/youtube-description.txt) - YouTube description, plain text, paste-ready
+- [docs/warden-thumbnail.png](docs/warden-thumbnail.png) - Video thumbnail, 1280×720
 
 ### Portal
 - [tradewizard-admin/README.md](tradewizard-admin/README.md) - Portal development and deployment
