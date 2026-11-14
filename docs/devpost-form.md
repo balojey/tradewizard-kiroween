@@ -26,7 +26,7 @@ The audited control plane for a live AI prediction-market platform: 4-role acces
 | Live app URL | https://warden.tradewizard.live |
 | Judge invite link | `TODO: https://warden.tradewizard.live/join#t=...` (owner/admin, 1–25 uses, short expiry, revoke after judging) |
 | Demo video (YouTube, public) | `TODO: https://youtu.be/...` |
-| Blog post (optional bonus) | `TODO` |
+| Blog post (optional bonus) | `TODO: https://builder.aws.com/content/...` - draft in [docs/aws-builders-blog.md](aws-builders-blog.md), publish on AWS Builder Center |
 | Social post (optional bonus) | `TODO` |
 
 ## Short description
@@ -116,7 +116,7 @@ The portal runs at `http://localhost:3001`. Full setup: [README.md](../README.md
 | Best Ghost of Kiroween Past | Only if registered for Kiroween 2025 | Confirm registration |
 | Best Kiro Crew App | No | No Crew artifacts in the repository |
 | Social Blitz Prize | Optional | Post with `#KiroweenHackathon26` at the start; add URL |
-| Bonus Blog Prize | Optional | Publish a public blog post mentioning Kiroween 2026; add URL |
+| Bonus Blog Prize | Optional | Publish the AWS deep-dive on AWS Builder Center (builder.aws.com), keep it public, add the URL |
 | Best Demo | Automatic | All eligible submissions are considered |
 
 ## Pre-submit checklist

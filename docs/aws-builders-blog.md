@@ -1,6 +1,14 @@
 # Building a Multi-Agent Trading Intelligence System on AWS with Strands Agents SDK, Amazon Bedrock, Amazon RDS for PostgreSQL, and DynamoDB
 
-> Technical deep-dive for the [TradeWizard Kiroween 2026 submission](kiroween-submission.md) (Frankenstein category). This post focuses on the AWS layer; the full build story and Kiro usage are in [kiro-usage.md](kiro-usage.md).
+> **Kiroween 2026 · Frankenstein category.** The submitted project is **TradeWizard Warden**, the audited control plane for the TradeWizard platform. This post is the AWS deep-dive for the platform layer that Warden operates. The platform predates the submission; the portal is the new artifact.
+
+**What was submitted.** Warden is a separate Next.js operations product with its own API, Cognito identity, four-role RBAC, and a hash-chained audit log. It never holds wallet keys, signs transactions, or calls the CLOB: it asks the platform to act and records who asked, why, and what changed. Every mutation writes a hash-chained row before the side effect, and verification names the first broken row.
+
+- Portal: https://warden.tradewizard.live
+- Repository: https://github.com/balojey/tradewizard-kiroween
+- Kiro usage: https://github.com/balojey/tradewizard-kiroween/blob/main/docs/kiro-usage.md
+
+The rest of this post covers the platform it operates.
 
 **How we orchestrate 14 specialized AI agents across 7 foundation models in a single Lambda function - with Amazon RDS for PostgreSQL as the durable brain (agent memory, performance scoring, closed-loop learning) and DynamoDB as the speed layer (dedup cache, WebSocket connections, rate limiting, distributed locks).**
 
@@ -445,11 +453,28 @@ The kill switch fails closed - if any internal check errors during emergency exi
 
 ---
 
+## How Kiro Built the Portal
+
+The platform above predates the submission. The portal does not, and it was specified and built with Kiro:
+
+- **Four specs**, each with requirements, design, and an ordered task list: `admin-portal-foundation` (package boundary, auth, RBAC, audit spine), `admin-portal-operations` (mutation envelope, kill switch, session controls, settings), `audit-chain-integrity` (canonical hashes, backfill, bounded verification), and `admin-copilot` (read-only retrieval, citations, no mutation path).
+- **Four steering documents** (`product`, `structure`, `tech`, `kiroween`) load into every session, so a portal change knows the platform invariants it must not break.
+- **Five hooks**: three typecheck a package on save, `analysis-gate-guard` reviews edits to the deterministic gates for model calls and shadow-data leakage, and `spec-task-followthrough` closes a completed task and runs only the affected tests.
+- **MCP documentation servers** for Magic Link and Polymarket verify API shapes against the source instead of recalling them.
+
+Specs: https://github.com/balojey/tradewizard-kiroween/tree/main/.kiro/specs
+Hooks: https://github.com/balojey/tradewizard-kiroween/tree/main/.kiro/hooks
+Steering: https://github.com/balojey/tradewizard-kiroween/tree/main/.kiro/steering
+
+---
+
 ## Try It / Learn More
 
-- **GitHub**: [https://github.com/balojey/tradewizard-ai](https://github.com/balojey/tradewizard-ai)
-- **Live demo**: [https://tradewizard.live](https://tradewizard.live)
-- **Strands Agents SDK**: [https://github.com/strands-agents/sdk-typescript](https://github.com/strands-agents/sdk-typescript)
+- **Portal**: https://warden.tradewizard.live
+- **GitHub**: https://github.com/balojey/tradewizard-kiroween
+- **Platform**: https://tradewizard.live
+- **Demo video**: `<YOUTUBE URL>`
+- **Strands Agents SDK**: https://github.com/strands-agents/sdk-typescript
 
 ---
 
